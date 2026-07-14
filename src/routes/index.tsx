@@ -1,5 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Flame, Droplet, Beef, Footprints, ChevronRight, Play, Sparkles, Target } from "lucide-react";
+import {
+  Flame,
+  Droplet,
+  Beef,
+  Footprints,
+  ChevronRight,
+  Play,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, RULES, NUTRITION } from "@/lib/program";
 import {
@@ -26,15 +35,30 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { UserCheck } from "lucide-react";
+
 function Dashboard() {
   const state = useAppState();
   const actions = useAppActions();
   const today = getTodayProgram(state.profile.daysPerWeek === 5);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+      }
+    });
+  }, []);
   const streak = computeStreak(state.workouts);
   const done = thisWeekWorkouts(state.workouts).length;
   const km = kmThisWeek(state.cardio);
   const protein = proteinToday(state.meals);
-  const proteinTarget = Math.round(state.profile.weight * ((NUTRITION.protein_g_per_kg[0] + NUTRITION.protein_g_per_kg[1]) / 2));
+  const proteinTarget = Math.round(
+    state.profile.weight * ((NUTRITION.protein_g_per_kg[0] + NUTRITION.protein_g_per_kg[1]) / 2),
+  );
   const water = state.water[todayKey()] || 0;
   const waterTarget = (NUTRITION.water_l_per_day[0] + NUTRITION.water_l_per_day[1]) / 2;
   const daysGoal = state.profile.daysPerWeek;
@@ -43,18 +67,46 @@ function Dashboard() {
 
   return (
     <PageShell>
-      <TopBar title="Salut 👋" subtitle={new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })} />
+      <TopBar
+        title="Salut 👋"
+        subtitle={new Date().toLocaleDateString("fr-FR", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })}
+      />
+
+      {/* Connected User Indicator */}
+      {userEmail && (
+        <div className="px-5 mb-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card/40 border border-border/40 rounded-full px-3 py-1.5 w-fit">
+            <UserCheck className="h-3.5 w-3.5 text-primary" />
+            <span>Connecté : {userEmail}</span>
+          </div>
+        </div>
+      )}
 
       {/* Streak / Weekly */}
       <div className="px-5 grid grid-cols-3 gap-3">
         <Stat icon={<Flame className="h-4 w-4" />} label="Streak" value={`${streak}j`} accent />
-        <Stat icon={<Sparkles className="h-4 w-4" />} label="Semaine" value={`${done}/${daysGoal}`} />
-        <Stat icon={<Footprints className="h-4 w-4" />} label="Course" value={`${km.toFixed(1)} km`} />
+        <Stat
+          icon={<Sparkles className="h-4 w-4" />}
+          label="Semaine"
+          value={`${done}/${daysGoal}`}
+        />
+        <Stat
+          icon={<Footprints className="h-4 w-4" />}
+          label="Course"
+          value={`${km.toFixed(1)} km`}
+        />
       </div>
 
       {showTestBanner && (
         <div className="px-5 mt-4">
-          <Link to="/progression" className="card-premium p-3 flex items-center gap-3 ring-1 ring-primary/40">
+          <Link
+            to="/progression"
+            className="card-premium p-3 flex items-center gap-3 ring-1 ring-primary/40"
+          >
             <div className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0">
               <Target className="h-4 w-4" />
             </div>
@@ -69,7 +121,9 @@ function Dashboard() {
 
       {/* Today's session */}
       <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Séance du jour</p>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          Séance du jour
+        </p>
         <Link
           to="/seance"
           className="card-premium block p-5 relative overflow-hidden"
@@ -111,10 +165,20 @@ function Dashboard() {
             <span className="text-sm text-muted-foreground font-medium"> / {waterTarget}L</span>
           </p>
           <div className="mt-2 flex gap-1.5">
-            <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.25)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 h-7 text-xs"
+              onClick={() => actions.addWater(0.25)}
+            >
               +25cl
             </Button>
-            <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.5)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 h-7 text-xs"
+              onClick={() => actions.addWater(0.5)}
+            >
               +50cl
             </Button>
           </div>
@@ -144,7 +208,17 @@ function Dashboard() {
   );
 }
 
-function Stat({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: boolean }) {
+function Stat({
+  icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
     <div className={`card-premium p-3 ${accent ? "ring-1 ring-primary/40" : ""}`}>
       <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">

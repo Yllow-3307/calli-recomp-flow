@@ -26,6 +26,7 @@ Le fichier de migration contenant la structure complète des tables, les déclen
 Vous pouvez appliquer cette migration de deux manières :
 
 ### Option A : Depuis le tableau de bord Supabase (Recommandé - Simple)
+
 1. Allez sur votre console de gestion **Supabase** (https://supabase.com/dashboard).
 2. Sélectionnez votre projet **Calli Recomp Tracker**.
 3. Dans la barre latérale gauche, cliquez sur **SQL Editor** (l'icône de terminal `>_`).
@@ -35,7 +36,9 @@ Vous pouvez appliquer cette migration de deux manières :
 7. Toutes les tables sont créées, configurées et alimentées avec les templates du programme sportif.
 
 ### Option B : Via l'interface CLI Supabase (Développeurs)
+
 Si vous utilisez Supabase localement :
+
 ```bash
 # Lier votre projet local au projet distant
 supabase link --project-ref <votre-project-id>
@@ -51,20 +54,24 @@ supabase db push
 Les tables Postgres créées dans le schéma `public` sont les suivantes :
 
 ### A. Données partagées de l'application (Templates)
+
 Ces tables hébergent le programme type de 12 semaines issu du PDF original. Elles sont lisibles par tous les utilisateurs connectés.
-* `workout_templates` : Contient les 7 jours de la semaine sportive type avec les minuteurs d'échauffement et les configurations cardio.
-* `exercise_templates` : Contient la liste de tous les exercices, reliés à chaque jour type, avec les cibles de répétitions, de holds (secondes), les temps de repos et les alternatives d'équipement.
+
+- `workout_templates` : Contient les 7 jours de la semaine sportive type avec les minuteurs d'échauffement et les configurations cardio.
+- `exercise_templates` : Contient la liste de tous les exercices, reliés à chaque jour type, avec les cibles de répétitions, de holds (secondes), les temps de repos et les alternatives d'équipement.
 
 ### B. Données personnelles de l'utilisateur (Privées)
+
 Ces tables stockent les informations de chaque utilisateur. Elles sont sécurisées via RLS (Row-Level Security) pour cloisonner les accès.
-* `profiles` : Profil sportif (poids, taille, niveau, équipement disponible, jours d'entraînement par semaine, etc.).
-* `workout_sessions` : Historique des séances de sport démarrées et terminées (durée, volume de force, RPE, notes, etc.).
-* `exercise_logs` : Contient le détail série par série de chaque exercice accompli durant une session.
-* `cardio_logs` : Enregistrement du running (Zone 2, fractionné) et alternatives d'activité (piscine, rameur, vélo).
-* `body_metrics` : Suivi corporel régulier toutes les 2 semaines (poids, tour de taille, sommeil, énergie, fatigue, et pointeurs vers les photos privées).
-* `meal_logs` : Journal alimentaire quotidien (calories, protéines, lipides, glucides).
-* `hydration_logs` : Suivi d'hydratation hydrique en litres.
-* `progress_tests` : Enregistrement des performances maximales lors des semaines d'évaluation de force (S4, S8, S12).
+
+- `profiles` : Profil sportif (poids, taille, niveau, équipement disponible, jours d'entraînement par semaine, etc.).
+- `workout_sessions` : Historique des séances de sport démarrées et terminées (durée, volume de force, RPE, notes, etc.).
+- `exercise_logs` : Contient le détail série par série de chaque exercice accompli durant une session.
+- `cardio_logs` : Enregistrement du running (Zone 2, fractionné) et alternatives d'activité (piscine, rameur, vélo).
+- `body_metrics` : Suivi corporel régulier toutes les 2 semaines (poids, tour de taille, sommeil, énergie, fatigue, et pointeurs vers les photos privées).
+- `meal_logs` : Journal alimentaire quotidien (calories, protéines, lipides, glucides).
+- `hydration_logs` : Suivi d'hydratation hydrique en litres.
+- `progress_tests` : Enregistrement des performances maximales lors des semaines d'évaluation de force (S4, S8, S12).
 
 ---
 
@@ -72,13 +79,13 @@ Ces tables stockent les informations de chaque utilisateur. Elles sont sécuris�
 
 Chaque table contenant des données privées est verrouillée à l'aide de politiques d'accès de sécurité Postgres.
 
-* **Données partagées** (`workout_templates`, `exercise_templates`) :
-  * Tous les utilisateurs authentifiés peuvent lire (`SELECT`) les séances et exercices.
-  * Les modifications (`INSERT`, `UPDATE`, `DELETE`) sont impossibles pour l'utilisateur lambda afin de garantir l'intégrité du programme.
-* **Données privées** (profils, logs, repas, mesures) :
-  * RLS activé sur l'ensemble des tables.
-  * Utilisation systématique de `auth.uid() = user_id` (ou `id` pour `profiles`).
-  * Un utilisateur ne peut ni requêter, ni insérer, ni altérer la moindre donnée appartenant à autrui.
+- **Données partagées** (`workout_templates`, `exercise_templates`) :
+  - Tous les utilisateurs authentifiés peuvent lire (`SELECT`) les séances et exercices.
+  - Les modifications (`INSERT`, `UPDATE`, `DELETE`) sont impossibles pour l'utilisateur lambda afin de garantir l'intégrité du programme.
+- **Données privées** (profils, logs, repas, mesures) :
+  - RLS activé sur l'ensemble des tables.
+  - Utilisation systématique de `auth.uid() = user_id` (ou `id` pour `profiles`).
+  - Un utilisateur ne peut ni requêter, ni insérer, ni altérer la moindre donnée appartenant à autrui.
 
 ---
 
@@ -87,8 +94,9 @@ Chaque table contenant des données privées est verrouillée à l'aide de polit
 Un bucket privé nommé `progress-photos` est préparé pour héberger en toute sécurité les images de progression corporelle des utilisateurs connectés.
 
 ### Fonctionnement et cloisonnement (Storage RLS) :
-* Les fichiers de photos sont organisés dans le bucket sous la forme de sous-dossiers correspondant à l'ID UUID de l'utilisateur (`{user_id}/{filename}.jpg`).
-* Une politique stricte de sécurité restreint toutes les opérations de lecture (`SELECT`), écriture (`INSERT`), modification (`UPDATE`), et suppression (`DELETE`) de fichiers uniquement à leur propriétaire respectif en vérifiant que le premier segment du chemin d'accès correspond exactement à `auth.uid()`.
+
+- Les fichiers de photos sont organisés dans le bucket sous la forme de sous-dossiers correspondant à l'ID UUID de l'utilisateur (`{user_id}/{filename}.jpg`).
+- Une politique stricte de sécurité restreint toutes les opérations de lecture (`SELECT`), écriture (`INSERT`), modification (`UPDATE`), et suppression (`DELETE`) de fichiers uniquement à leur propriétaire respectif en vérifiant que le premier segment du chemin d'accès correspond exactement à `auth.uid()`.
 
 ---
 
@@ -96,10 +104,11 @@ Un bucket privé nommé `progress-photos` est préparé pour héberger en toute 
 
 Afin de simplifier l'expérience utilisateur, un déclencheur PostgreSQL automatique a été mis en place.
 À chaque fois qu'un utilisateur crée un compte (dans la table interne `auth.users`), le trigger `on_auth_user_created` appelle la fonction `public.handle_new_user()` qui se charge d'instancier automatiquement une ligne par défaut dans la table `profiles` avec des constantes de démarrage :
-* Poids : 75 kg
-* Taille : 178 cm
-* Niveau : intermédiaire
-* Équipement par défaut : Barre de traction, Anneaux et Haltères.
+
+- Poids : 75 kg
+- Taille : 178 cm
+- Niveau : intermédiaire
+- Équipement par défaut : Barre de traction, Anneaux et Haltères.
 
 L'utilisateur peut ensuite ajuster ces valeurs immédiatement dans ses Paramètres de profil sans rencontrer d'erreur d'insertion.
 
@@ -110,11 +119,13 @@ L'utilisateur peut ensuite ajuster ces valeurs immédiatement dans ses Paramètr
 Pour s'assurer du parfait fonctionnement du partitionnement des données utilisateur lors du développement de l'UI :
 
 ### Étape 1 : Tester la création automatique du profil (Trigger)
+
 1. Créez un utilisateur d'essai depuis l'onglet **Authentication** du dashboard Supabase, ou via un formulaire d'inscription frontend.
 2. Allez dans le **Table Editor** sur Supabase et ouvrez la table `public.profiles`.
 3. Vérifiez qu'une ligne correspondant au nouvel ID utilisateur UUID a été ajoutée automatiquement avec les valeurs par défaut.
 
 ### Étape 2 : Valider le cloisonnement de sécurité de la Base de Données (RLS)
+
 Pour vérifier que les politiques RLS fonctionnent, exécutez ces requêtes SQL de test dans l'éditeur de requêtes Supabase :
 
 ```sql
@@ -134,6 +145,7 @@ SELECT * FROM public.meal_logs; -- Devrait retourner UNIQUEMENT le repas de l'ut
 ```
 
 ### Étape 3 : Tester les autorisations de lecture des templates
+
 ```sql
 -- Même en étant connecté, vérifier que l'on peut lire le programme
 SELECT * FROM public.workout_templates; -- Devrait RÉUSSIR et retourner les 7 jours de la semaine.
@@ -143,6 +155,7 @@ UPDATE public.workout_templates SET title = 'Titre piraté' WHERE day_of_week = 
 ```
 
 ### Étape 4 : Valider le cloisonnement de sécurité du Stockage (Storage RLS)
+
 Pour vérifier que les politiques d'accès au bucket `progress-photos` fonctionnent correctement :
 
 ```sql

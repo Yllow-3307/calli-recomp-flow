@@ -14,7 +14,10 @@ function ProgrammePage() {
 
   return (
     <PageShell>
-      <TopBar title="Programme" subtitle={`${state.profile.daysPerWeek} jours/semaine • 12 semaines`} />
+      <TopBar
+        title="Programme"
+        subtitle={`${state.profile.daysPerWeek} jours/semaine • 12 semaines`}
+      />
 
       <div className="px-5 space-y-3">
         {PROGRAM.map((d) => {
@@ -41,7 +44,10 @@ function ProgrammePage() {
                         <ul className="mt-1 text-sm space-y-0.5">
                           {b.items.map((it) => (
                             <li key={it.id} className="text-muted-foreground">
-                              • {it.name} — <span className="text-foreground">{it.sets}×{it.target}</span>
+                              • {it.name} —{" "}
+                              <span className="text-foreground">
+                                {it.sets}×{it.target}
+                              </span>
                             </li>
                           ))}
                         </ul>
@@ -65,8 +71,8 @@ function ProgrammePage() {
         <div className="card-premium p-4">
           <h3 className="font-bold">Plan 12 semaines</h3>
           <p className="text-sm text-muted-foreground mt-2">
-            +1–2 reps ou +temps chaque semaine si la séance est réussie. Test des skills toutes les 4 semaines
-            (S4, S8, S12) pour valider la progression.
+            +1–2 reps ou +temps chaque semaine si la séance est réussie. Test des skills toutes les
+            4 semaines (S4, S8, S12) pour valider la progression.
           </p>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
             {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
@@ -80,7 +86,9 @@ function ProgrammePage() {
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-2">Les semaines dorées sont des semaines de test.</p>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Les semaines dorées sont des semaines de test.
+          </p>
         </div>
       </div>
     </PageShell>
