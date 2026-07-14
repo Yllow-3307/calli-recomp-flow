@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Flame, Droplet, Beef, Footprints, ChevronRight, Play, Sparkles } from "lucide-react";
+import { Flame, Droplet, Beef, Footprints, ChevronRight, Play, Sparkles, Target } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, RULES } from "@/lib/program";
+import { getTodayProgram, RULES, NUTRITION } from "@/lib/program";
 import {
   useAppState,
   useAppActions,
@@ -10,6 +10,8 @@ import {
   kmThisWeek,
   proteinToday,
   todayKey,
+  isTestWeek,
+  currentProgramWeek,
 } from "@/lib/store";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -32,9 +34,12 @@ function Dashboard() {
   const done = thisWeekWorkouts(state.workouts).length;
   const km = kmThisWeek(state.cardio);
   const protein = proteinToday(state.meals);
-  const proteinTarget = Math.round(state.profile.weight * 2);
+  const proteinTarget = Math.round(state.profile.weight * ((NUTRITION.protein_g_per_kg[0] + NUTRITION.protein_g_per_kg[1]) / 2));
   const water = state.water[todayKey()] || 0;
+  const waterTarget = (NUTRITION.water_l_per_day[0] + NUTRITION.water_l_per_day[1]) / 2;
   const daysGoal = state.profile.daysPerWeek;
+  const showTestBanner = isTestWeek(state.profile);
+  const week = currentProgramWeek(state.profile);
 
   return (
     <PageShell>
@@ -46,6 +51,21 @@ function Dashboard() {
         <Stat icon={<Sparkles className="h-4 w-4" />} label="Semaine" value={`${done}/${daysGoal}`} />
         <Stat icon={<Footprints className="h-4 w-4" />} label="Course" value={`${km.toFixed(1)} km`} />
       </div>
+
+      {showTestBanner && (
+        <div className="px-5 mt-4">
+          <Link to="/progression" className="card-premium p-3 flex items-center gap-3 ring-1 ring-primary/40">
+            <div className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0">
+              <Target className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold">Semaine de test S{week}</p>
+              <p className="text-[11px] text-muted-foreground">Enregistre tes max reps & temps.</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        </div>
+      )}
 
       {/* Today's session */}
       <section className="px-5 mt-5">
@@ -88,7 +108,7 @@ function Dashboard() {
           </div>
           <p className="mt-2 text-2xl font-black">
             {water.toFixed(1)}
-            <span className="text-sm text-muted-foreground font-medium"> / 3.5L</span>
+            <span className="text-sm text-muted-foreground font-medium"> / {waterTarget}L</span>
           </p>
           <div className="mt-2 flex gap-1.5">
             <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.25)}>
