@@ -52,6 +52,21 @@ function Dashboard() {
         <Stat icon={<Footprints className="h-4 w-4" />} label="Course" value={`${km.toFixed(1)} km`} />
       </div>
 
+      {showTestBanner && (
+        <div className="px-5 mt-4">
+          <Link to="/progression" className="card-premium p-3 flex items-center gap-3 ring-1 ring-primary/40">
+            <div className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0">
+              <Target className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold">Semaine de test S{week}</p>
+              <p className="text-[11px] text-muted-foreground">Enregistre tes max reps & temps.</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        </div>
+      )}
+
       {/* Today's session */}
       <section className="px-5 mt-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Séance du jour</p>
