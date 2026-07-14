@@ -2,13 +2,28 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, type Exercise } from "@/lib/program";
-import { useAppState, useAppActions, type WorkoutLog, type SetLog, type ExerciseLog } from "@/lib/store";
+import {
+  useAppState,
+  useAppActions,
+  type WorkoutLog,
+  type SetLog,
+  type ExerciseLog,
+} from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { Check, Pause, Play as PlayIcon, RotateCcw, Timer, Video, Trophy, Flame } from "lucide-react";
+import {
+  Check,
+  Pause,
+  Play as PlayIcon,
+  RotateCcw,
+  Timer,
+  Video,
+  Trophy,
+  Flame,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/seance")({
@@ -49,7 +64,9 @@ function SeancePage() {
   const [summary, setSummary] = useState<WorkoutLog | null>(null);
 
   const totalSets = allExercises.reduce((a, e) => a + e.sets, 0);
-  const doneSets = Object.values(sets).flat().filter((s) => s.done).length;
+  const doneSets = Object.values(sets)
+    .flat()
+    .filter((s) => s.done).length;
   const progress = totalSets ? Math.round((doneSets / totalSets) * 100) : 0;
 
   const updateSet = (exId: string, idx: number, patch: Partial<SetLog>) => {
@@ -81,17 +98,22 @@ function SeancePage() {
       notes: exNotes[e.id],
     }));
     const totalVolume = exercises.reduce(
-      (a, e) => a + e.sets.filter((s) => s.done).reduce((b, s) => b + (s.reps || 0) * (s.weight || 1), 0),
+      (a, e) =>
+        a + e.sets.filter((s) => s.done).reduce((b, s) => b + (s.reps || 0) * (s.weight || 1), 0),
       0,
     );
     const successCount = exercises.filter((e) => {
       const done = e.sets.filter((s) => s.done);
       if (done.length < e.sets.length) return false;
       if (e.targetMin === undefined) return true;
-      return done.every((s) => (e.kind === "time" ? (s.time ?? 0) : (s.reps ?? 0)) >= (e.targetMin ?? 0));
+      return done.every(
+        (s) => (e.kind === "time" ? (s.time ?? 0) : (s.reps ?? 0)) >= (e.targetMin ?? 0),
+      );
     }).length;
     const rpes = exercises.flatMap((e) => e.sets.map((s) => s.rpe).filter((r): r is number => !!r));
-    const avgRpe = rpes.length ? Math.round(rpes.reduce((a, b) => a + b, 0) / rpes.length) : undefined;
+    const avgRpe = rpes.length
+      ? Math.round(rpes.reduce((a, b) => a + b, 0) / rpes.length)
+      : undefined;
 
     const log: WorkoutLog = {
       id: `w-${Date.now()}`,
@@ -110,7 +132,14 @@ function SeancePage() {
     setSummary(log);
   };
 
-  if (summary) return <SummaryScreen log={summary} totalExercises={allExercises.length} onClose={() => navigate({ to: "/" })} />;
+  if (summary)
+    return (
+      <SummaryScreen
+        log={summary}
+        totalExercises={allExercises.length}
+        onClose={() => navigate({ to: "/" })}
+      />
+    );
 
   return (
     <PageShell>
@@ -125,26 +154,38 @@ function SeancePage() {
           <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
             <div className="h-full btn-hero transition-all" style={{ width: `${progress}%` }} />
           </div>
-          <p className="text-xs text-muted-foreground mt-2">{doneSets}/{totalSets} séries</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {doneSets}/{totalSets} séries
+          </p>
         </div>
       </div>
 
       {day.warmup.length > 0 && (
         <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Échauffement</p>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+            Échauffement
+          </p>
           <div className="card-premium p-4 space-y-1.5">
-            {day.warmup.map((w) => (<p key={w} className="text-sm">🔥 {w}</p>))}
+            {day.warmup.map((w) => (
+              <p key={w} className="text-sm">
+                🔥 {w}
+              </p>
+            ))}
           </div>
         </section>
       )}
 
       {day.blocks.map((block) => (
         <section key={block.title} className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">{block.title}</p>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+            {block.title}
+          </p>
           <div className="space-y-3">
-            {block.items.map((ex) => (
+            {block.items.map((ex) =>
               block.title === "Consignes" ? (
-                <div key={ex.id} className="card-premium p-3 text-sm text-muted-foreground">▸ {ex.name}</div>
+                <div key={ex.id} className="card-premium p-3 text-sm text-muted-foreground">
+                  ▸ {ex.name}
+                </div>
               ) : (
                 <ExerciseCard
                   key={ex.id}
@@ -156,24 +197,30 @@ function SeancePage() {
                   note={exNotes[ex.id] ?? ""}
                   onNote={(v) => setExNotes({ ...exNotes, [ex.id]: v })}
                 />
-              )
-            ))}
+              ),
+            )}
           </div>
         </section>
       ))}
 
       {day.alternatives && day.alternatives.length > 0 && (
         <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Alternatives</p>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+            Alternatives
+          </p>
           <div className="card-premium p-4 space-y-1.5 text-sm text-muted-foreground">
-            {day.alternatives.map((a) => (<p key={a}>↺ {a}</p>))}
+            {day.alternatives.map((a) => (
+              <p key={a}>↺ {a}</p>
+            ))}
           </div>
         </section>
       )}
 
       <section className="px-5 mt-5 space-y-3">
         <div className="card-premium p-4">
-          <label className="text-xs uppercase tracking-widest text-muted-foreground">Notes de séance</label>
+          <label className="text-xs uppercase tracking-widest text-muted-foreground">
+            Notes de séance
+          </label>
           <Textarea
             value={globalNotes}
             onChange={(e) => setGlobalNotes(e.target.value)}
@@ -194,7 +241,9 @@ function SeancePage() {
         </Button>
       </div>
 
-      {restEx && <RestTimer seconds={restEx.rest} label={restEx.name} onClose={() => setRestEx(null)} />}
+      {restEx && (
+        <RestTimer seconds={restEx.rest} label={restEx.name} onClose={() => setRestEx(null)} />
+      )}
     </PageShell>
   );
 }
@@ -222,11 +271,16 @@ function ExerciseCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-bold">{ex.name}</h3>
-          <p className="text-sm text-muted-foreground mt-0.5">{ex.sets} × {ex.target}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {ex.sets} × {ex.target}
+          </p>
           {ex.note && <p className="text-xs text-muted-foreground mt-1 italic">{ex.note}</p>}
         </div>
         {ex.rest > 0 && (
-          <button onClick={onRest} className="shrink-0 text-xs flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-muted-foreground">
+          <button
+            onClick={onRest}
+            className="shrink-0 text-xs flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-muted-foreground"
+          >
             <Timer className="h-3 w-3" /> {ex.rest}s
           </button>
         )}
@@ -234,20 +288,40 @@ function ExerciseCard({
 
       <div className="mt-3 space-y-2">
         {sets.map((s, i) => (
-          <div key={i} className={`rounded-xl border p-2.5 transition ${s.done ? "border-primary/50 bg-primary/5" : "border-border"}`}>
+          <div
+            key={i}
+            className={`rounded-xl border p-2.5 transition ${s.done ? "border-primary/50 bg-primary/5" : "border-border"}`}
+          >
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground w-10">Set {i + 1}</span>
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground w-10">
+                Set {i + 1}
+              </span>
               {ex.kind === "time" ? (
-                <NumberField label="s" value={s.time} onChange={(v) => onSetChange(i, { time: v })} />
+                <NumberField
+                  label="s"
+                  value={s.time}
+                  onChange={(v) => onSetChange(i, { time: v })}
+                />
               ) : (
-                <NumberField label="reps" value={s.reps} onChange={(v) => onSetChange(i, { reps: v })} />
+                <NumberField
+                  label="reps"
+                  value={s.reps}
+                  onChange={(v) => onSetChange(i, { reps: v })}
+                />
               )}
-              <NumberField label="kg" value={s.weight} onChange={(v) => onSetChange(i, { weight: v })} optional />
+              <NumberField
+                label="kg"
+                value={s.weight}
+                onChange={(v) => onSetChange(i, { weight: v })}
+                optional
+              />
               <RpeMini value={s.rpe ?? 7} onChange={(v) => onSetChange(i, { rpe: v })} />
               <button
                 onClick={() => onComplete(i)}
                 className={`ml-auto h-9 w-9 grid place-items-center rounded-lg border transition ${
-                  s.done ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"
+                  s.done
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground"
                 }`}
                 aria-label="Valider la série"
               >
@@ -276,7 +350,17 @@ function ExerciseCard({
   );
 }
 
-function NumberField({ label, value, onChange, optional }: { label: string; value?: number; onChange: (v: number | undefined) => void; optional?: boolean }) {
+function NumberField({
+  label,
+  value,
+  onChange,
+  optional,
+}: {
+  label: string;
+  value?: number;
+  onChange: (v: number | undefined) => void;
+  optional?: boolean;
+}) {
   return (
     <div className="flex items-center gap-1">
       <Input
@@ -302,14 +386,24 @@ function RpeMini({ value, onChange }: { value: number; onChange: (v: number) => 
         className="h-9 rounded-md bg-input border border-border text-sm px-1"
       >
         {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-          <option key={n} value={n}>{n}</option>
+          <option key={n} value={n}>
+            {n}
+          </option>
         ))}
       </select>
     </div>
   );
 }
 
-function RestTimer({ seconds, label, onClose }: { seconds: number; label: string; onClose: () => void }) {
+function RestTimer({
+  seconds,
+  label,
+  onClose,
+}: {
+  seconds: number;
+  label: string;
+  onClose: () => void;
+}) {
   const [left, setLeft] = useState(seconds);
   const [paused, setPaused] = useState(false);
 
@@ -321,7 +415,11 @@ function RestTimer({ seconds, label, onClose }: { seconds: number; label: string
 
   useEffect(() => {
     if (left === 0) {
-      try { navigator.vibrate?.([200, 80, 200]); } catch { /* noop */ }
+      try {
+        navigator.vibrate?.([200, 80, 200]);
+      } catch {
+        /* noop */
+      }
     }
   }, [left]);
 
@@ -345,14 +443,24 @@ function RestTimer({ seconds, label, onClose }: { seconds: number; label: string
           <Button size="lg" className="btn-hero px-8" onClick={() => setPaused((p) => !p)}>
             {paused ? <PlayIcon className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
           </Button>
-          <Button variant="secondary" size="lg" onClick={onClose}>Fermer</Button>
+          <Button variant="secondary" size="lg" onClick={onClose}>
+            Fermer
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-function SummaryScreen({ log, totalExercises, onClose }: { log: WorkoutLog; totalExercises: number; onClose: () => void }) {
+function SummaryScreen({
+  log,
+  totalExercises,
+  onClose,
+}: {
+  log: WorkoutLog;
+  totalExercises: number;
+  onClose: () => void;
+}) {
   const doneSets = log.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
   const totalSets = log.exercises.reduce((a, e) => a + e.sets.length, 0);
   useEffect(() => {
@@ -373,7 +481,11 @@ function SummaryScreen({ log, totalExercises, onClose }: { log: WorkoutLog; tota
         <StatCard label="Durée" value={`${log.duration} min`} />
         <StatCard label="RPE moyen" value={`${log.rpe ?? "—"}/10`} />
         <StatCard label="Séries" value={`${doneSets}/${totalSets}`} />
-        <StatCard label="Exercices réussis" value={`${log.successCount ?? 0}/${totalExercises}`} accent />
+        <StatCard
+          label="Exercices réussis"
+          value={`${log.successCount ?? 0}/${totalExercises}`}
+          accent
+        />
       </div>
 
       {log.totalVolume && log.totalVolume > 0 && (
@@ -389,16 +501,22 @@ function SummaryScreen({ log, totalExercises, onClose }: { log: WorkoutLog; tota
       )}
 
       <div className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Détail par exercice</p>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          Détail par exercice
+        </p>
         <div className="space-y-2">
           {log.exercises.map((e) => {
             const done = e.sets.filter((s) => s.done);
-            const values = done.map((s) => e.kind === "time" ? s.time : s.reps).filter((v): v is number => !!v);
+            const values = done
+              .map((s) => (e.kind === "time" ? s.time : s.reps))
+              .filter((v): v is number => !!v);
             return (
               <div key={e.exId} className="card-premium p-3">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-sm">{e.name}</p>
-                  <span className="text-xs text-muted-foreground">{done.length}/{e.sets.length}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {done.length}/{e.sets.length}
+                  </span>
                 </div>
                 {values.length > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -412,7 +530,9 @@ function SummaryScreen({ log, totalExercises, onClose }: { log: WorkoutLog; tota
       </div>
 
       <div className="px-5 mt-6">
-        <Button onClick={onClose} className="w-full h-14 rounded-2xl btn-hero text-base">Retour à l'accueil</Button>
+        <Button onClick={onClose} className="w-full h-14 rounded-2xl btn-hero text-base">
+          Retour à l'accueil
+        </Button>
       </div>
     </PageShell>
   );

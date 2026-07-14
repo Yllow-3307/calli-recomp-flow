@@ -76,10 +76,9 @@ Exemple Tailwind :
 ```css
 .premium-gradient {
   background:
-    radial-gradient(circle at 20% 10%, rgba(139,92,246,.35), transparent 30%),
-    radial-gradient(circle at 80% 20%, rgba(6,182,212,.25), transparent 35%),
-    radial-gradient(circle at 50% 90%, rgba(249,115,22,.18), transparent 35%),
-    #05070f;
+    radial-gradient(circle at 20% 10%, rgba(139, 92, 246, 0.35), transparent 30%),
+    radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.25), transparent 35%),
+    radial-gradient(circle at 50% 90%, rgba(249, 115, 22, 0.18), transparent 35%), #05070f;
 }
 ```
 

@@ -49,7 +49,11 @@ function MesuresPage() {
   };
 
   const weights = useMemo(
-    () => state.metrics.filter((m) => m.weight).slice(0, 12).reverse(),
+    () =>
+      state.metrics
+        .filter((m) => m.weight)
+        .slice(0, 12)
+        .reverse(),
     [state.metrics],
   );
   const wMax = Math.max(...weights.map((m) => m.weight!), 1);
@@ -75,16 +79,30 @@ function MesuresPage() {
       <div className="px-5 mt-3">
         <div className="card-premium p-4 space-y-3">
           <div className="grid grid-cols-3 gap-2">
-            <LabeledInput label="Poids (kg)" value={form.weight} onChange={(v) => setForm({ ...form, weight: v })} />
-            <LabeledInput label="Taille (cm)" value={form.waist} onChange={(v) => setForm({ ...form, waist: v })} />
-            <LabeledInput label="Sommeil (h)" value={form.sleep} onChange={(v) => setForm({ ...form, sleep: v })} />
+            <LabeledInput
+              label="Poids (kg)"
+              value={form.weight}
+              onChange={(v) => setForm({ ...form, weight: v })}
+            />
+            <LabeledInput
+              label="Taille (cm)"
+              value={form.waist}
+              onChange={(v) => setForm({ ...form, waist: v })}
+            />
+            <LabeledInput
+              label="Sommeil (h)"
+              value={form.sleep}
+              onChange={(v) => setForm({ ...form, sleep: v })}
+            />
           </div>
 
           <SliderRow label="Énergie" value={energy} onChange={setEnergy} />
           <SliderRow label="Fatigue" value={fatigue} onChange={setFatigue} />
 
           <div>
-            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">Photos (face · profil · dos)</label>
+            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              Photos (face · profil · dos)
+            </label>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {(["face", "profile", "back"] as PhotoSlot[]).map((slot) => (
                 <PhotoSlotInput
@@ -100,8 +118,15 @@ function MesuresPage() {
             </p>
           </div>
 
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (ex: même éclairage matin)" className="bg-input" />
-          <Button className="w-full btn-hero h-11" onClick={submit}>Enregistrer</Button>
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note (ex: même éclairage matin)"
+            className="bg-input"
+          />
+          <Button className="w-full btn-hero h-11" onClick={submit}>
+            Enregistrer
+          </Button>
 
           <div className="pt-2 border-t border-border">
             <p className="text-xs text-muted-foreground flex items-center gap-2">
@@ -113,14 +138,20 @@ function MesuresPage() {
 
       {weights.length >= 2 && (
         <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Évolution poids</p>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+            Évolution poids
+          </p>
           <div className="card-premium p-4">
             <div className="flex items-end gap-1 h-24">
               {weights.map((m) => {
                 const h = ((m.weight! - wMin) / Math.max(0.1, wMax - wMin)) * 100;
                 return (
                   <div key={m.id} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full rounded-t bg-primary/80" style={{ height: `${Math.max(6, h)}%` }} title={`${m.weight} kg`} />
+                    <div
+                      className="w-full rounded-t bg-primary/80"
+                      style={{ height: `${Math.max(6, h)}%` }}
+                      title={`${m.weight} kg`}
+                    />
                   </div>
                 );
               })}
@@ -154,16 +185,32 @@ function MetricCard({ m, onRemove }: { m: BodyMetric; onRemove: () => void }) {
     <div className="card-premium p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {new Date(m.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+          {new Date(m.date).toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
         </p>
         <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1">
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        {m.weight && <span><b>{m.weight}</b> kg</span>}
-        {m.waist && <span>taille <b>{m.waist}</b> cm</span>}
-        {m.sleep && <span>sommeil <b>{m.sleep}</b>h</span>}
+        {m.weight && (
+          <span>
+            <b>{m.weight}</b> kg
+          </span>
+        )}
+        {m.waist && (
+          <span>
+            taille <b>{m.waist}</b> cm
+          </span>
+        )}
+        {m.sleep && (
+          <span>
+            sommeil <b>{m.sleep}</b>h
+          </span>
+        )}
         {m.energy && <span>⚡ {m.energy}/5</span>}
         {m.fatigue && <span>😴 {m.fatigue}/5</span>}
       </div>
@@ -171,9 +218,17 @@ function MetricCard({ m, onRemove }: { m: BodyMetric; onRemove: () => void }) {
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {(["face", "profile", "back"] as PhotoSlot[]).map((s) =>
             m.photos?.[s] ? (
-              <img key={s} src={m.photos[s]} alt={s} className="aspect-[3/4] w-full object-cover rounded-lg" />
+              <img
+                key={s}
+                src={m.photos[s]}
+                alt={s}
+                className="aspect-[3/4] w-full object-cover rounded-lg"
+              />
             ) : (
-              <div key={s} className="aspect-[3/4] w-full rounded-lg bg-muted/40 grid place-items-center text-[10px] text-muted-foreground">
+              <div
+                key={s}
+                className="aspect-[3/4] w-full rounded-lg bg-muted/40 grid place-items-center text-[10px] text-muted-foreground"
+              >
                 {s}
               </div>
             ),
@@ -185,7 +240,15 @@ function MetricCard({ m, onRemove }: { m: BodyMetric; onRemove: () => void }) {
   );
 }
 
-function PhotoSlotInput({ slot, value, onChange }: { slot: PhotoSlot; value?: string; onChange: (v: string) => void }) {
+function PhotoSlotInput({
+  slot,
+  value,
+  onChange,
+}: {
+  slot: PhotoSlot;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
 
@@ -214,21 +277,50 @@ function PhotoSlotInput({ slot, value, onChange }: { slot: PhotoSlot; value?: st
           <p className="text-[10px] uppercase tracking-widest">{label}</p>
         </div>
       )}
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handle} className="hidden" />
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handle}
+        className="hidden"
+      />
     </button>
   );
 }
 
-function LabeledInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function LabeledInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div>
       <label className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</label>
-      <Input type="number" inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} className="bg-input mt-1" />
+      <Input
+        type="number"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-input mt-1"
+      />
     </div>
   );
 }
 
-function SliderRow({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+function SliderRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+}) {
   return (
     <div>
       <div className="flex items-center justify-between text-xs mb-2">

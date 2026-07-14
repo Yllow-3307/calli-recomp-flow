@@ -109,12 +109,42 @@ const DEFAULT_STATE: AppState = {
   meals: [],
   metrics: [],
   tests: [
-    { id: "seed-1", date: new Date(Date.now() - 30 * 864e5).toISOString(), testId: "pushups", value: 22 },
-    { id: "seed-2", date: new Date(Date.now() - 30 * 864e5).toISOString(), testId: "pullups", value: 8 },
-    { id: "seed-3", date: new Date(Date.now() - 30 * 864e5).toISOString(), testId: "handstand", value: 15 },
-    { id: "seed-4", date: new Date(Date.now() - 2 * 864e5).toISOString(), testId: "pushups", value: 28 },
-    { id: "seed-5", date: new Date(Date.now() - 2 * 864e5).toISOString(), testId: "pullups", value: 10 },
-    { id: "seed-6", date: new Date(Date.now() - 2 * 864e5).toISOString(), testId: "handstand", value: 22 },
+    {
+      id: "seed-1",
+      date: new Date(Date.now() - 30 * 864e5).toISOString(),
+      testId: "pushups",
+      value: 22,
+    },
+    {
+      id: "seed-2",
+      date: new Date(Date.now() - 30 * 864e5).toISOString(),
+      testId: "pullups",
+      value: 8,
+    },
+    {
+      id: "seed-3",
+      date: new Date(Date.now() - 30 * 864e5).toISOString(),
+      testId: "handstand",
+      value: 15,
+    },
+    {
+      id: "seed-4",
+      date: new Date(Date.now() - 2 * 864e5).toISOString(),
+      testId: "pushups",
+      value: 28,
+    },
+    {
+      id: "seed-5",
+      date: new Date(Date.now() - 2 * 864e5).toISOString(),
+      testId: "pullups",
+      value: 10,
+    },
+    {
+      id: "seed-6",
+      date: new Date(Date.now() - 2 * 864e5).toISOString(),
+      testId: "handstand",
+      value: 22,
+    },
   ],
   water: {},
 };
@@ -127,7 +157,11 @@ function load(): AppState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...parsed, profile: { ...DEFAULT_STATE.profile, ...parsed.profile } };
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      profile: { ...DEFAULT_STATE.profile, ...parsed.profile },
+    };
   } catch {
     return DEFAULT_STATE;
   }
@@ -169,10 +203,84 @@ export function useAppState() {
   return getState();
 }
 
+import { supabase } from "@/integrations/supabase/client";
+
 export function useAppActions() {
+  const syncProfileFromSupabase = useCallback(async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Erreur de récupération du profil Supabase :", error);
+        return;
+      }
+
+      if (data) {
+        setState((s) => ({
+          ...s,
+          profile: {
+            weight: data.weight,
+            height: data.height,
+            goal: data.goal || "Recomposition corporelle",
+            daysPerWeek: (data.days_per_week === 5 ? 5 : 6) as 5 | 6,
+            level: data.level || "intermédiaire",
+            equipment: data.equipment || ["Barre traction", "Anneaux", "Haltères"],
+            onboarded: data.onboarded,
+            startDate: data.start_date || s.profile.startDate || new Date().toISOString(),
+          },
+        }));
+      }
+    } catch (err) {
+      console.error("Erreur inattendue de synchronisation du profil :", err);
+    }
+  }, []);
+
   return {
+    syncProfileFromSupabase,
     setProfile: useCallback((p: Partial<Profile>) => {
-      setState((s) => ({ ...s, profile: { ...s.profile, ...p } }));
+      let nextProfile: Profile | null = null;
+      setState((s) => {
+        nextProfile = { ...s.profile, ...p };
+        return { ...s, profile: nextProfile };
+      });
+
+      // Synchronisation asynchrone avec Supabase en dehors du cycle d'état pur de React
+      setTimeout(() => {
+        if (!nextProfile) return;
+        const profileToSync: Profile = nextProfile;
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            const mappedProfile = {
+              id: session.user.id,
+              weight: profileToSync.weight,
+              height: profileToSync.height,
+              goal: profileToSync.goal,
+              days_per_week: profileToSync.daysPerWeek,
+              level: profileToSync.level,
+              equipment: profileToSync.equipment,
+              onboarded: profileToSync.onboarded,
+              updated_at: new Date().toISOString(),
+            };
+            supabase
+              .from("profiles")
+              .upsert(mappedProfile)
+              .then(({ error }) => {
+                if (error) {
+                  console.error("Erreur de synchronisation du profil avec Supabase :", error);
+                }
+              });
+          }
+        });
+      }, 0);
     }, []),
     addWorkout: useCallback((w: WorkoutLog) => {
       setState((s) => ({ ...s, workouts: [w, ...s.workouts] }));
@@ -270,7 +378,8 @@ export function suggestProgressionForExercise(
   if (!lastLog) return null;
   const ex = lastLog.exercises.find((e) => e.exId === exId)!;
   const setsDone = ex.sets.filter((s) => s.done);
-  if (setsDone.length < ex.sets.length) return { exId, name: ex.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
+  if (setsDone.length < ex.sets.length)
+    return { exId, name: ex.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
 
   const values = setsDone
     .map((s) => (kind === "time" ? s.time : s.reps))
@@ -282,11 +391,30 @@ export function suggestProgressionForExercise(
 
   const hitTop = targetMax !== undefined && min >= targetMax;
   if (hitTop && maxRpe <= 8) {
-    if (kind === "time") return { exId, name: ex.name, hint: "Objectif atteint · RPE ≤ 8", delta: "+5s", reason: "up" };
+    if (kind === "time")
+      return {
+        exId,
+        name: ex.name,
+        hint: "Objectif atteint · RPE ≤ 8",
+        delta: "+5s",
+        reason: "up",
+      };
     const bump = maxRpe <= 7 ? 2 : 1;
-    return { exId, name: ex.name, hint: "Objectif atteint · RPE ≤ 8", delta: `+${bump} reps`, reason: "up" };
+    return {
+      exId,
+      name: ex.name,
+      hint: "Objectif atteint · RPE ≤ 8",
+      delta: `+${bump} reps`,
+      reason: "up",
+    };
   }
-  return { exId, name: ex.name, hint: maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte", delta: "= idem", reason: "hold" };
+  return {
+    exId,
+    name: ex.name,
+    hint: maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte",
+    delta: "= idem",
+    reason: "hold",
+  };
 }
 
 // Current program week (1-12)
@@ -304,7 +432,11 @@ export function isTestWeek(profile: Profile): boolean {
 }
 
 // Downscale image file → base64 JPEG (max 800px, ~70% quality) for localStorage.
-export async function fileToCompressedBase64(file: File, maxDim = 800, quality = 0.7): Promise<string> {
+export async function fileToCompressedBase64(
+  file: File,
+  maxDim = 800,
+  quality = 0.7,
+): Promise<string> {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
   const w = Math.round(bmp.width * scale);
