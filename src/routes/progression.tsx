@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { PROGRESS_TESTS } from "@/lib/program";
-import { useAppState, useAppActions } from "@/lib/store";
+import { PROGRESS_TESTS, PROGRAM } from "@/lib/program";
+import { useAppState, useAppActions, suggestProgressionForExercise, currentProgramWeek, isTestWeek } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Target, ArrowUp, Minus } from "lucide-react";
 
 export const Route = createFileRoute("/progression")({
   head: () => ({ meta: [{ title: "Progression — Calli Recomp" }] }),
@@ -19,6 +19,26 @@ function ProgressionPage() {
   const [testId, setTestId] = useState(PROGRESS_TESTS[0].id);
   const [value, setValue] = useState("");
 
+  const week = currentProgramWeek(state.profile);
+  const testWeek = isTestWeek(state.profile);
+
+  // Progression suggestions across the program
+  const suggestions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { exId: string; name: string; hint: string; delta: string; reason: "up" | "hold" }[] = [];
+    for (const d of PROGRAM) {
+      for (const b of d.blocks) {
+        for (const ex of b.items) {
+          if (seen.has(ex.id)) continue;
+          seen.add(ex.id);
+          const s = suggestProgressionForExercise(ex.id, ex.targetMax, ex.kind, state.workouts);
+          if (s) out.push(s);
+        }
+      }
+    }
+    return out.sort((a) => (a.reason === "up" ? -1 : 1)).slice(0, 8);
+  }, [state.workouts]);
+
   const submit = () => {
     const v = parseFloat(value);
     if (!v || v <= 0) return;
@@ -29,13 +49,56 @@ function ProgressionPage() {
 
   return (
     <PageShell>
-      <TopBar title="Progression" subtitle="Suivi 3 mois — tests toutes les 4 semaines" />
+      <TopBar title="Progression" subtitle={`Semaine ${week}/12 · programme 3 mois`} />
 
-      <div className="px-5 space-y-3">
+      {testWeek && (
+        <div className="px-5">
+          <div className="card-premium p-4 ring-1 ring-primary/40" style={{ backgroundImage: "var(--gradient-card)" }}>
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0">
+                <Target className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">Semaine de test S{week}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Enregistre tes max : pompes, tractions, handstand, dragon flag, L-sit, 5km.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <section className="px-5 mt-5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Progression suggérée</p>
+          <div className="card-premium p-3 space-y-2">
+            {suggestions.map((s) => (
+              <div key={s.exId} className="flex items-center gap-3 py-1.5">
+                <div className={`h-8 w-8 grid place-items-center rounded-full ${s.reason === "up" ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"}`}>
+                  {s.reason === "up" ? <ArrowUp className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{s.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{s.hint}</p>
+                </div>
+                <span className={`text-xs font-bold ${s.reason === "up" ? "text-success" : "text-muted-foreground"}`}>
+                  {s.delta}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2 px-1">
+            Règle : toutes séries en haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s. Sinon → maintenir.
+          </p>
+        </section>
+      )}
+
+      <div className="px-5 mt-5 space-y-3">
         {PROGRESS_TESTS.map((t) => {
-          const logs = state.tests.filter((x) => x.testId === t.id).sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-          );
+          const logs = state.tests
+            .filter((x) => x.testId === t.id)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           const latest = logs[0]?.value;
           const previous = logs[1]?.value;
           const delta = latest !== undefined && previous !== undefined ? latest - previous : null;
@@ -61,16 +124,12 @@ function ProgressionPage() {
               </div>
               {logs.length > 0 && (
                 <div className="mt-3 flex items-end gap-1 h-12">
-                  {logs.slice(0, 6).reverse().map((l, i) => {
+                  {logs.slice(0, 6).reverse().map((l) => {
                     const max = Math.max(...logs.map((x) => x.value));
                     const h = (l.value / max) * 100;
                     return (
                       <div key={l.id} className="flex-1 flex flex-col items-center gap-1">
-                        <div
-                          className="w-full rounded-t bg-primary/80"
-                          style={{ height: `${Math.max(10, h)}%` }}
-                          title={`${l.value} ${t.unit}`}
-                        />
+                        <div className="w-full rounded-t bg-primary/80" style={{ height: `${Math.max(10, h)}%` }} title={`${l.value} ${t.unit}`} />
                       </div>
                     );
                   })}
@@ -81,7 +140,6 @@ function ProgressionPage() {
         })}
       </div>
 
-      {/* Add test */}
       <div className="px-5 mt-6">
         <div className="card-premium p-4">
           <h3 className="font-bold mb-3">Enregistrer un test</h3>

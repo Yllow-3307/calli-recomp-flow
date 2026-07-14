@@ -7,6 +7,8 @@ export interface Exercise {
   name: string;
   sets: number;
   target: string;
+  targetMin?: number;
+  targetMax?: number;
   rest: number;
   kind: ExerciseKind;
   note?: string;
@@ -31,8 +33,6 @@ export interface DayProgram {
   finisher?: string;
 }
 
-// ---------- helpers ----------
-
 type Range = number | [number, number];
 
 function fmtRange(r: Range | undefined): string {
@@ -44,6 +44,12 @@ function fmtRange(r: Range | undefined): string {
 function pickMax(r: Range | undefined, fallback = 3): number {
   if (r === undefined) return fallback;
   if (Array.isArray(r)) return r[1];
+  return r;
+}
+
+function pickMin(r: Range | undefined): number | undefined {
+  if (r === undefined) return undefined;
+  if (Array.isArray(r)) return r[0];
   return r;
 }
 
@@ -77,15 +83,25 @@ function buildExercise(raw: RawEx, i: number): Exercise {
   const rest = raw.restSeconds ?? 60;
   let target = "";
   let kind: ExerciseKind = "reps";
+  let targetMin: number | undefined;
+  let targetMax: number | undefined;
   if (raw.seconds !== undefined) {
     target = `${fmtRange(raw.seconds)}s`;
     kind = "time";
+    targetMin = pickMin(raw.seconds);
+    targetMax = pickMax(raw.seconds);
   } else if (raw.repsPerLeg !== undefined) {
     target = `${fmtRange(raw.repsPerLeg)} reps/jambe`;
+    targetMin = pickMin(raw.repsPerLeg);
+    targetMax = pickMax(raw.repsPerLeg);
   } else if (raw.repsPerSide !== undefined) {
     target = `${fmtRange(raw.repsPerSide)} reps/côté`;
+    targetMin = pickMin(raw.repsPerSide);
+    targetMax = pickMax(raw.repsPerSide);
   } else if (raw.reps !== undefined) {
     target = `${fmtRange(raw.reps)} reps`;
+    targetMin = pickMin(raw.reps);
+    targetMax = pickMax(raw.reps);
   } else {
     target = "—";
   }
@@ -98,6 +114,8 @@ function buildExercise(raw: RawEx, i: number): Exercise {
     name: raw.name,
     sets,
     target,
+    targetMin,
+    targetMax,
     rest,
     kind,
     note: noteParts.length ? noteParts.join(" • ") : undefined,
@@ -201,8 +219,6 @@ function buildDay(raw: RawDay): DayProgram {
   };
 }
 
-// ---------- public exports ----------
-
 interface Seed {
   goldenRules: string[];
   nutritionTargets: {
@@ -220,29 +236,29 @@ interface Seed {
 const SEED = seed as unknown as Seed;
 
 export const PROGRAM: DayProgram[] = SEED.weeklyPlan.map(buildDay);
-
 export const RULES = SEED.goldenRules;
-
 export const NUTRITION = SEED.nutritionTargets;
-
 export const PROGRESSION_TABLE = SEED.progressionTable;
-
 export const PROGRESSION_RULES = SEED.progressionRules;
 
 export const PROGRESS_TESTS = [
   { id: "pushups", name: "Pompes max", unit: "reps" },
   { id: "pullups", name: "Tractions max", unit: "reps" },
   { id: "handstand", name: "Handstand tenu", unit: "s" },
-  { id: "hspu", name: "HSPU max", unit: "reps" },
-  { id: "muscleup", name: "Muscle-up", unit: "reps" },
-  { id: "tuckflag", name: "Tuck flag", unit: "s" },
   { id: "dragonflag", name: "Dragon flag", unit: "reps" },
   { id: "lsit", name: "L-sit", unit: "s" },
   { id: "run5k", name: "5 km course", unit: "min" },
 ];
 
+export const MEAL_TEMPLATES = [
+  { name: "Œufs + avoine + fruits", kcal: 550, protein: 32, carbs: 65, fat: 18 },
+  { name: "Poulet + riz + légumes", kcal: 620, protein: 48, carbs: 70, fat: 14 },
+  { name: "Shake whey + banane", kcal: 320, protein: 30, carbs: 40, fat: 5 },
+  { name: "Poisson + patate douce + salade", kcal: 580, protein: 42, carbs: 55, fat: 18 },
+];
+
 export function getTodayProgram(_fiveDays = false): DayProgram {
-  const dow = new Date().getDay(); // 0=dim
+  const dow = new Date().getDay();
   const map = [6, 0, 1, 2, 3, 4, 5];
   return PROGRAM[map[dow]];
 }
