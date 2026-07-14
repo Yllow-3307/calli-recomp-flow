@@ -7,14 +7,461 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          id: string
+          weight: number
+          height: number
+          goal: string | null
+          days_per_week: number
+          level: "débutant" | "intermédiaire" | "avancé"
+          equipment: string[] | null
+          onboarded: boolean
+          start_date: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          weight?: number
+          height?: number
+          goal?: string | null
+          days_per_week?: number
+          level?: "débutant" | "intermédiaire" | "avancé"
+          equipment?: string[] | null
+          onboarded?: boolean
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          weight?: number
+          height?: number
+          goal?: string | null
+          days_per_week?: number
+          level?: "débutant" | "intermédiaire" | "avancé"
+          equipment?: string[] | null
+          onboarded?: boolean
+          start_date?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      workout_templates: {
+        Row: {
+          id: string
+          day_of_week: number
+          title: string
+          category: string
+          duration_min: number
+          description: string | null
+          warmup: Json
+          optional_cardio: Json
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          day_of_week: number
+          title: string
+          category: string
+          duration_min: number
+          description?: string | null
+          warmup?: Json
+          optional_cardio?: Json
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          day_of_week?: number
+          title?: string
+          category?: string
+          duration_min?: number
+          description?: string | null
+          warmup?: Json
+          optional_cardio?: Json
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      exercise_templates: {
+        Row: {
+          id: string
+          workout_template_id: string
+          name: string
+          muscle_group: string | null
+          type: "reps" | "time" | "distance"
+          sets: number
+          reps_min: number | null
+          reps_max: number | null
+          rest_seconds: number
+          instructions: string | null
+          alternatives: Json
+          sort_order: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          workout_template_id: string
+          name: string
+          muscle_group?: string | null
+          type: "reps" | "time" | "distance"
+          sets?: number
+          reps_min?: number | null
+          reps_max?: number | null
+          rest_seconds?: number
+          instructions?: string | null
+          alternatives?: Json
+          sort_order?: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          workout_template_id?: string
+          name?: string
+          muscle_group?: string | null
+          type?: "reps" | "time" | "distance"
+          sets?: number
+          reps_min?: number | null
+          reps_max?: number | null
+          rest_seconds?: number
+          instructions?: string | null
+          alternatives?: Json
+          sort_order?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_templates_workout_template_id_fkey"
+            columns: ["workout_template_id"]
+            isOneToOne: false
+            referencedRelation: "workout_templates"
+            referencedSchema: "public"
+          }
+        ]
+      }
+      workout_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          day_key: string
+          day_title: string
+          duration: number
+          rpe: number | null
+          filmed: boolean | null
+          notes: string | null
+          total_volume: number | null
+          success_count: number | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          day_key: string
+          day_title: string
+          duration: number
+          rpe?: number | null
+          filmed?: boolean | null
+          notes?: string | null
+          total_volume?: number | null
+          success_count?: number | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          day_key?: string
+          day_title?: string
+          duration?: number
+          rpe?: number | null
+          filmed?: boolean | null
+          notes?: string | null
+          total_volume?: number | null
+          success_count?: number | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      exercise_logs: {
+        Row: {
+          id: string
+          session_id: string
+          ex_id: string
+          name: string
+          kind: "reps" | "time" | "distance"
+          target_min: number | null
+          target_max: number | null
+          sets: Json
+          notes: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          ex_id: string
+          name: string
+          kind: "reps" | "time" | "distance"
+          target_min?: number | null
+          target_max?: number | null
+          sets?: Json
+          notes?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          ex_id?: string
+          name?: string
+          kind?: "reps" | "time" | "distance"
+          target_min?: number | null
+          target_max?: number | null
+          sets?: Json
+          notes?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedSchema: "public"
+          }
+        ]
+      }
+      cardio_logs: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          type: "course" | "rameur" | "natation" | "vélo"
+          distance: number | null
+          duration: number
+          pace: string | null
+          zone: "zone2" | "intervalles" | "autre" | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          type: "course" | "rameur" | "natation" | "vélo"
+          distance?: number | null
+          duration: number
+          pace?: string | null
+          zone?: "zone2" | "intervalles" | "autre" | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          type?: "course" | "rameur" | "natation" | "vélo"
+          distance?: number | null
+          duration?: number
+          pace?: string | null
+          zone?: "zone2" | "intervalles" | "autre" | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cardio_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      body_metrics: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          weight: number | null
+          waist: number | null
+          sleep: number | null
+          energy: number | null
+          fatigue: number | null
+          photo_note: string | null
+          photo_face_path: string | null
+          photo_profile_path: string | null
+          photo_back_path: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          weight?: number | null
+          waist?: number | null
+          sleep?: number | null
+          energy?: number | null
+          fatigue?: number | null
+          photo_note?: string | null
+          photo_face_path?: string | null
+          photo_profile_path?: string | null
+          photo_back_path?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          weight?: number | null
+          waist?: number | null
+          sleep?: number | null
+          energy?: number | null
+          fatigue?: number | null
+          photo_note?: string | null
+          photo_face_path?: string | null
+          photo_profile_path?: string | null
+          photo_back_path?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      meal_logs: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          name: string
+          kcal: number
+          protein: number
+          carbs: number
+          fat: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          name: string
+          kcal: number
+          protein: number
+          carbs: number
+          fat: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          name?: string
+          kcal?: number
+          protein?: number
+          carbs?: number
+          fat?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      hydration_logs: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          liters: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          liters?: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          liters?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hydration_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
+      progress_tests: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          test_id: string
+          value: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          test_id: string
+          value: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          test_id?: string
+          value?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progress_tests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedSchema: "auth"
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
