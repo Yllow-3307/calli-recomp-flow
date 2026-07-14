@@ -15,7 +15,6 @@ import { Route as ProgrammeRouteImport } from './routes/programme'
 import { Route as ParametresRouteImport } from './routes/parametres'
 import { Route as NutritionRouteImport } from './routes/nutrition'
 import { Route as MesuresRouteImport } from './routes/mesures'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SeanceRoute = SeanceRouteImport.update({
@@ -48,11 +47,6 @@ const MesuresRoute = MesuresRouteImport.update({
   path: '/mesures',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -61,7 +55,6 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -71,7 +64,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -82,7 +74,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -94,7 +85,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/login'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -104,7 +94,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/login'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -114,7 +103,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/login'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -125,7 +113,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LoginRoute: typeof LoginRoute
   MesuresRoute: typeof MesuresRoute
   NutritionRoute: typeof NutritionRoute
   ParametresRoute: typeof ParametresRoute
@@ -178,13 +165,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MesuresRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -197,7 +177,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LoginRoute: LoginRoute,
   MesuresRoute: MesuresRoute,
   NutritionRoute: NutritionRoute,
   ParametresRoute: ParametresRoute,
