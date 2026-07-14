@@ -5,18 +5,22 @@ Ce guide est fait pour créer une app avec **Lovable** ou **Claude** à partir d
 ## 1) Recommandation rapide
 
 ### Option A — Lovable, recommandé pour aller vite
+
 Choisis Lovable si tu veux une **web app / PWA utilisable sur téléphone** rapidement, sans trop coder.
 
 Stack conseillée :
+
 - React + TypeScript
 - Tailwind + shadcn/ui
 - Supabase pour compte utilisateur + base de données
 - PWA pour l’utiliser depuis l’écran d’accueil du téléphone
 
 ### Option B — Claude / Claude Code, recommandé si tu veux tout contrôler
+
 Choisis Claude si tu veux un vrai projet codé, maintenable, versionné sur GitHub.
 
 Stack conseillée :
+
 - MVP web : React + Vite + TypeScript + Tailwind + Supabase
 - Mobile plus tard : Expo / React Native
 - Tests : Playwright
@@ -107,6 +111,7 @@ But : suivre et exécuter tout le programme du PDF : callisthénie, skills, runn
 Tables principales :
 
 ### `profiles`
+
 - id uuid primary key
 - email text
 - name text
@@ -118,6 +123,7 @@ Tables principales :
 - created_at timestamptz
 
 ### `workout_templates`
+
 - id uuid primary key
 - day_of_week int
 - title text
@@ -128,6 +134,7 @@ Tables principales :
 - optional_cardio jsonb
 
 ### `exercise_templates`
+
 - id uuid primary key
 - workout_template_id uuid
 - name text
@@ -146,6 +153,7 @@ Tables principales :
 - sort_order int
 
 ### `scheduled_workouts`
+
 - id uuid primary key
 - user_id uuid
 - workout_template_id uuid
@@ -154,6 +162,7 @@ Tables principales :
 - week_number int
 
 ### `workout_sessions`
+
 - id uuid primary key
 - user_id uuid
 - scheduled_workout_id uuid
@@ -165,6 +174,7 @@ Tables principales :
 - notes text
 
 ### `exercise_logs`
+
 - id uuid primary key
 - session_id uuid
 - exercise_template_id uuid
@@ -178,6 +188,7 @@ Tables principales :
 - notes text
 
 ### `cardio_logs`
+
 - id uuid primary key
 - user_id uuid
 - session_id uuid
@@ -190,6 +201,7 @@ Tables principales :
 - notes text
 
 ### `body_metrics`
+
 - id uuid primary key
 - user_id uuid
 - date date
@@ -201,6 +213,7 @@ Tables principales :
 - notes text
 
 ### `meal_logs`
+
 - id uuid primary key
 - user_id uuid
 - date date
@@ -212,6 +225,7 @@ Tables principales :
 - fat_g numeric
 
 ### `progress_tests`
+
 - id uuid primary key
 - user_id uuid
 - date date
@@ -273,21 +287,25 @@ Important : l’app doit contenir des données de démonstration prêtes à l’
 ## 6) Prompts d’itération pour Lovable
 
 ### Prompt 2 — améliorer le lecteur de séance
+
 ```text
 Améliore le lecteur de séance : chaque exercice doit avoir des cartes par série avec saisie reps/secondes, RPE de 1 à 10, notes, bouton série terminée, timer de repos automatique selon l’exercice. Ajoute une barre de progression de séance et un résumé final avec volume total, temps total et exercices réussis.
 ```
 
 ### Prompt 3 — progression automatique
+
 ```text
 Ajoute une logique de progression automatique : si l’utilisateur termine toutes les séries dans la fourchette haute avec RPE ≤ 8, propose +1 ou +2 reps la semaine suivante, ou +5 secondes pour les holds. Si RPE ≥ 9 ou séance incomplète, garder le même niveau. Toutes les 4 semaines, afficher un écran de test max reps/temps pour pompes, tractions, handstand, dragon flag, L-sit et course.
 ```
 
 ### Prompt 4 — nutrition
+
 ```text
 Améliore la page nutrition : calcule automatiquement la cible protéines entre 1,8 et 2,2 g/kg selon le poids utilisateur. Affiche eau cible 3–4 L. Ajoute un journal repas par jour avec calories, protéines, glucides, lipides, et une barre de progression protéines/eau. Ajoute les exemples repas du programme : œufs + avoine + fruits, poulet + riz + légumes, shake + banane, poisson + patates douces + salade.
 ```
 
 ### Prompt 5 — photos/mesures
+
 ```text
 Ajoute un suivi photos et mesures : rappel toutes les 2 semaines, upload photo face/profil/dos, poids, tour de taille, énergie, fatigue, sommeil. Affiche une timeline et des graphiques simples. Les photos doivent être privées et liées à l’utilisateur connecté.
 ```
@@ -328,19 +346,24 @@ Commence par me proposer l’architecture des fichiers, le schéma SQL Supabase,
 ## 8) Quoi ajouter à Claude : savoir / fichiers / outils
 
 ### Dans Claude Projects
+
 Crée un projet Claude nommé **Calli Recomp Tracker** et ajoute en Knowledge :
+
 1. Le PDF `programme_fusionne_recomp_cali.pdf`
 2. Ce guide
 3. Un fichier JSON structuré du programme si disponible
 4. Tes préférences personnelles : poids, taille, objectif, matériel, nombre de jours/semaine
 
 Instructions du projet Claude :
+
 ```text
 Réponds en français. Tu m’aides à construire une app de suivi sportif basée sur le programme PDF. Ne change pas la logique du programme sans me prévenir. Priorité : application mobile-first simple, fiable, progressive, avec suivi des séances, cardio, nutrition, photos/mesures. Propose toujours des étapes concrètes et du code prêt à copier.
 ```
 
 ### Si tu utilises Claude Code localement
+
 Outils utiles :
+
 - Accès au dossier du projet
 - Git/GitHub
 - Node.js 20+
@@ -348,6 +371,7 @@ Outils utiles :
 - Playwright pour tester l’interface
 
 Commandes typiques :
+
 ```bash
 npm create vite@latest calli-recomp-tracker -- --template react-ts
 cd calli-recomp-tracker
@@ -359,7 +383,9 @@ npm run dev
 ```
 
 ### MCP utiles avec Claude Desktop / Claude Code
+
 Optionnel, mais très pratique :
+
 - **filesystem** : pour lire/écrire dans ton projet
 - **github** : pour commits, issues, pull requests
 - **supabase** : pour gérer tables/migrations
@@ -373,6 +399,7 @@ Tu n’es pas obligé d’avoir tout ça. Pour démarrer, le plus important est 
 ## 9) Données du programme à intégrer
 
 ### Semaine type
+
 - Lundi : Running Zone 2 6–7 km + Hollow body hold + Planche
 - Mardi : Push HSPU + pike push-up, HSPU négatif, pompes archer, dips, pompes, handstand, core
 - Mercredi : Running fractionné 6 km + Bulgarian split squats
@@ -382,6 +409,7 @@ Tu n’es pas obligé d’avoir tout ça. Pour démarrer, le plus important est 
 - Dimanche : repos complet
 
 ### Règles d’or à afficher dans l’app
+
 1. Abdos contractés H24.
 2. Filme-toi profil + face à chaque séance.
 3. Dimanche sacré = repos complet.
@@ -398,6 +426,7 @@ Tu n’es pas obligé d’avoir tout ça. Pour démarrer, le plus important est 
 ## 10) Plan de création conseillé
 
 ### Jour 1 — MVP app utilisable
+
 - Créer projet Lovable ou React
 - Auth Supabase
 - Dashboard
@@ -405,22 +434,26 @@ Tu n’es pas obligé d’avoir tout ça. Pour démarrer, le plus important est 
 - Lecteur de séance basique
 
 ### Jour 2 — Suivi réel
+
 - Logs séries/exercices
 - Cardio logs
 - Historique séances
 - Progression semaine
 
 ### Jour 3 — Nutrition + mesures
+
 - Calcul macros
 - Log repas/eau
 - Poids/tour de taille/photos
 
 ### Jour 4 — Progression 12 semaines
+
 - Tests toutes les 4 semaines
 - Suggestions automatiques
 - Graphiques
 
 ### Jour 5 — Polish
+
 - PWA
 - Notifications/rappels
 - Mode sombre premium

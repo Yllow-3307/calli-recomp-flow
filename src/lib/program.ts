@@ -149,10 +149,14 @@ const DAY_META: Record<string, { key: string; emoji: string; type: DayProgram["t
 };
 
 function buildDay(raw: RawDay): DayProgram {
-  const meta = DAY_META[raw.day] ?? { key: raw.day.slice(0, 3).toLowerCase(), emoji: "🔥", type: "push" as const };
+  const meta = DAY_META[raw.day] ?? {
+    key: raw.day.slice(0, 3).toLowerCase(),
+    emoji: "🔥",
+    type: "push" as const,
+  };
   const duration = Array.isArray(raw.durationMin)
     ? Math.round((raw.durationMin[0] + raw.durationMin[1]) / 2)
-    : raw.durationMin ?? 45;
+    : (raw.durationMin ?? 45);
 
   const blocks: WorkoutBlock[] = [];
 
@@ -229,7 +233,13 @@ interface Seed {
     mealExamples: string[];
   };
   weeklyPlan: RawDay[];
-  progressionTable: { exercise: string; start: string; month1: string; month2: string; month3: string }[];
+  progressionTable: {
+    exercise: string;
+    start: string;
+    month1: string;
+    month2: string;
+    month3: string;
+  }[];
   progressionRules: string[];
 }
 

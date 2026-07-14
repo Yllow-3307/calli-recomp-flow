@@ -15,6 +15,7 @@ import { Route as ProgrammeRouteImport } from './routes/programme'
 import { Route as ParametresRouteImport } from './routes/parametres'
 import { Route as NutritionRouteImport } from './routes/nutrition'
 import { Route as MesuresRouteImport } from './routes/mesures'
+import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SeanceRoute = SeanceRouteImport.update({
@@ -47,6 +48,11 @@ const MesuresRoute = MesuresRouteImport.update({
   path: '/mesures',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnexionRoute = ConnexionRouteImport.update({
+  id: '/connexion',
+  path: '/connexion',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -55,6 +61,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -74,6 +82,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
@@ -85,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/connexion'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/connexion'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/connexion'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
@@ -113,6 +125,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnexionRoute: typeof ConnexionRoute
   MesuresRoute: typeof MesuresRoute
   NutritionRoute: typeof NutritionRoute
   ParametresRoute: typeof ParametresRoute
@@ -165,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MesuresRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connexion': {
+      id: '/connexion'
+      path: '/connexion'
+      fullPath: '/connexion'
+      preLoaderRoute: typeof ConnexionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -177,6 +197,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnexionRoute: ConnexionRoute,
   MesuresRoute: MesuresRoute,
   NutritionRoute: NutritionRoute,
   ParametresRoute: ParametresRoute,

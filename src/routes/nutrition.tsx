@@ -35,7 +35,7 @@ function NutritionPage() {
   const carbs = meals.reduce((a, m) => a + m.carbs, 0);
   const fat = meals.reduce((a, m) => a + m.fat, 0);
 
-  const addQuick = (tpl: typeof MEAL_TEMPLATES[number]) => {
+  const addQuick = (tpl: (typeof MEAL_TEMPLATES)[number]) => {
     actions.addMeal({ id: `m-${Date.now()}`, date: new Date().toISOString(), ...tpl });
     toast.success(`${tpl.name} ajouté`);
   };
@@ -86,9 +86,30 @@ function NutritionPage() {
           </p>
           <Progress value={Math.min(100, (water / waterTarget) * 100)} className="mt-2 h-1.5" />
           <div className="mt-2 flex gap-1.5">
-            <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.25)}>+25cl</Button>
-            <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.5)}>+50cl</Button>
-            <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(1)}>+1L</Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 h-7 text-xs"
+              onClick={() => actions.addWater(0.25)}
+            >
+              +25cl
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 h-7 text-xs"
+              onClick={() => actions.addWater(0.5)}
+            >
+              +50cl
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 h-7 text-xs"
+              onClick={() => actions.addWater(1)}
+            >
+              +1L
+            </Button>
           </div>
         </div>
       </div>
@@ -101,7 +122,9 @@ function NutritionPage() {
 
       {/* Meal templates */}
       <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Repas type du programme</p>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          Repas type du programme
+        </p>
         <div className="space-y-2">
           {MEAL_TEMPLATES.map((m) => (
             <button
@@ -125,16 +148,53 @@ function NutritionPage() {
 
       {/* Custom meal */}
       <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Repas personnalisé</p>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          Repas personnalisé
+        </p>
         <div className="card-premium p-4 space-y-2">
-          <Input placeholder="Nom (ex: Poulet riz)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-input" />
+          <Input
+            placeholder="Nom (ex: Poulet riz)"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="bg-input"
+          />
           <div className="grid grid-cols-4 gap-2">
-            <Input placeholder="kcal" type="number" inputMode="numeric" value={form.kcal} onChange={(e) => setForm({ ...form, kcal: e.target.value })} className="bg-input" />
-            <Input placeholder="Prot" type="number" inputMode="numeric" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} className="bg-input" />
-            <Input placeholder="Gluc" type="number" inputMode="numeric" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} className="bg-input" />
-            <Input placeholder="Lip" type="number" inputMode="numeric" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} className="bg-input" />
+            <Input
+              placeholder="kcal"
+              type="number"
+              inputMode="numeric"
+              value={form.kcal}
+              onChange={(e) => setForm({ ...form, kcal: e.target.value })}
+              className="bg-input"
+            />
+            <Input
+              placeholder="Prot"
+              type="number"
+              inputMode="numeric"
+              value={form.protein}
+              onChange={(e) => setForm({ ...form, protein: e.target.value })}
+              className="bg-input"
+            />
+            <Input
+              placeholder="Gluc"
+              type="number"
+              inputMode="numeric"
+              value={form.carbs}
+              onChange={(e) => setForm({ ...form, carbs: e.target.value })}
+              className="bg-input"
+            />
+            <Input
+              placeholder="Lip"
+              type="number"
+              inputMode="numeric"
+              value={form.fat}
+              onChange={(e) => setForm({ ...form, fat: e.target.value })}
+              className="bg-input"
+            />
           </div>
-          <Button onClick={submit} className="w-full btn-hero h-11">Ajouter</Button>
+          <Button onClick={submit} className="w-full btn-hero h-11">
+            Ajouter
+          </Button>
         </div>
       </section>
 
@@ -148,9 +208,14 @@ function NutritionPage() {
               <div key={m.id} className="card-premium p-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">{m.name}</p>
-                  <p className="text-xs text-muted-foreground">{m.kcal} kcal • P {m.protein}g • G {m.carbs}g • L {m.fat}g</p>
+                  <p className="text-xs text-muted-foreground">
+                    {m.kcal} kcal • P {m.protein}g • G {m.carbs}g • L {m.fat}g
+                  </p>
                 </div>
-                <button onClick={() => actions.removeMeal(m.id)} className="text-muted-foreground hover:text-destructive p-2">
+                <button
+                  onClick={() => actions.removeMeal(m.id)}
+                  className="text-muted-foreground hover:text-destructive p-2"
+                >
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -162,10 +227,21 @@ function NutritionPage() {
   );
 }
 
-function MiniStat({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+function MiniStat({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
   return (
     <div className="card-premium p-3">
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1">{icon}{label}</p>
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+        {icon}
+        {label}
+      </p>
       <p className="text-base font-black mt-0.5">{value}</p>
     </div>
   );
