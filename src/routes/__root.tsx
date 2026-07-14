@@ -3,6 +3,8 @@ import {
   Outlet,
   createRootRouteWithContext,
   useRouter,
+  useLocation,
+  useNavigate,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -12,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { BottomNav } from "@/components/BottomNav";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 
 function NotFoundComponent() {
   return (
@@ -94,15 +97,46 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function AuthGuard({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!loading && !user && location.pathname !== "/login" && location.pathname !== "/programme") {
+      navigate({ to: "/login" });
+    }
+  }, [user, loading, location.pathname, navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-muted-foreground">Chargement...</p>
+      </div>
+    );
+  }
+
+  // Hide BottomNav on login screen for cleaner visual presentation
+  const showNav = location.pathname !== "/login";
+
+  return (
+    <div className="relative">
+      {children}
+      {showNav && <BottomNav />}
+    </div>
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="relative">
-        <Outlet />
-        <BottomNav />
-        <Toaster />
-      </div>
+      <AuthProvider>
+        <AuthGuard>
+          <Outlet />
+          <Toaster />
+        </AuthGuard>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
