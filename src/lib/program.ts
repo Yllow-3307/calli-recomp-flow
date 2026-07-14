@@ -1,11 +1,13 @@
+import seed from "./programme_seed.json";
+
 export type ExerciseKind = "reps" | "time" | "distance";
 
 export interface Exercise {
   id: string;
   name: string;
   sets: number;
-  target: string; // ex: "6-8 reps", "30s", "5x2min"
-  rest: number; // seconds
+  target: string;
+  rest: number;
   kind: ExerciseKind;
   note?: string;
 }
@@ -17,215 +19,215 @@ export interface WorkoutBlock {
 
 export interface DayProgram {
   key: string;
-  day: string; // Lundi etc
+  day: string;
   title: string;
   type: "running" | "push" | "pull" | "legs" | "recovery" | "rest";
   emoji: string;
   summary: string;
-  duration: number; // min
+  duration: number;
   warmup: string[];
   blocks: WorkoutBlock[];
   alternatives?: string[];
+  finisher?: string;
 }
 
-const ex = (
-  id: string,
-  name: string,
-  sets: number,
-  target: string,
-  rest: number,
-  kind: ExerciseKind = "reps",
-  note?: string,
-): Exercise => ({ id, name, sets, target, rest, kind, note });
+// ---------- helpers ----------
 
-export const PROGRAM: DayProgram[] = [
-  {
-    key: "mon",
-    day: "Lundi",
-    title: "Running Zone 2 + Core",
-    type: "running",
-    emoji: "🏃",
-    summary: "6–7 km allure conversation + core léger",
-    duration: 55,
-    warmup: ["Mobilité chevilles/hanches 5 min", "Marche rapide 3 min"],
-    blocks: [
-      {
-        title: "Course",
-        items: [ex("run-z2", "Course Zone 2", 1, "6–7 km", 0, "distance", "Allure conversation, FC 130–145")],
-      },
-      {
-        title: "Core léger",
-        items: [
-          ex("plank", "Gainage planche", 3, "45s", 45, "time"),
-          ex("side-plank", "Gainage latéral", 3, "30s/côté", 30, "time"),
-          ex("deadbug", "Dead bug", 3, "10 reps", 30, "reps"),
-        ],
-      },
-    ],
-    alternatives: ["Rameur 30–40 min steady", "Piscine 30 min crawl"],
-  },
-  {
-    key: "tue",
-    day: "Mardi",
-    title: "PUSH avancé + HSPU prep",
-    type: "push",
-    emoji: "💪",
-    summary: "Push PPL + préparation Handstand Push-up",
-    duration: 65,
-    warmup: ["Rotations épaules 2 min", "Cat-cow 1 min", "Pompes lentes 2×8"],
-    blocks: [
-      {
-        title: "HSPU Prep",
-        items: [
-          ex("pike-push", "Pike push-up", 4, "6–8 reps", 90),
-          ex("wall-hs", "Wall handstand hold", 3, "30–45s", 60, "time"),
-          ex("neg-hspu", "HSPU négatives (mur)", 3, "3–4 reps lentes", 120, "reps", "Descente 5s"),
-        ],
-      },
-      {
-        title: "Push PPL",
-        items: [
-          ex("dips", "Dips lestés", 4, "6–8 reps", 90),
-          ex("push-ups", "Pompes archer", 3, "6/côté", 75),
-          ex("db-press", "Développé militaire haltères", 3, "8–10 reps", 75),
-          ex("tri-ext", "Extensions triceps", 3, "10–12 reps", 60),
-        ],
-      },
-    ],
-  },
-  {
-    key: "wed",
-    day: "Mercredi",
-    title: "Fractionné 6 km",
-    type: "running",
-    emoji: "⚡",
-    summary: "5×2 min rapide / 90s récup",
-    duration: 45,
-    warmup: ["Course lente 1 km", "Talons-fesses / montées de genoux 2 min"],
-    blocks: [
-      {
-        title: "Intervalles",
-        items: [
-          ex("intervals", "5×2 min rapide / 90s récup", 5, "2 min max / 90s récup", 90, "time", "Effort 8/10"),
-          ex("cooldown", "Retour au calme", 1, "1 km lent", 0, "distance"),
-        ],
-      },
-    ],
-    alternatives: ["Rameur HIIT 30s max / 60s récup × 8–10", "Piscine intervalles"],
-  },
-  {
-    key: "thu",
-    day: "Jeudi",
-    title: "PULL + Muscle-up prep",
-    type: "pull",
-    emoji: "🎯",
-    summary: "Pull PPL + préparation Muscle-up",
-    duration: 65,
-    warmup: ["Scapular pulls 2×10", "Dead hang 30s", "Band pull-apart 2×15"],
-    blocks: [
-      {
-        title: "Muscle-up Prep",
-        items: [
-          ex("high-pull", "Tractions explosives", 4, "3–5 reps", 120, "reps", "Toucher poitrine"),
-          ex("false-grip", "Dead hang false grip", 3, "20–30s", 90, "time"),
-          ex("transition", "Transitions bande", 3, "3–5 reps", 120),
-        ],
-      },
-      {
-        title: "Pull PPL",
-        items: [
-          ex("pull-ups", "Tractions lestées", 4, "5–7 reps", 120),
-          ex("rows", "Rowing inversé", 3, "8–10 reps", 75),
-          ex("curls", "Curls haltères", 3, "10–12 reps", 60),
-          ex("face-pull", "Face pull bande", 3, "12–15 reps", 45),
-        ],
-      },
-    ],
-  },
-  {
-    key: "fri",
-    day: "Vendredi",
-    title: "Zone 2 récup + Fessiers/Mollets",
-    type: "running",
-    emoji: "🌿",
-    summary: "6 km facile + pont fessier + mollets",
-    duration: 50,
-    warmup: ["Mobilité hanches 4 min"],
-    blocks: [
-      {
-        title: "Course",
-        items: [ex("z2-easy", "Course Zone 2 facile", 1, "6 km", 0, "distance")],
-      },
-      {
-        title: "Complément",
-        items: [
-          ex("glute-bridge", "Pont fessier", 3, "15 reps", 45),
-          ex("calf-raise", "Mollets debout", 4, "15–20 reps", 45),
-          ex("hip-thrust", "Hip thrust unilatéral", 3, "10/côté", 60),
-        ],
-      },
-    ],
-    alternatives: ["Vélo 30–40 min", "Piscine 25 min"],
-  },
-  {
-    key: "sat",
-    day: "Samedi",
-    title: "LEGS + Skills",
-    type: "legs",
-    emoji: "🤸",
-    summary: "Jambes + handstand, flags, dragon flag",
-    duration: 75,
-    warmup: ["Squats sans poids 2×15", "Fentes marchées 2×10", "Mobilité poignets"],
-    blocks: [
-      {
-        title: "Skills",
-        items: [
-          ex("handstand", "Handstand hold libre / mur", 5, "20–40s", 90, "time"),
-          ex("hspu-wall", "HSPU au mur", 4, "3–5 reps", 120),
-          ex("tuck-flag", "Tuck flag", 4, "10–15s", 90, "time"),
-          ex("dragon-flag", "Dragon flag", 4, "5–8 reps", 90),
-        ],
-      },
-      {
-        title: "Legs",
-        items: [
-          ex("pistol", "Pistol squats", 4, "5–6/côté", 90),
-          ex("bulgarian", "Bulgarian split squat", 3, "8/côté", 75),
-          ex("nordic", "Nordic hamstring", 3, "5–8 reps", 90),
-          ex("jump-squat", "Jump squats", 3, "10 reps", 60),
-        ],
-      },
-    ],
-  },
-  {
-    key: "sun",
-    day: "Dimanche",
-    title: "Repos actif",
-    type: "rest",
-    emoji: "🧘",
-    summary: "Marche légère optionnelle + mobilité",
-    duration: 20,
-    warmup: [],
-    blocks: [
-      {
-        title: "Optionnel",
-        items: [
-          ex("walk", "Marche légère", 1, "30–45 min", 0, "time"),
-          ex("mobility", "Routine mobilité complète", 1, "15 min", 0, "time"),
-        ],
-      },
-    ],
-  },
-];
+type Range = number | [number, number];
 
-export const RULES = [
-  "Protéines : 1,8–2,2 g/kg de poids corporel",
-  "Eau : 3–4 L par jour",
-  "Sommeil : 7–8 h minimum",
-  "Progression : +1–2 reps ou +temps par semaine",
-  "Test des skills toutes les 4 semaines",
-  "Filmer les mouvements complexes",
-];
+function fmtRange(r: Range | undefined): string {
+  if (r === undefined) return "";
+  if (Array.isArray(r)) return r[0] === r[1] ? `${r[0]}` : `${r[0]}-${r[1]}`;
+  return `${r}`;
+}
+
+function pickMax(r: Range | undefined, fallback = 3): number {
+  if (r === undefined) return fallback;
+  if (Array.isArray(r)) return r[1];
+  return r;
+}
+
+function slugify(s: string, i: number): string {
+  return (
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) + `-${i}`
+  );
+}
+
+interface RawEx {
+  name: string;
+  sets?: Range;
+  reps?: Range;
+  repsPerLeg?: Range;
+  repsPerSide?: Range;
+  seconds?: Range;
+  restSeconds?: number;
+  progression?: string;
+  alternative?: string;
+  optional?: boolean;
+}
+
+function buildExercise(raw: RawEx, i: number): Exercise {
+  const sets = pickMax(raw.sets, 3);
+  const rest = raw.restSeconds ?? 60;
+  let target = "";
+  let kind: ExerciseKind = "reps";
+  if (raw.seconds !== undefined) {
+    target = `${fmtRange(raw.seconds)}s`;
+    kind = "time";
+  } else if (raw.repsPerLeg !== undefined) {
+    target = `${fmtRange(raw.repsPerLeg)} reps/jambe`;
+  } else if (raw.repsPerSide !== undefined) {
+    target = `${fmtRange(raw.repsPerSide)} reps/côté`;
+  } else if (raw.reps !== undefined) {
+    target = `${fmtRange(raw.reps)} reps`;
+  } else {
+    target = "—";
+  }
+  const noteParts: string[] = [];
+  if (raw.progression) noteParts.push(`Progression : ${raw.progression}`);
+  if (raw.alternative) noteParts.push(`Alt : ${raw.alternative}`);
+  if (raw.optional) noteParts.push("Optionnel");
+  return {
+    id: slugify(raw.name, i),
+    name: raw.name,
+    sets,
+    target,
+    rest,
+    kind,
+    note: noteParts.length ? noteParts.join(" • ") : undefined,
+  };
+}
+
+interface RawDay {
+  day: string;
+  type: string;
+  title: string;
+  durationMin?: [number, number] | number;
+  objective?: string;
+  focus?: string[];
+  warmup?: string[];
+  cardio?: { sport: string; distanceKm?: Range; intensity?: string; intervals?: string };
+  exercises?: RawEx[];
+  alternatives?: string[];
+  progression?: string;
+  optionalFinisher?: string;
+  instructions?: string[];
+}
+
+const DAY_META: Record<string, { key: string; emoji: string; type: DayProgram["type"] }> = {
+  Lundi: { key: "mon", emoji: "🏃", type: "running" },
+  Mardi: { key: "tue", emoji: "💪", type: "push" },
+  Mercredi: { key: "wed", emoji: "⚡", type: "running" },
+  Jeudi: { key: "thu", emoji: "🎯", type: "pull" },
+  Vendredi: { key: "fri", emoji: "🌿", type: "running" },
+  Samedi: { key: "sat", emoji: "🤸", type: "legs" },
+  Dimanche: { key: "sun", emoji: "🧘", type: "rest" },
+};
+
+function buildDay(raw: RawDay): DayProgram {
+  const meta = DAY_META[raw.day] ?? { key: raw.day.slice(0, 3).toLowerCase(), emoji: "🔥", type: "push" as const };
+  const duration = Array.isArray(raw.durationMin)
+    ? Math.round((raw.durationMin[0] + raw.durationMin[1]) / 2)
+    : raw.durationMin ?? 45;
+
+  const blocks: WorkoutBlock[] = [];
+
+  if (raw.cardio) {
+    const items: Exercise[] = [];
+    const c = raw.cardio;
+    if (c.intervals) {
+      items.push({
+        id: `cardio-int-${meta.key}`,
+        name: `Fractionné ${c.sport}`,
+        sets: 1,
+        target: c.intervals,
+        rest: 0,
+        kind: "time",
+        note: c.distanceKm ? `Distance visée : ${fmtRange(c.distanceKm)} km` : undefined,
+      });
+    } else {
+      items.push({
+        id: `cardio-${meta.key}`,
+        name: `${c.sport.charAt(0).toUpperCase() + c.sport.slice(1)} ${c.intensity ?? ""}`.trim(),
+        sets: 1,
+        target: c.distanceKm ? `${fmtRange(c.distanceKm)} km` : "—",
+        rest: 0,
+        kind: "distance",
+        note: c.intensity,
+      });
+    }
+    blocks.push({ title: "Cardio", items });
+  }
+
+  if (raw.exercises?.length) {
+    blocks.push({
+      title: raw.focus?.length ? `Bloc principal — ${raw.focus.join(" · ")}` : "Bloc principal",
+      items: raw.exercises.map((e, i) => buildExercise(e, i)),
+    });
+  }
+
+  if (raw.instructions?.length) {
+    blocks.push({
+      title: "Consignes",
+      items: raw.instructions.map((txt, i) => ({
+        id: `inst-${meta.key}-${i}`,
+        name: txt,
+        sets: 1,
+        target: "—",
+        rest: 0,
+        kind: "time" as ExerciseKind,
+      })),
+    });
+  }
+
+  return {
+    key: meta.key,
+    day: raw.day,
+    title: raw.title,
+    type: meta.type,
+    emoji: meta.emoji,
+    summary: raw.objective ?? raw.focus?.join(" · ") ?? raw.title,
+    duration,
+    warmup: raw.warmup ?? [],
+    blocks,
+    alternatives: raw.alternatives,
+    finisher: raw.optionalFinisher,
+  };
+}
+
+// ---------- public exports ----------
+
+interface Seed {
+  goldenRules: string[];
+  nutritionTargets: {
+    protein_g_per_kg: [number, number];
+    calories: string;
+    macroSplit: string;
+    water_l_per_day: [number, number];
+    mealExamples: string[];
+  };
+  weeklyPlan: RawDay[];
+  progressionTable: { exercise: string; start: string; month1: string; month2: string; month3: string }[];
+  progressionRules: string[];
+}
+
+const SEED = seed as unknown as Seed;
+
+export const PROGRAM: DayProgram[] = SEED.weeklyPlan.map(buildDay);
+
+export const RULES = SEED.goldenRules;
+
+export const NUTRITION = SEED.nutritionTargets;
+
+export const PROGRESSION_TABLE = SEED.progressionTable;
+
+export const PROGRESSION_RULES = SEED.progressionRules;
 
 export const PROGRESS_TESTS = [
   { id: "pushups", name: "Pompes max", unit: "reps" },
@@ -239,14 +241,10 @@ export const PROGRESS_TESTS = [
   { id: "run5k", name: "5 km course", unit: "min" },
 ];
 
-export function getTodayProgram(fiveDays = false): DayProgram {
+export function getTodayProgram(_fiveDays = false): DayProgram {
   const dow = new Date().getDay(); // 0=dim
-  const map = [6, 0, 1, 2, 3, 4, 5]; // dim,lun,mar...
-  let program = PROGRAM[map[dow]];
-  if (fiveDays && (program.key === "fri" || program.key === "wed")) {
-    // still return it; option handling is at settings level
-  }
-  return program;
+  const map = [6, 0, 1, 2, 3, 4, 5];
+  return PROGRAM[map[dow]];
 }
 
 export function programByKey(key: string) {
