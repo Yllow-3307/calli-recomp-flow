@@ -280,3 +280,45 @@ INSERT INTO public.workout_templates (id, day_of_week, title, category, duration
   INSERT INTO public.exercise_templates (id, workout_template_id, name, type, sets, sort_order) VALUES   ('d6411391-8837-43b2-933a-78b2275bc6a9', '17a9e60f-1248-4c68-8751-4e4ae20d964d', 'Récupération obligatoire', 'time', 1, 0);
   INSERT INTO public.exercise_templates (id, workout_template_id, name, type, sets, sort_order) VALUES   ('44300dac-1a49-4b95-8436-20adbafc0de4', '17a9e60f-1248-4c68-8751-4e4ae20d964d', 'Marche légère optionnelle 20-30 min', 'time', 1, 1);
   INSERT INTO public.exercise_templates (id, workout_template_id, name, type, sets, sort_order) VALUES   ('6b8582ea-9bd7-4c48-9fc1-30ab0e73220c', '17a9e60f-1248-4c68-8751-4e4ae20d964d', 'Étirements + mobilité 10-15 min : poitrine, épaules, ischios, hanches', 'time', 1, 2);
+
+
+-- 6. Supabase Storage Setup for Progress Photos
+-- Ensure the private progress-photos bucket exists
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('progress-photos', 'progress-photos', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage Security Policies for progress-photos bucket
+-- Note: (storage.foldername(name))[1] extracts the user's ID because files are uploaded as: {user_id}/{filename}
+
+CREATE POLICY "Allow authenticated users to upload progress photos under their own folder"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+CREATE POLICY "Allow authenticated users to read their own progress photos"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+CREATE POLICY "Allow authenticated users to delete their own progress photos"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+CREATE POLICY "Allow authenticated users to update their own progress photos"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+)
+WITH CHECK (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
