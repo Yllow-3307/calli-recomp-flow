@@ -113,13 +113,13 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const location = useLocation();
   const navigate = useNavigate();
-  const { syncProfileFromSupabase } = useAppActions();
+  const { syncAllDataWithSupabase } = useAppActions();
 
   useEffect(() => {
-    // Synchroniser le profil initialement au montage s'il y a déjà une session
+    // Synchroniser toutes les données initialement au montage s'il y a déjà une session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        syncProfileFromSupabase();
+        syncAllDataWithSupabase();
       }
     });
 
@@ -128,14 +128,14 @@ function RootComponent() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && event === "SIGNED_IN") {
-        syncProfileFromSupabase();
+        syncAllDataWithSupabase();
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [syncProfileFromSupabase]);
+  }, [syncAllDataWithSupabase]);
 
   useEffect(() => {
     // Vérification de route à chaque changement de page
