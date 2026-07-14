@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Flame, Droplet, Beef, Footprints, ChevronRight, Play, Sparkles } from "lucide-react";
+import { Flame, Droplet, Beef, Footprints, ChevronRight, Play, Sparkles, Target } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, RULES } from "@/lib/program";
+import { getTodayProgram, RULES, NUTRITION } from "@/lib/program";
 import {
   useAppState,
   useAppActions,
@@ -10,6 +10,8 @@ import {
   kmThisWeek,
   proteinToday,
   todayKey,
+  isTestWeek,
+  currentProgramWeek,
 } from "@/lib/store";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -32,9 +34,12 @@ function Dashboard() {
   const done = thisWeekWorkouts(state.workouts).length;
   const km = kmThisWeek(state.cardio);
   const protein = proteinToday(state.meals);
-  const proteinTarget = Math.round(state.profile.weight * 2);
+  const proteinTarget = Math.round(state.profile.weight * ((NUTRITION.protein_g_per_kg[0] + NUTRITION.protein_g_per_kg[1]) / 2));
   const water = state.water[todayKey()] || 0;
+  const waterTarget = (NUTRITION.water_l_per_day[0] + NUTRITION.water_l_per_day[1]) / 2;
   const daysGoal = state.profile.daysPerWeek;
+  const showTestBanner = isTestWeek(state.profile);
+  const week = currentProgramWeek(state.profile);
 
   return (
     <PageShell>
@@ -88,7 +93,7 @@ function Dashboard() {
           </div>
           <p className="mt-2 text-2xl font-black">
             {water.toFixed(1)}
-            <span className="text-sm text-muted-foreground font-medium"> / 3.5L</span>
+            <span className="text-sm text-muted-foreground font-medium"> / {waterTarget}L</span>
           </p>
           <div className="mt-2 flex gap-1.5">
             <Button size="sm" variant="secondary" className="flex-1 h-7 text-xs" onClick={() => actions.addWater(0.25)}>

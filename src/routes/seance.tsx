@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Slider } from "@/components/ui/slider";
+
 import { Check, Pause, Play as PlayIcon, RotateCcw, Timer, Video, Trophy, Flame } from "lucide-react";
 import { toast } from "sonner";
 
