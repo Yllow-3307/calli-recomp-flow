@@ -427,7 +427,7 @@ export function useAppActions() {
         if (insErr) console.error("Error inserting cardio during sync:", insErr);
       }
 
-      // 4. Sync Body Metrics
+      // 4. Sync Body Metrics and Migrate Base64 Photos if any
       const { data: remoteMetrics, error: metricsErr } = await supabase
         .from("body_metrics")
         .select("*")
@@ -452,8 +452,49 @@ export function useAppActions() {
         })),
       ];
 
+      // Migrate Base64 photos locally in localStorage & state to Supabase storage
+      const { base64ToFile } = await import("./photo-utils");
+
+      const uploadBase64Photo = async (
+        b64: string,
+        slot: "face" | "profile" | "back",
+        metricId: string,
+      ): Promise<string | undefined> => {
+        const fileObj = base64ToFile(b64, `migrated-${metricId}-${slot}.jpg`);
+        if (!fileObj) return undefined;
+        try {
+          const { data, error: uploadErr } = await supabase.storage
+            .from("progress-photos")
+            .upload(`${userId}/migrated-${metricId}-${slot}.jpg`, fileObj, {
+              upsert: true,
+            });
+          if (uploadErr) {
+            console.error("Failed to upload migrated photo during sync:", uploadErr);
+            return undefined;
+          }
+          return data?.path;
+        } catch (e) {
+          console.error("Unexpected error uploading migrated photo during sync:", e);
+          return undefined;
+        }
+      };
+
       const metricsToInsert: BodyMetric[] = [];
       for (const lm of localState.metrics) {
+        // Run migration of any inline Base64 photos to Storage before matching/inserting
+        if (lm.photos) {
+          const slots: Array<"face" | "profile" | "back"> = ["face", "profile", "back"];
+          for (const slot of slots) {
+            const photoVal = lm.photos[slot];
+            if (photoVal && photoVal.startsWith("data:")) {
+              const path = await uploadBase64Photo(photoVal, slot, lm.id);
+              if (path) {
+                lm.photos[slot] = path;
+              }
+            }
+          }
+        }
+
         let exists = false;
         if (isUUID(lm.id)) {
           exists = mergedMetrics.some((rm) => rm.id === lm.id);
@@ -948,6 +989,7 @@ export function useAppActions() {
       }, 0);
     }, []),
     removeMetric: useCallback((id: string) => {
+      const metricToRemove = getState().metrics.find((x) => x.id === id);
       setState((s) => ({ ...s, metrics: s.metrics.filter((x) => x.id !== id) }));
 
       setTimeout(async () => {
@@ -956,6 +998,21 @@ export function useAppActions() {
             data: { session },
           } = await supabase.auth.getSession();
           if (!session?.user) return;
+
+          // Delete physically stored photos if they exist
+          if (metricToRemove?.photos) {
+            const pathsToDelete: string[] = [];
+            const slots: Array<"face" | "profile" | "back"> = ["face", "profile", "back"];
+            slots.forEach((s) => {
+              const path = metricToRemove.photos?.[s];
+              if (path && !path.startsWith("data:") && !path.startsWith("http")) {
+                pathsToDelete.push(path);
+              }
+            });
+            if (pathsToDelete.length > 0) {
+              await supabase.storage.from("progress-photos").remove(pathsToDelete);
+            }
+          }
 
           if (isUUID(id)) {
             const { error } = await supabase
