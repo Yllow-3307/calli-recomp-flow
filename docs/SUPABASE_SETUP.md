@@ -82,7 +82,17 @@ Chaque table contenant des données privées est verrouillée à l'aide de polit
 
 ---
 
-## 5. Automatisation à l'Inscription : Trigger de Profil
+## 5. Stockage des Photos de Progression (Supabase Storage)
+
+Un bucket privé nommé `progress-photos` est préparé pour héberger en toute sécurité les images de progression corporelle des utilisateurs connectés.
+
+### Fonctionnement et cloisonnement (Storage RLS) :
+* Les fichiers de photos sont organisés dans le bucket sous la forme de sous-dossiers correspondant à l'ID UUID de l'utilisateur (`{user_id}/{filename}.jpg`).
+* Une politique stricte de sécurité restreint toutes les opérations de lecture (`SELECT`), écriture (`INSERT`), modification (`UPDATE`), et suppression (`DELETE`) de fichiers uniquement à leur propriétaire respectif en vérifiant que le premier segment du chemin d'accès correspond exactement à `auth.uid()`.
+
+---
+
+## 6. Automatisation à l'Inscription : Trigger de Profil
 
 Afin de simplifier l'expérience utilisateur, un déclencheur PostgreSQL automatique a été mis en place.
 À chaque fois qu'un utilisateur crée un compte (dans la table interne `auth.users`), le trigger `on_auth_user_created` appelle la fonction `public.handle_new_user()` qui se charge d'instancier automatiquement une ligne par défaut dans la table `profiles` avec des constantes de démarrage :
@@ -95,7 +105,7 @@ L'utilisateur peut ensuite ajuster ces valeurs immédiatement dans ses Paramètr
 
 ---
 
-## 6. Guide de Test pour l'Authentification et le RLS
+## 7. Guide de Test pour l'Authentification, le RLS et le Storage
 
 Pour s'assurer du parfait fonctionnement du partitionnement des données utilisateur lors du développement de l'UI :
 
@@ -104,7 +114,7 @@ Pour s'assurer du parfait fonctionnement du partitionnement des données utilisa
 2. Allez dans le **Table Editor** sur Supabase et ouvrez la table `public.profiles`.
 3. Vérifiez qu'une ligne correspondant au nouvel ID utilisateur UUID a été ajoutée automatiquement avec les valeurs par défaut.
 
-### Étape 2 : Valider le cloisonnement de sécurité (RLS)
+### Étape 2 : Valider le cloisonnement de sécurité de la Base de Données (RLS)
 Pour vérifier que les politiques RLS fonctionnent, exécutez ces requêtes SQL de test dans l'éditeur de requêtes Supabase :
 
 ```sql
@@ -130,4 +140,23 @@ SELECT * FROM public.workout_templates; -- Devrait RÉUSSIR et retourner les 7 j
 
 -- Tenter de modifier un template en tant qu'utilisateur standard
 UPDATE public.workout_templates SET title = 'Titre piraté' WHERE day_of_week = 1; -- Devrait ÉCHOUER
+```
+
+### Étape 4 : Valider le cloisonnement de sécurité du Stockage (Storage RLS)
+Pour vérifier que les politiques d'accès au bucket `progress-photos` fonctionnent correctement :
+
+```sql
+-- Simuler la connexion de l'utilisateur 'A'
+SET request.jwt.claim.sub = 'id-user-A-ici';
+
+-- L'utilisateur A tente d'uploader une photo dans son propre dossier
+INSERT INTO storage.objects (bucket_id, name, owner, metadata)
+VALUES ('progress-photos', 'id-user-A-ici/face-s2.jpg', 'id-user-A-ici', '{"size": 120000}'::jsonb); -- Devrait RÉUSSIR
+
+-- L'utilisateur A tente d'uploader une photo dans le dossier de l'utilisateur B
+INSERT INTO storage.objects (bucket_id, name, owner, metadata)
+VALUES ('progress-photos', 'id-user-B-ici/face-s2.jpg', 'id-user-A-ici', '{"size": 120000}'::jsonb); -- Devrait ÉCHOUER
+
+-- L'utilisateur A tente de lire le dossier de l'utilisateur B
+SELECT * FROM storage.objects WHERE name LIKE 'id-user-B-ici/%'; -- Devrait retourner 0 ligne
 ```
