@@ -69,17 +69,27 @@
   * {
     border-color: var(--color-border);
   }
-  html, body, #root {
+  html,
+  body,
+  #root {
     height: 100%;
   }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: contain;
   }
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     letter-spacing: -0.02em;
   }
 }

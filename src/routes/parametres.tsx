@@ -1,10 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { useAppState, useAppActions } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { LogOut, User } from "lucide-react";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
@@ -14,12 +17,58 @@ export const Route = createFileRoute("/parametres")({
 function ParamsPage() {
   const state = useAppState();
   const { setProfile } = useAppActions();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+      }
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      toast.success("Déconnexion réussie !");
+      navigate({ to: "/connexion" });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Une erreur est survenue lors de la déconnexion.";
+      toast.error(message);
+    }
+  };
 
   return (
     <PageShell>
       <TopBar title="Paramètres" subtitle="Profil, objectifs, équipement" />
 
       <div className="px-5 space-y-3">
+        {userEmail && (
+          <div className="card-premium p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                <User className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Compte connecté</p>
+                <p className="text-sm font-bold truncate">{userEmail}</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSignOut}
+              className="text-muted-foreground hover:text-destructive shrink-0"
+              title="Se déconnecter"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         <div className="card-premium p-4 space-y-3">
           <h3 className="font-bold">Profil</h3>
           <Row label="Poids (kg)">
@@ -65,7 +114,8 @@ function ParamsPage() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les Notes du programme.
+            En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les Notes
+            du programme.
           </p>
         </div>
 
@@ -90,25 +140,30 @@ function ParamsPage() {
 
         <div className="card-premium p-4 space-y-2">
           <h3 className="font-bold">Équipement</h3>
-          {["Barre traction", "Anneaux", "Haltères", "Sangle TRX", "Rameur", "Piscine", "Vélo"].map((eq) => {
-            const on = state.profile.equipment.includes(eq);
-            return (
-              <button
-                key={eq}
-                onClick={() => {
-                  const next = on
-                    ? state.profile.equipment.filter((x) => x !== eq)
-                    : [...state.profile.equipment, eq];
-                  setProfile({ equipment: next });
-                }}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium border ${
-                  on ? "bg-primary/10 border-primary text-foreground" : "bg-transparent border-border text-muted-foreground"
-                }`}
-              >
-                {on ? "✓ " : ""}{eq}
-              </button>
-            );
-          })}
+          {["Barre traction", "Anneaux", "Haltères", "Sangle TRX", "Rameur", "Piscine", "Vélo"].map(
+            (eq) => {
+              const on = state.profile.equipment.includes(eq);
+              return (
+                <button
+                  key={eq}
+                  onClick={() => {
+                    const next = on
+                      ? state.profile.equipment.filter((x) => x !== eq)
+                      : [...state.profile.equipment, eq];
+                    setProfile({ equipment: next });
+                  }}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium border ${
+                    on
+                      ? "bg-primary/10 border-primary text-foreground"
+                      : "bg-transparent border-border text-muted-foreground"
+                  }`}
+                >
+                  {on ? "✓ " : ""}
+                  {eq}
+                </button>
+              );
+            },
+          )}
         </div>
 
         <Link to="/mesures" className="card-premium p-4 block text-center font-semibold">

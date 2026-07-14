@@ -38,7 +38,10 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           <h1 className="truncate text-2xl font-black tracking-tight">{title}</h1>
           {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
-        <Link to="/parametres" className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground">
+        <Link
+          to="/parametres"
+          className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground"
+        >
           <Settings className="h-5 w-5" />
         </Link>
       </div>
@@ -47,10 +50,6 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
 }
 
 export function PageShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen max-w-md mx-auto pb-24">
-      {children}
-    </div>
-  );
+  return <div className="min-h-screen max-w-md mx-auto pb-24">{children}</div>;
 }
 export { Ruler };
