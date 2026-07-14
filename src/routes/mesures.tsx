@@ -5,8 +5,11 @@ import { useAppState, useAppActions, fileToCompressedBase64, type BodyMetric } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Camera, Trash2, Lock, AlertCircle } from "lucide-react";
+import { Camera, Trash2, Lock, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { SecureImage } from "@/components/SecureImage";
+import { supabase } from "@/integrations/supabase/client";
+import { base64ToFile } from "@/lib/photo-utils";
 
 export const Route = createFileRoute("/mesures")({
   head: () => ({ meta: [{ title: "Mesures — Calli Recomp" }] }),
@@ -109,12 +112,12 @@ function MesuresPage() {
                   key={slot}
                   slot={slot}
                   value={photos[slot]}
-                  onChange={(dataUrl) => setPhotos((p) => ({ ...p, [slot]: dataUrl }))}
+                  onChange={(path) => setPhotos((p) => ({ ...p, [slot]: path }))}
                 />
               ))}
             </div>
             <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
-              <Lock className="h-3 w-3" /> Photos stockées uniquement sur ton appareil.
+              <Lock className="h-3 w-3" /> Photos privées, stockées dans ton espace sécurisé.
             </p>
           </div>
 
@@ -218,10 +221,10 @@ function MetricCard({ m, onRemove }: { m: BodyMetric; onRemove: () => void }) {
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {(["face", "profile", "back"] as PhotoSlot[]).map((s) =>
             m.photos?.[s] ? (
-              <img
+              <SecureImage
                 key={s}
-                src={m.photos[s]}
-                alt={s}
+                path={m.photos[s]}
+                fallbackLabel={s}
                 className="aspect-[3/4] w-full object-cover rounded-lg"
               />
             ) : (
@@ -250,27 +253,74 @@ function PhotoSlotInput({
   onChange: (v: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Check network connectivity first
+    if (!navigator.onLine) {
+      toast.error("Connexion requise pour envoyer les photos de progression.");
+      return;
+    }
+
+    setUploading(true);
     try {
+      // 1. Get current authenticated user
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast.error("Veuillez vous connecter pour envoyer des photos.");
+        return;
+      }
+      const userId = session.user.id;
+
+      // 2. Compress locally first to reduce bandwidth and memory footprint
       const b64 = await fileToCompressedBase64(file);
-      onChange(b64);
-    } catch {
-      toast.error("Impossible de charger cette photo");
+      const fileObj = base64ToFile(b64, `${Date.now()}-${slot}.jpg`);
+      if (!fileObj) throw new Error("Conversion error");
+
+      // 3. Upload directly to private bucket progress-photos
+      const storagePath = `${userId}/${Date.now()}-${slot}.jpg`;
+      const { data, error } = await supabase.storage
+        .from("progress-photos")
+        .upload(storagePath, fileObj);
+
+      if (error) throw error;
+
+      if (data?.path) {
+        onChange(data.path);
+        toast.success("Photo chargée avec succès !");
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      toast.error("Échec de l'envoi de la photo. Vérifie ta connexion.");
+    } finally {
+      setUploading(false);
     }
   };
 
   return (
     <button
       type="button"
+      disabled={uploading}
       onClick={() => inputRef.current?.click()}
-      className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center"
+      className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center disabled:opacity-70"
     >
-      {value ? (
-        <img src={value} alt={label} className="absolute inset-0 h-full w-full object-cover" />
+      {uploading ? (
+        <div className="text-center text-muted-foreground">
+          <Loader2 className="h-5 w-5 mx-auto mb-1 animate-spin text-primary" />
+          <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
+        </div>
+      ) : value ? (
+        <SecureImage
+          path={value}
+          fallbackLabel={label}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
       ) : (
         <div className="text-center text-muted-foreground">
           <Camera className="h-5 w-5 mx-auto mb-1" />

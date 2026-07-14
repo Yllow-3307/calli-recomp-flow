@@ -98,6 +98,53 @@ Un bucket privé nommé `progress-photos` est préparé pour héberger en toute 
 - Les fichiers de photos sont organisés dans le bucket sous la forme de sous-dossiers correspondant à l'ID UUID de l'utilisateur (`{user_id}/{filename}.jpg`).
 - Une politique stricte de sécurité restreint toutes les opérations de lecture (`SELECT`), écriture (`INSERT`), modification (`UPDATE`), et suppression (`DELETE`) de fichiers uniquement à leur propriétaire respectif en vérifiant que le premier segment du chemin d'accès correspond exactement à `auth.uid()`.
 
+### Définition SQL des Politiques de Stockage (Bucket privé) :
+
+Pour configurer le stockage privé, les requêtes suivantes sont incluses dans les migrations :
+
+```sql
+-- Création du bucket si absent
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('progress-photos', 'progress-photos', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Autoriser le dépôt d'images de progression uniquement dans son propre dossier utilisateur
+CREATE POLICY "Allow authenticated users to upload progress photos under their own folder"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Autoriser la lecture de ses propres images de progression
+CREATE POLICY "Allow authenticated users to read their own progress photos"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Autoriser la suppression de ses propres images de progression
+CREATE POLICY "Allow authenticated users to delete their own progress photos"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Autoriser la mise à jour de ses propres images de progression
+CREATE POLICY "Allow authenticated users to update their own progress photos"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+)
+WITH CHECK (
+  bucket_id = 'progress-photos' AND
+  (storage.foldername(name))[1] = auth.uid()::text
+);
+```
+
 ---
 
 ## 6. Automatisation à l'Inscription : Trigger de Profil
