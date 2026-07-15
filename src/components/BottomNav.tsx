@@ -8,6 +8,7 @@ import {
   Settings,
   CalendarDays,
   History,
+  Trophy,
 } from "lucide-react";
 
 const items = [
@@ -48,6 +49,13 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to="/skills"
+            className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:text-primary transition-colors"
+            title="Mes Skills"
+          >
+            <Trophy className="h-4.5 w-4.5" />
+          </Link>
           <Link
             to="/historique"
             className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:text-primary transition-colors"

@@ -286,3 +286,111 @@ export function getTodayProgram(_fiveDays = false): DayProgram {
 export function programByKey(key: string) {
   return PROGRAM.find((d) => d.key === key);
 }
+
+export interface SkillGuide {
+  id: string;
+  name: string;
+  start: string;
+  month1: string;
+  month2: string;
+  month3: string;
+  defaultNotes: string;
+  matchingExercises: string[];
+  unit: string;
+  month1Val: number;
+  month3Val: number;
+}
+
+export const SKILLS_GUIDE: SkillGuide[] = [
+  {
+    id: "handstand",
+    name: "Handstand",
+    start: "5 secondes au mur",
+    month1: "25 secondes au mur",
+    month2: "30 secondes / début libre",
+    month3: "Libre 10 secondes+",
+    unit: "s",
+    month1Val: 25,
+    month3Val: 10,
+    defaultNotes:
+      "Rappels techniques : Alignement poignets-épaules-hanches, repousser activement le sol, serrer fessiers et abdos (pas de cambrure), se filmer régulièrement.",
+    matchingExercises: ["Handstand libre", "Handstand au mur", "Handstand"],
+  },
+  {
+    id: "hspu",
+    name: "HSPU",
+    start: "Pike push-up",
+    month1: "Négatifs au mur",
+    month2: "HSPU au mur ×5",
+    month3: "HSPU libre",
+    unit: "reps",
+    month1Val: 4,
+    month3Val: 1,
+    defaultNotes:
+      "Rappels techniques : Trajectoire en trépied (mains et tête forment un triangle), garder les coudes orientés vers l'arrière (pas sur les côtés), amplitude complète.",
+    matchingExercises: ["Pike push-up lesté", "HSPU négatif mur", "HSPU au mur", "Pike push-up"],
+  },
+  {
+    id: "muscleup",
+    name: "Muscle-up",
+    start: "0 rep",
+    month1: "Transitions",
+    month2: "Muscle-up avec bande ×5",
+    month3: "1 muscle-up strict",
+    unit: "reps",
+    month1Val: 1,
+    month3Val: 1,
+    defaultNotes:
+      "Rappels techniques : Tirage explosif vers les hanches (chest-to-bar), transition rapide des poignets au-dessus de la barre, gainage complet pour éviter le kipping excessif.",
+    matchingExercises: [
+      "Tractions explosives",
+      "Chest-to-bar",
+      "Transition muscle-up bande",
+      "Australian rows",
+      "Muscle-up",
+      "Tractions strictes",
+    ],
+  },
+  {
+    id: "tuckflag",
+    name: "Tuck flag",
+    start: "Planche latérale 30s",
+    month1: "Tuck flag",
+    month2: "Advanced tuck",
+    month3: "Full flag",
+    unit: "s",
+    month1Val: 5,
+    month3Val: 5,
+    defaultNotes:
+      "Rappels techniques : Bras du bas repousse activement le support, bras du haut tire fort, maintenir l'alignement des hanches sans vriller, gainage oblique intense.",
+    matchingExercises: ["Tuck flag", "Planche latérale lestée", "Planche latérale"],
+  },
+  {
+    id: "dragonflag",
+    name: "Dragon flag",
+    start: "3×3 reps",
+    month1: "3×5 reps",
+    month2: "3×8 reps",
+    month3: "3×10+ reps",
+    unit: "reps",
+    month1Val: 5,
+    month3Val: 10,
+    defaultNotes:
+      "Rappels techniques : Seuls les épaules et le haut du dos touchent le banc/support, alignement parfait corps-jambes tendues, descente lente et contrôlée.",
+    matchingExercises: ["Dragon flag"],
+  },
+  {
+    id: "lsit",
+    name: "L-sit",
+    start: "5 secondes",
+    month1: "12 secondes",
+    month2: "20 secondes",
+    month3: "25 secondes+",
+    unit: "s",
+    month1Val: 12,
+    month3Val: 25,
+    defaultNotes:
+      "Rappels techniques : Épaules basses (dépression scapulaire), jambes parfaitement verrouillées et tendues, lever les hanches légèrement vers l'avant, compression abdominale.",
+    matchingExercises: ["L-sit progression", "L-sit", "Relevés de jambes suspendus"],
+  },
+];
