@@ -22,11 +22,36 @@ const mainItems = [
 ] as const;
 
 const moreItems = [
-  { to: "/programme", label: "Programme", icon: CalendarDays },
-  { to: "/historique", label: "Historique", icon: History },
-  { to: "/skills", label: "Skills", icon: Trophy },
-  { to: "/mesures", label: "Mesures", icon: Ruler },
-  { to: "/parametres", label: "Paramètres", icon: Settings },
+  {
+    to: "/programme",
+    label: "Programme",
+    icon: CalendarDays,
+    color: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  },
+  {
+    to: "/historique",
+    label: "Historique",
+    icon: History,
+    color: "text-pink-400 bg-pink-500/10 border-pink-500/20",
+  },
+  {
+    to: "/skills",
+    label: "Skills",
+    icon: Trophy,
+    color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  },
+  {
+    to: "/mesures",
+    label: "Mesures",
+    icon: Ruler,
+    color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  },
+  {
+    to: "/parametres",
+    label: "Paramètres",
+    icon: Settings,
+    color: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+  },
 ] as const;
 
 export function BottomNav() {
@@ -40,16 +65,16 @@ export function BottomNav() {
   });
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.06] bg-slate-950/80 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.5)]">
       <ul className="grid grid-cols-5 max-w-md mx-auto">
         {mainItems.map(({ to, label, icon: Icon, exact }) => (
           <li key={to}>
             <Link
               to={to}
               activeOptions={{ exact }}
-              className="flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-muted-foreground data-[status=active]:text-primary transition-colors"
+              className="flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="h-5 w-5 transition-transform duration-300 data-[status=active]:scale-110" />
               <span>{label}</span>
             </Link>
           </li>
@@ -58,7 +83,7 @@ export function BottomNav() {
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
               <button
-                className={`w-full flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`w-full flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
                   isMoreActive || isOpen
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -70,22 +95,30 @@ export function BottomNav() {
             </SheetTrigger>
             <SheetContent
               side="bottom"
-              className="rounded-t-3xl border-t border-border bg-card pb-8 max-w-md mx-auto"
+              className="rounded-t-[2.5rem] border-t border-white/10 bg-slate-950/95 backdrop-blur-2xl pb-8 max-w-md mx-auto shadow-[0_-15px_40px_rgba(0,0,0,0.8)]"
             >
-              <SheetHeader className="pb-4 border-b border-border/40">
-                <SheetTitle className="text-center font-black text-lg">Plus d'options</SheetTitle>
+              <SheetHeader className="pb-4 border-b border-white/5">
+                <SheetTitle className="text-center font-black text-xl text-gradient">
+                  Menu Principal
+                </SheetTitle>
               </SheetHeader>
-              <ul className="grid grid-cols-3 gap-4 pt-6">
-                {moreItems.map(({ to, label, icon: Icon }) => (
+              <ul className="grid grid-cols-3 gap-3.5 pt-6">
+                {moreItems.map(({ to, label, icon: Icon, color }) => (
                   <li key={to}>
                     <Link
                       to={to}
                       onClick={() => setIsOpen(false)}
                       activeOptions={{ exact: to === "/" }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-secondary/20 border border-border/30 hover:bg-secondary/40 transition-all text-muted-foreground data-[status=active]:text-primary data-[status=active]:border-primary/40 data-[status=active]:bg-primary/5"
+                      className="flex flex-col items-center gap-2.5 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.05] hover:border-white/10 active:scale-95 transition-all text-muted-foreground data-[status=active]:text-primary data-[status=active]:border-primary/30 data-[status=active]:bg-primary/5 group"
                     >
-                      <Icon className="h-6 w-6" />
-                      <span className="text-xs font-semibold text-center">{label}</span>
+                      <div
+                        className={`p-2.5 rounded-xl border ${color} group-hover:scale-105 transition-transform duration-300`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <span className="text-[11px] font-bold text-center text-slate-300 group-hover:text-white transition-colors">
+                        {label}
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -103,8 +136,10 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
     <header className="px-5 pt-6 pb-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-black tracking-tight">{title}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+          <h1 className="truncate text-2xl font-black tracking-tight text-white">{title}</h1>
+          {subtitle && (
+            <p className="text-sm text-muted-foreground mt-1 font-semibold">{subtitle}</p>
+          )}
         </div>
       </div>
     </header>
@@ -112,6 +147,6 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
 }
 
 export function PageShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen max-w-md mx-auto pb-24">{children}</div>;
+  return <div className="min-h-screen max-w-md mx-auto pb-24 relative">{children}</div>;
 }
 export { Ruler };

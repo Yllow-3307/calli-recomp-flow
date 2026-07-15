@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { PROGRAM } from "@/lib/program";
 import { useAppState } from "@/lib/store";
+import { SessionTypeBadge } from "@/routes/index";
 
 export const Route = createFileRoute("/programme")({
   head: () => ({ meta: [{ title: "Programme semaine — Calli Recomp" }] }),
@@ -23,29 +24,57 @@ function ProgrammePage() {
         {PROGRAM.map((d) => {
           const skipped = skipRunning && d.key === "fri";
           return (
-            <div key={d.key} className={`card-premium p-4 ${skipped ? "opacity-40" : ""}`}>
-              <div className="flex items-start gap-3">
-                <div className="text-3xl">{d.emoji}</div>
+            <div
+              key={d.key}
+              className={`card-premium p-5 border border-white/[0.04] transition-all relative overflow-hidden ${
+                skipped ? "opacity-30 saturate-[0.15]" : "hover:border-primary/20"
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                <div className="text-4xl filter drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
+                  {d.emoji}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">{d.day}</p>
-                  <h3 className="font-bold text-base mt-0.5">
-                    {d.title}
-                    {skipped && <span className="ml-2 text-xs text-warning">(retiré en 5j)</span>}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-1">{d.summary}</p>
-                  <p className="text-xs text-muted-foreground mt-2">⏱️ {d.duration} min</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">
+                      {d.day}
+                    </span>
+                    <SessionTypeBadge type={d.type} />
+                  </div>
 
-                  <div className="mt-3 space-y-2">
+                  <h3 className="font-bold text-base text-white mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span>{d.title}</span>
+                    {skipped && (
+                      <span className="text-[10px] bg-warning/10 text-warning border border-warning/20 px-2 py-0.5 rounded-full font-bold">
+                        retiré en 5j
+                      </span>
+                    )}
+                  </h3>
+
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                    {d.summary}
+                  </p>
+
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <span className="text-[10px] font-bold bg-white/5 border border-white/10 px-2 py-0.5 rounded text-slate-300">
+                      ⏱️ {d.duration} min
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-3 pt-3 border-t border-white/[0.04]">
                     {d.blocks.map((b) => (
-                      <div key={b.title}>
-                        <p className="text-[11px] uppercase tracking-widest text-primary/80 font-bold">
+                      <div key={b.title} className="space-y-1">
+                        <p className="text-[10px] uppercase tracking-wider text-primary font-black">
                           {b.title}
                         </p>
-                        <ul className="mt-1 text-sm space-y-0.5">
+                        <ul className="text-xs space-y-1">
                           {b.items.map((it) => (
-                            <li key={it.id} className="text-muted-foreground">
-                              • {it.name} —{" "}
-                              <span className="text-foreground">
+                            <li
+                              key={it.id}
+                              className="text-slate-300 flex justify-between items-center gap-2"
+                            >
+                              <span className="truncate">• {it.name}</span>
+                              <span className="text-[10px] font-bold bg-white/5 px-2 py-0.5 rounded text-slate-400 shrink-0 font-mono">
                                 {it.sets}×{it.target}
                               </span>
                             </li>
@@ -55,10 +84,15 @@ function ProgrammePage() {
                     ))}
                   </div>
 
-                  {d.alternatives && (
-                    <p className="mt-3 text-xs text-muted-foreground italic">
-                      Alt : {d.alternatives.join(" • ")}
-                    </p>
+                  {d.alternatives && d.alternatives.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-white/[0.04]">
+                      <p className="text-[10px] uppercase tracking-wider text-accent font-black">
+                        Alternatives
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1 italic">
+                        {d.alternatives.join(" • ")}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -67,27 +101,37 @@ function ProgrammePage() {
         })}
       </div>
 
-      <div className="px-5 mt-6">
-        <div className="card-premium p-4">
-          <h3 className="font-bold">Plan 12 semaines</h3>
-          <p className="text-sm text-muted-foreground mt-2">
-            +1–2 reps ou +temps chaque semaine si la séance est réussie. Test des skills toutes les
-            4 semaines (S4, S8, S12) pour valider la progression.
+      <div className="px-5 mt-6 mb-8">
+        <div className="card-premium p-5 border border-white/[0.05]">
+          <h3 className="font-bold text-base text-white">Plan 12 semaines</h3>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            Progression par paliers : +1–2 répétitions ou +temps chaque semaine en validant avec une
+            technique impeccable. Une semaine dorée (test de progression) a lieu toutes les 4
+            semaines pour redéfinir tes max.
           </p>
-          <div className="mt-3 grid grid-cols-4 gap-1.5">
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
-              <div
-                key={w}
-                className={`aspect-square grid place-items-center rounded-lg text-xs font-bold ${
-                  w % 4 === 0 ? "btn-hero" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                S{w}
-              </div>
-            ))}
+
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => {
+              const isGold = w % 4 === 0;
+              return (
+                <div
+                  key={w}
+                  className={`aspect-square flex flex-col items-center justify-center rounded-xl text-xs font-black transition-all ${
+                    isGold
+                      ? "btn-hero shadow-[0_4px_15px_rgba(139,92,246,0.3)] border border-primary/20 scale-[1.03]"
+                      : "bg-white/[0.02] border border-white/5 text-muted-foreground hover:text-white hover:border-white/10"
+                  }`}
+                >
+                  <span className="text-[10px] font-bold opacity-60">Sem</span>
+                  <span className="text-sm mt-0.5">{w}</span>
+                </div>
+              );
+            })}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Les semaines dorées sont des semaines de test.
+
+          <p className="text-[10px] text-primary font-bold mt-3.5 flex items-center gap-1.5 px-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            Les semaines colorées en dégradé sont des phases de tests physiques (S4, S8, S12).
           </p>
         </div>
       </div>
