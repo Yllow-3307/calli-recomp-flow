@@ -111,44 +111,7 @@ const DEFAULT_STATE: AppState = {
   cardio: [],
   meals: [],
   metrics: [],
-  tests: [
-    {
-      id: "seed-1",
-      date: new Date(Date.now() - 30 * 864e5).toISOString(),
-      testId: "pushups",
-      value: 22,
-    },
-    {
-      id: "seed-2",
-      date: new Date(Date.now() - 30 * 864e5).toISOString(),
-      testId: "pullups",
-      value: 8,
-    },
-    {
-      id: "seed-3",
-      date: new Date(Date.now() - 30 * 864e5).toISOString(),
-      testId: "handstand",
-      value: 15,
-    },
-    {
-      id: "seed-4",
-      date: new Date(Date.now() - 2 * 864e5).toISOString(),
-      testId: "pushups",
-      value: 28,
-    },
-    {
-      id: "seed-5",
-      date: new Date(Date.now() - 2 * 864e5).toISOString(),
-      testId: "pullups",
-      value: 10,
-    },
-    {
-      id: "seed-6",
-      date: new Date(Date.now() - 2 * 864e5).toISOString(),
-      testId: "handstand",
-      value: 22,
-    },
-  ],
+  tests: [],
   water: {},
 };
 
@@ -548,7 +511,6 @@ export function useAppActions() {
       if (testsErr) throw testsErr;
 
       const mergedTests: ProgressTest[] = [
-        ...localState.tests.filter((t) => t.id.startsWith("seed-")),
         ...(remoteTests || []).map((rt) => ({
           id: rt.id,
           date: rt.date,
@@ -559,8 +521,6 @@ export function useAppActions() {
 
       const testsToInsert: ProgressTest[] = [];
       for (const lt of localState.tests) {
-        if (lt.id.startsWith("seed-")) continue;
-
         let exists = false;
         if (isUUID(lt.id)) {
           exists = mergedTests.some((rt) => rt.id === lt.id);

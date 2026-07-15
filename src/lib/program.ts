@@ -251,12 +251,22 @@ export const NUTRITION = SEED.nutritionTargets;
 export const PROGRESSION_TABLE = SEED.progressionTable;
 export const PROGRESSION_RULES = SEED.progressionRules;
 
-export const PROGRESS_TESTS = [
+export interface ProgressTestType {
+  id: string;
+  name: string;
+  unit: string;
+  isSkill?: boolean;
+}
+
+export const PROGRESS_TESTS: ProgressTestType[] = [
+  { id: "handstand", name: "Handstand", unit: "s", isSkill: true },
+  { id: "hspu", name: "HSPU", unit: "reps", isSkill: true },
+  { id: "muscleup", name: "Muscle-up", unit: "reps", isSkill: true },
+  { id: "tuckflag", name: "Tuck flag", unit: "s", isSkill: true },
+  { id: "dragonflag", name: "Dragon flag", unit: "reps", isSkill: true },
+  { id: "lsit", name: "L-sit", unit: "s", isSkill: true },
   { id: "pushups", name: "Pompes max", unit: "reps" },
   { id: "pullups", name: "Tractions max", unit: "reps" },
-  { id: "handstand", name: "Handstand tenu", unit: "s" },
-  { id: "dragonflag", name: "Dragon flag", unit: "reps" },
-  { id: "lsit", name: "L-sit", unit: "s" },
   { id: "run5k", name: "5 km course", unit: "min" },
 ];
 
