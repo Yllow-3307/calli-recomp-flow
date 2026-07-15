@@ -34,35 +34,36 @@
 }
 
 :root {
-  --radius: 0.9rem;
-  /* Dark premium — permanent */
-  --background: oklch(0.16 0.015 250);
-  --foreground: oklch(0.98 0.005 240);
-  --card: oklch(0.21 0.018 250);
-  --card-foreground: oklch(0.98 0.005 240);
-  --popover: oklch(0.21 0.018 250);
-  --popover-foreground: oklch(0.98 0.005 240);
-  --primary: oklch(0.78 0.18 85);
-  --primary-foreground: oklch(0.18 0.02 250);
-  --secondary: oklch(0.28 0.02 250);
-  --secondary-foreground: oklch(0.98 0.005 240);
-  --muted: oklch(0.24 0.015 250);
-  --muted-foreground: oklch(0.68 0.02 250);
-  --accent: oklch(0.65 0.19 25);
-  --accent-foreground: oklch(0.98 0.005 240);
-  --destructive: oklch(0.62 0.24 27);
-  --destructive-foreground: oklch(0.98 0.005 240);
-  --border: oklch(0.28 0.02 250);
-  --input: oklch(0.26 0.02 250);
-  --ring: oklch(0.78 0.18 85);
-  --success: oklch(0.72 0.17 155);
-  --warning: oklch(0.78 0.16 65);
+  --radius: 0.95rem;
 
-  --gradient-primary: linear-gradient(135deg, oklch(0.78 0.18 85), oklch(0.68 0.2 45));
-  --gradient-accent: linear-gradient(135deg, oklch(0.65 0.19 25), oklch(0.55 0.22 15));
-  --gradient-card: linear-gradient(180deg, oklch(0.23 0.02 250), oklch(0.19 0.018 250));
-  --shadow-glow: 0 12px 40px -12px oklch(0.78 0.18 85 / 0.35);
-  --shadow-card: 0 4px 20px -4px oklch(0 0 0 / 0.4);
+  /* Palette Premium Sombre - Violet (#8B5CF6) & Cyan (#06B6D4) & Graphite */
+  --background: #05070f;
+  --foreground: #f8fafc;
+  --card: rgba(15, 23, 42, 0.45);
+  --card-foreground: #f8fafc;
+  --popover: #090d16;
+  --popover-foreground: #f8fafc;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #0f172a;
+  --muted-foreground: #94a3b8;
+  --accent: #06b6d4;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.03);
+  --ring: #8b5cf6;
+  --success: #10b981;
+  --warning: #f59e0b;
+
+  --gradient-primary: linear-gradient(135deg, #8b5cf6, #d946ef);
+  --gradient-accent: linear-gradient(135deg, #06b6d4, #3b82f6);
+  --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  --shadow-glow: 0 8px 30px -6px rgba(139, 92, 246, 0.4);
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
 }
 
 @layer base {
@@ -76,6 +77,10 @@
   }
   body {
     background-color: var(--color-background);
+    background-image:
+      radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.08), transparent 40%),
+      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.06), transparent 40%);
+    background-attachment: fixed;
     color: var(--color-foreground);
     font-family:
       ui-sans-serif,
@@ -90,15 +95,28 @@
   h2,
   h3,
   h4 {
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
   }
 }
 
 @utility card-premium {
   background: var(--gradient-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-2xl);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@utility card-premium-hover {
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.25);
+    box-shadow:
+      0 15px 35px -10px rgba(139, 92, 246, 0.15),
+      var(--shadow-card);
+    transform: translateY(-2px);
+  }
 }
 
 @utility btn-hero {
@@ -106,6 +124,12 @@
   color: var(--primary-foreground);
   box-shadow: var(--shadow-glow);
   font-weight: 700;
+  border-radius: var(--radius-xl);
+  transition: all 0.2s ease;
+  &:active {
+    transform: scale(0.97);
+    filter: brightness(1.1);
+  }
 }
 
 @utility text-gradient {
@@ -113,4 +137,43 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* Premium Gradient CSS */
+.premium-gradient-bg {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(139, 92, 246, 0.2), transparent 35%),
+    radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.15), transparent 35%),
+    radial-gradient(circle at 50% 90%, rgba(249, 115, 22, 0.08), transparent 35%), #05070f;
+}
+
+/* Animations premium */
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+}
+
+@keyframes float-subtle {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-float {
+  animation: float-subtle 4s ease-in-out infinite;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
 }
