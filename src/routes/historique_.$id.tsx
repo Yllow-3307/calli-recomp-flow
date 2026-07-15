@@ -15,6 +15,7 @@ import {
   Video,
   FileText,
   Flame,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -132,55 +133,57 @@ function SessionDetailPage() {
         <Button
           variant="ghost"
           onClick={() => navigate({ to: "/historique" })}
-          className="flex items-center gap-2 pl-0 text-muted-foreground hover:text-foreground mb-4"
+          className="flex items-center gap-2 pl-0 text-muted-foreground hover:text-foreground mb-4 font-bold text-xs"
         >
-          <ChevronLeft className="h-4 w-4" /> Retour à l'historique
+          <ChevronLeft className="h-4 w-4 text-primary" /> Retour à l'historique
         </Button>
       </div>
 
       <div className="px-5 text-center pb-6">
-        <h1 className="text-2xl font-black">{session.day_title}</h1>
-        <p className="text-muted-foreground text-xs mt-1 capitalize">
+        <h1 className="text-2xl font-black text-white">{session.day_title}</h1>
+        <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider mt-1.5 capitalize">
           {formattedDate} • {formattedTime}
         </p>
       </div>
 
       {/* Overview Cards */}
       <div className="px-5 grid grid-cols-2 gap-3">
-        <div className="card-premium p-4">
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" /> Durée
+        <div className="card-premium p-4 border border-white/[0.04]">
+          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-primary" /> Durée
           </p>
-          <p className="text-2xl font-black mt-1 text-gradient">{session.duration} min</p>
+          <p className="text-2xl font-black mt-2 text-gradient">{session.duration} min</p>
         </div>
-        <div className="card-premium p-4">
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Sparkles className="h-3 w-3" /> RPE Moyen
+        <div className="card-premium p-4 border border-white/[0.04]">
+          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-purple-400" /> RPE Moyen
           </p>
-          <p className="text-2xl font-black mt-1 text-gradient">
+          <p className="text-2xl font-black mt-2 text-gradient">
             {session.rpe !== null ? `${session.rpe}/10` : "—"}
           </p>
         </div>
-        <div className="card-premium p-4">
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Dumbbell className="h-3 w-3" /> Séries
+        <div className="card-premium p-4 border border-white/[0.04]">
+          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Dumbbell className="h-3.5 w-3.5 text-accent" /> Séries
           </p>
-          <p className="text-2xl font-black mt-1 text-gradient">
+          <p className="text-2xl font-black mt-2 text-gradient">
             {totalSetsDone}/{totalSetsPlanned}
           </p>
         </div>
-        <div className="card-premium p-4">
-          <p className="text-xs text-muted-foreground flex items-center gap-1">Statut</p>
+        <div className="card-premium p-4 border border-white/[0.04]">
+          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5 text-primary" /> Statut
+          </p>
           <p
             className={cn(
-              "text-lg font-black mt-1 flex items-center gap-1 capitalize",
-              isCompleted ? "text-success" : "text-warning",
+              "text-base font-black mt-2 flex items-center gap-1 capitalize",
+              isCompleted ? "text-emerald-400" : "text-amber-400",
             )}
           >
             {isCompleted ? (
-              <CheckCircle className="h-4 w-4" />
+              <CheckCircle className="h-4 w-4 stroke-[2.5px]" />
             ) : (
-              <AlertCircle className="h-4 w-4" />
+              <AlertCircle className="h-4 w-4 stroke-[2.5px]" />
             )}
             {isCompleted ? "terminée" : "partielle"}
           </p>
@@ -189,11 +192,15 @@ function SessionDetailPage() {
 
       {session.total_volume !== null && session.total_volume > 0 && (
         <div className="px-5 mt-3">
-          <div className="card-premium p-4 flex items-center gap-3">
-            <Flame className="h-5 w-5 text-primary" />
+          <div className="card-premium p-4 flex items-center gap-3 border border-white/[0.04]">
+            <div className="h-9 w-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+              <Flame className="h-5 w-5 text-primary" />
+            </div>
             <div>
-              <p className="text-xs text-muted-foreground">Volume total</p>
-              <p className="text-xl font-black">
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
+                Volume total
+              </p>
+              <p className="text-xl font-black mt-0.5 text-white">
                 {session.total_volume.toLocaleString("fr-FR")} kg
               </p>
             </div>
@@ -204,12 +211,12 @@ function SessionDetailPage() {
       {/* Global Session Notes */}
       {session.notes && (
         <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
             Notes globales
           </p>
-          <div className="card-premium p-4 text-sm text-muted-foreground flex gap-2.5 items-start">
+          <div className="card-premium p-4 text-sm text-slate-300 flex gap-2.5 items-start border border-white/[0.04]">
             <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <p className="italic">{session.notes}</p>
+            <p className="italic leading-relaxed">{session.notes}</p>
           </div>
         </section>
       )}
@@ -217,7 +224,7 @@ function SessionDetailPage() {
       {/* "Je me suis filmé" Notification */}
       {session.filmed && (
         <section className="px-5 mt-3">
-          <div className="card-premium p-4 flex items-center gap-3 text-sm text-primary font-bold">
+          <div className="card-premium p-4 flex items-center gap-3 text-xs text-primary font-black uppercase tracking-wider border border-primary/10 bg-primary/5">
             <Video className="h-5 w-5" />
             <span>Je me suis filmé sur cette séance</span>
           </div>
@@ -226,7 +233,7 @@ function SessionDetailPage() {
 
       {/* Exercises Details */}
       <section className="px-5 mt-5 space-y-4">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold px-1">
           Exercices de la séance
         </p>
 
@@ -246,23 +253,35 @@ function SessionDetailPage() {
               }>) || [];
 
             return (
-              <div key={exLog.id} className="card-premium p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2 border-b border-border/40 pb-2">
+              <div
+                key={exLog.id}
+                className="card-premium p-4 space-y-3.5 border border-white/[0.05]"
+              >
+                <div className="flex items-start justify-between gap-2 border-b border-white/5 pb-3">
                   <div>
-                    <h3 className="font-bold text-base">{exLog.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <h3 className="font-bold text-base text-white">{exLog.name}</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
                       Type :{" "}
-                      {exLog.kind === "time"
-                        ? "Chronométré"
-                        : exLog.kind === "distance"
-                          ? "Cardio"
-                          : "Répétitions"}
-                      {exLog.target_min !== null &&
-                        ` · Cible : ${exLog.target_min}-${exLog.target_max}`}
+                      <span className="text-slate-300 font-semibold">
+                        {exLog.kind === "time"
+                          ? "Chronométré"
+                          : exLog.kind === "distance"
+                            ? "Cardio"
+                            : "Répétitions"}
+                      </span>
+                      {exLog.target_min !== null && (
+                        <>
+                          {" "}
+                          • Cible :{" "}
+                          <span className="text-primary font-bold">
+                            {exLog.target_min}-{exLog.target_max}
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
-                  <span className="text-xs bg-secondary px-2.5 py-1 rounded-full text-muted-foreground font-semibold">
-                    {sets.filter((s) => s.done).length}/{sets.length} séries
+                  <span className="text-[10px] uppercase font-black tracking-wider bg-white/5 border border-white/10 px-3 py-1 rounded-full text-slate-300">
+                    {sets.filter((s) => s.done).length} / {sets.length} séries
                   </span>
                 </div>
 
@@ -272,28 +291,28 @@ function SessionDetailPage() {
                     <div
                       key={setIdx}
                       className={cn(
-                        "flex items-center justify-between text-sm py-1.5 px-2 rounded-lg border",
+                        "flex items-center justify-between text-xs py-2 px-3 rounded-xl border transition-all",
                         set.done
-                          ? "bg-primary/5 border-primary/20 text-foreground"
-                          : "bg-transparent border-border/40 text-muted-foreground line-through opacity-60",
+                          ? "bg-emerald-500/5 border-emerald-500/20 text-white font-semibold"
+                          : "bg-white/[0.01] border-white/5 text-muted-foreground line-through opacity-40",
                       )}
                     >
-                      <span className="text-xs font-semibold uppercase tracking-wider">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
                         Série {setIdx + 1}
                       </span>
                       <div className="flex items-center gap-3">
                         {exLog.kind === "time" ? (
-                          <span>{set.time ?? "—"} s</span>
+                          <span className="font-mono">{set.time ?? "—"} s</span>
                         ) : (
-                          <span>{set.reps ?? "—"} reps</span>
+                          <span className="font-mono">{set.reps ?? "—"} reps</span>
                         )}
 
                         {set.weight !== undefined && set.weight > 0 && (
-                          <span className="font-semibold text-primary">{set.weight} kg</span>
+                          <span className="font-bold text-primary">{set.weight} kg</span>
                         )}
 
                         {set.rpe !== undefined && (
-                          <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                          <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded text-muted-foreground font-black font-mono">
                             RPE {set.rpe}
                           </span>
                         )}
@@ -304,7 +323,7 @@ function SessionDetailPage() {
 
                 {/* Exercise notes */}
                 {exLog.notes && (
-                  <p className="text-xs text-muted-foreground border-l-2 border-primary/40 pl-2 italic mt-1">
+                  <p className="text-xs text-slate-400 border-l-2 border-primary/40 pl-2.5 italic mt-2 bg-white/[0.01] py-1">
                     {exLog.notes}
                   </p>
                 )}
@@ -314,10 +333,10 @@ function SessionDetailPage() {
         )}
       </section>
 
-      <div className="px-5 mt-8 mb-6">
+      <div className="px-5 mt-8 mb-8">
         <Button
           onClick={() => navigate({ to: "/historique" })}
-          className="w-full h-12 rounded-xl btn-hero text-sm font-bold"
+          className="w-full h-14 rounded-2xl btn-hero text-sm font-extrabold shadow-[0_8px_30px_rgba(139,92,246,0.3)]"
         >
           Retourner à l'historique
         </Button>

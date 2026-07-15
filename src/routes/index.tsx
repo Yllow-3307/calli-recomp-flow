@@ -8,6 +8,7 @@ import {
   Play,
   Sparkles,
   Target,
+  Trophy,
 } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, RULES, NUTRITION } from "@/lib/program";
@@ -39,6 +40,40 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { UserCheck } from "lucide-react";
 
+// Badges colorés de type de séance stylisés
+export function SessionTypeBadge({
+  type,
+}: {
+  type: "running" | "push" | "pull" | "legs" | "recovery" | "rest";
+}) {
+  const styles = {
+    push: "bg-orange-500/15 text-orange-400 border-orange-500/25 shadow-[0_0_8px_rgba(249,115,22,0.1)]",
+    pull: "bg-violet-500/15 text-violet-400 border-violet-500/25 shadow-[0_0_8px_rgba(139,92,246,0.1)]",
+    legs: "bg-amber-500/15 text-amber-400 border-amber-500/25 shadow-[0_0_8px_rgba(245,158,11,0.1)]",
+    running: "bg-cyan-500/15 text-cyan-400 border-cyan-500/25 shadow-[0_0_8px_rgba(6,182,212,0.1)]",
+    recovery:
+      "bg-emerald-500/15 text-emerald-400 border-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.1)]",
+    rest: "bg-slate-500/15 text-slate-400 border-slate-500/25 shadow-[0_0_8px_rgba(100,116,139,0.1)]",
+  };
+
+  const labels = {
+    push: "Push",
+    pull: "Pull",
+    legs: "Legs",
+    running: "Running",
+    recovery: "Rest",
+    rest: "Rest",
+  };
+
+  return (
+    <span
+      className={`text-[10px] uppercase font-extrabold tracking-widest px-2.5 py-0.5 rounded-full border ${styles[type] || styles.rest}`}
+    >
+      {labels[type] || "Rest"}
+    </span>
+  );
+}
+
 function Dashboard() {
   const state = useAppState();
   const actions = useAppActions();
@@ -67,108 +102,155 @@ function Dashboard() {
 
   return (
     <PageShell>
-      <TopBar
-        title="Salut 👋"
-        subtitle={new Date().toLocaleDateString("fr-FR", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-        })}
-      />
+      {/* Hero Header avec Gradient Animé Premium */}
+      <div className="relative overflow-hidden rounded-b-[2.5rem] border-b border-white/5 bg-slate-950/80 px-5 pt-8 pb-8 shadow-2xl">
+        {/* Cercles de gradients floutés en arrière-plan */}
+        <div className="absolute -top-12 -left-12 h-44 w-44 rounded-full bg-primary/20 blur-3xl animate-pulse-subtle" />
+        <div className="absolute -bottom-12 -right-12 h-44 w-44 rounded-full bg-accent/20 blur-3xl" />
 
-      {/* Connected User Indicator */}
-      {userEmail && (
-        <div className="px-5 mb-4">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card/40 border border-border/40 rounded-full px-3 py-1.5 w-fit">
-            <UserCheck className="h-3.5 w-3.5 text-primary" />
-            <span>Connecté : {userEmail}</span>
+        <div className="relative z-10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">
+                Tableau de bord
+              </p>
+              <h1 className="text-3xl font-black tracking-tight mt-1 text-gradient">Salut 👋</h1>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-semibold text-muted-foreground bg-white/5 border border-white/10 px-3 py-1.5 rounded-full capitalize">
+                {new Date().toLocaleDateString("fr-FR", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })}
+              </span>
+            </div>
+          </div>
+
+          {/* Connected User Indicator */}
+          {userEmail && (
+            <div className="mt-4">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-white/[0.04] border border-white/5 rounded-full px-3 py-1 w-fit">
+                <UserCheck className="h-3 w-3 text-accent" />
+                <span>Connecté : {userEmail}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Streak / Weekly en mode premium aligné */}
+          <div className="grid grid-cols-3 gap-3 mt-6">
+            <Stat
+              icon={<Flame className="h-4 w-4 text-orange-500" />}
+              label="Streak"
+              value={`${streak}j`}
+              accent
+            />
+            <Stat
+              icon={<Sparkles className="h-4 w-4 text-purple-400" />}
+              label="Semaine"
+              value={`${done}/${daysGoal}`}
+            />
+            <Stat
+              icon={<Footprints className="h-4 w-4 text-cyan-400" />}
+              label="Course"
+              value={`${km.toFixed(1)} km`}
+            />
           </div>
         </div>
-      )}
-
-      {/* Streak / Weekly */}
-      <div className="px-5 grid grid-cols-3 gap-3">
-        <Stat icon={<Flame className="h-4 w-4" />} label="Streak" value={`${streak}j`} accent />
-        <Stat
-          icon={<Sparkles className="h-4 w-4" />}
-          label="Semaine"
-          value={`${done}/${daysGoal}`}
-        />
-        <Stat
-          icon={<Footprints className="h-4 w-4" />}
-          label="Course"
-          value={`${km.toFixed(1)} km`}
-        />
       </div>
 
       {showTestBanner && (
-        <div className="px-5 mt-4">
+        <div className="px-5 mt-5">
           <Link
             to="/progression"
-            className="card-premium p-3 flex items-center gap-3 ring-1 ring-primary/40"
+            className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-primary hover:border-primary/40"
+            style={{ backgroundImage: "var(--gradient-card)" }}
           >
-            <div className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0">
-              <Target className="h-4 w-4" />
+            <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0 animate-float">
+              <Target className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold">Semaine de test S{week}</p>
-              <p className="text-[11px] text-muted-foreground">Enregistre tes max reps & temps.</p>
+              <p className="text-sm font-black text-gradient">Semaine de test S{week}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Enregistre tes max reps & temps.
+              </p>
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </Link>
         </div>
       )}
 
       {/* Today's session */}
-      <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-          Séance du jour
-        </p>
+      <section className="px-5 mt-6">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
+            Séance du jour
+          </p>
+          <SessionTypeBadge type={today.type} />
+        </div>
         <Link
           to="/seance"
-          className="card-premium block p-5 relative overflow-hidden"
+          className="card-premium card-premium-hover block p-5 relative overflow-hidden group border border-white/[0.08]"
           style={{ backgroundImage: "var(--gradient-card)" }}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* Lueur de survol subtile */}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+          <div className="flex items-start justify-between gap-3 relative z-10">
             <div className="min-w-0">
-              <div className="text-4xl mb-2">{today.emoji}</div>
-              <p className="text-xs text-muted-foreground">{today.day}</p>
-              <h2 className="text-xl font-black mt-0.5">{today.title}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{today.summary}</p>
-              <p className="text-xs text-muted-foreground mt-2">⏱️ ~{today.duration} min</p>
+              <div className="text-4xl mb-3">{today.emoji}</div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {today.day}
+              </p>
+              <h2 className="text-xl font-black mt-1 group-hover:text-primary transition-colors">
+                {today.title}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{today.summary}</p>
+              <div className="flex items-center gap-2 mt-3 text-xs font-semibold text-muted-foreground">
+                <span className="bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                  ⏱️ ~{today.duration} min
+                </span>
+              </div>
             </div>
-            <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0">
-              <Play className="h-5 w-5 fill-current" />
+            <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0 shadow-[0_4px_20px_rgba(139,92,246,0.5)] group-hover:scale-105 transition-transform duration-300">
+              <Play className="h-5 w-5 fill-current ml-0.5" />
             </div>
           </div>
         </Link>
       </section>
 
       {/* Nutrition rings */}
-      <section className="px-5 mt-5 grid grid-cols-2 gap-3">
-        <div className="card-premium p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <Beef className="h-4 w-4" /> Protéines
+      <section className="px-5 mt-6 grid grid-cols-2 gap-3">
+        <div className="card-premium p-4 border border-white/[0.05]">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+            <Beef className="h-4 w-4 text-primary" /> Protéines
           </div>
-          <p className="mt-2 text-2xl font-black">
+          <p className="mt-3 text-2xl font-black tracking-tight">
             {protein}
-            <span className="text-sm text-muted-foreground font-medium"> / {proteinTarget}g</span>
+            <span className="text-xs text-muted-foreground font-medium"> / {proteinTarget}g</span>
           </p>
-          <Progress value={Math.min(100, (protein / proteinTarget) * 100)} className="mt-2 h-1.5" />
-        </div>
-        <div className="card-premium p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <Droplet className="h-4 w-4" /> Eau
+          <div className="mt-2.5 h-2 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-primary to-pink-500 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, (protein / proteinTarget) * 100)}%` }}
+            />
           </div>
-          <p className="mt-2 text-2xl font-black">
-            {water.toFixed(1)}
-            <span className="text-sm text-muted-foreground font-medium"> / {waterTarget}L</span>
-          </p>
-          <div className="mt-2 flex gap-1.5">
+        </div>
+        <div className="card-premium p-4 border border-white/[0.05] flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+              <Droplet className="h-4 w-4 text-accent" /> Eau
+            </div>
+            <p className="mt-3 text-2xl font-black tracking-tight">
+              {water.toFixed(1)}
+              <span className="text-xs text-muted-foreground font-medium"> / {waterTarget}L</span>
+            </p>
+          </div>
+          <div className="mt-3 flex gap-1.5">
             <Button
               size="sm"
               variant="secondary"
-              className="flex-1 h-7 text-xs"
+              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-white/10 text-foreground border border-white/5 rounded-lg"
               onClick={() => actions.addWater(0.25)}
             >
               +25cl
@@ -176,7 +258,7 @@ function Dashboard() {
             <Button
               size="sm"
               variant="secondary"
-              className="flex-1 h-7 text-xs"
+              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-white/10 text-foreground border border-white/5 rounded-lg"
               onClick={() => actions.addWater(0.5)}
             >
               +50cl
@@ -186,12 +268,14 @@ function Dashboard() {
       </section>
 
       {/* Rules of gold */}
-      <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Règles d'or</p>
-        <div className="card-premium p-4 space-y-2">
-          {RULES.map((r) => (
-            <p key={r} className="text-sm flex items-start gap-2">
-              <span className="text-primary mt-0.5">▸</span>
+      <section className="px-5 mt-6">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
+          Règles d'or
+        </p>
+        <div className="card-premium p-5 space-y-3 border border-white/[0.05]">
+          {RULES.map((r, idx) => (
+            <p key={r} className="text-sm flex items-start gap-2.5 text-slate-300 leading-relaxed">
+              <span className="text-primary font-black mt-0.5 text-base">0{idx + 1}</span>
               <span>{r}</span>
             </p>
           ))}
@@ -199,11 +283,22 @@ function Dashboard() {
       </section>
 
       {/* Quick links */}
-      <section className="px-5 mt-5 space-y-2">
-        <QuickLink to="/historique" label="Historique des séances" />
-        <QuickLink to="/mesures" label="Mesures & photos" />
-        <QuickLink to="/progression" label="Progression 3 mois" />
-        <QuickLink to="/programme" label="Programme complet" />
+      <section className="px-5 mt-6 mb-8 space-y-2">
+        <QuickLink
+          to="/historique"
+          label="Historique des séances"
+          icon={<Trophy className="h-4 w-4 text-purple-400" />}
+        />
+        <QuickLink
+          to="/mesures"
+          label="Mesures & photos"
+          icon={<Target className="h-4 w-4 text-cyan-400" />}
+        />
+        <QuickLink
+          to="/progression"
+          label="Progression 3 mois"
+          icon={<Sparkles className="h-4 w-4 text-amber-400" />}
+        />
       </section>
     </PageShell>
   );
@@ -221,21 +316,37 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <div className={`card-premium p-3 ${accent ? "ring-1 ring-primary/40" : ""}`}>
-      <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+    <div
+      className={`card-premium p-3 text-center border ${accent ? "border-primary/20 bg-white/[0.03]" : "border-white/[0.05]"}`}
+    >
+      <div className="flex items-center justify-center gap-1 text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
         {icon}
         {label}
       </div>
-      <p className={`mt-1 text-lg font-black ${accent ? "text-gradient" : ""}`}>{value}</p>
+      <p
+        className={`mt-2 text-xl font-black tracking-tight ${accent ? "text-gradient" : "text-white"}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
-function QuickLink({ to, label }: { to: string; label: string }) {
+function QuickLink({ to, label, icon }: { to: string; label: string; icon: React.ReactNode }) {
   return (
-    <Link to={to} className="card-premium flex items-center justify-between p-4">
-      <span className="font-semibold">{label}</span>
-      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+    <Link
+      to={to}
+      className="card-premium card-premium-hover flex items-center justify-between p-4 border border-white/[0.05] group"
+    >
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+          {icon}
+        </div>
+        <span className="font-semibold text-sm text-slate-200 group-hover:text-white transition-colors">
+          {label}
+        </span>
+      </div>
+      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
     </Link>
   );
 }

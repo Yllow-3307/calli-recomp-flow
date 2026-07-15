@@ -213,18 +213,18 @@ function HistoriquePage() {
           </div>
         ) : items.length === 0 ? (
           <div className="card-premium p-8 text-center space-y-4">
-            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary animate-float">
               <Dumbbell className="h-6 w-6" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-bold text-lg">Aucune séance</h3>
+              <h3 className="font-bold text-lg text-white">Aucune séance</h3>
               <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                 Aucune séance enregistrée pour le moment. Commence ta première séance !
               </p>
             </div>
             <Link
               to="/seance"
-              className="inline-flex h-11 items-center justify-center rounded-xl btn-hero px-6 text-sm font-bold"
+              className="inline-flex h-11 items-center justify-center rounded-xl btn-hero px-6 text-sm font-bold shadow-[0_4px_15px_rgba(139,92,246,0.3)]"
             >
               Lancer une séance
             </Link>
@@ -235,30 +235,30 @@ function HistoriquePage() {
               const isWorkout = item.type === "workout";
 
               return (
-                <div key={item.id} className="space-y-2">
-                  <div className="flex items-center justify-between px-1 text-xs text-muted-foreground font-medium">
+                <div key={item.id} className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1 text-[10px] text-muted-foreground font-black uppercase tracking-wider">
                     <span className="capitalize">{formatHeaderDate(item.date)}</span>
                     <span>{formatTime(item.date)}</span>
                   </div>
 
-                  <div className="card-premium p-4 relative overflow-hidden group hover:border-primary/40 transition-all duration-300">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-2">
+                  <div className="card-premium p-4 relative overflow-hidden group hover:border-primary/30 transition-all duration-300 border border-white/[0.04]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 space-y-3">
                         {/* Tags / Badges */}
                         <div className="flex flex-wrap gap-1.5 items-center">
                           {isWorkout ? (
                             <>
                               <span
                                 className={cn(
-                                  "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-extrabold",
+                                  "text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded-full font-black border",
                                   item.category === "Push" &&
-                                    "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+                                    "bg-orange-500/15 text-orange-400 border-orange-500/25 shadow-[0_0_8px_rgba(249,115,22,0.1)]",
                                   item.category === "Pull" &&
-                                    "bg-purple-500/10 text-purple-400 border border-purple-500/20",
+                                    "bg-violet-500/15 text-violet-400 border-violet-500/25 shadow-[0_0_8px_rgba(139,92,246,0.1)]",
                                   item.category === "Legs" &&
-                                    "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                                    "bg-amber-500/15 text-amber-400 border-amber-500/25 shadow-[0_0_8px_rgba(245,158,11,0.1)]",
                                   item.category === "Autre" &&
-                                    "bg-muted text-muted-foreground border border-border",
+                                    "bg-slate-500/15 text-slate-400 border-slate-500/25 shadow-[0_0_8px_rgba(100,116,139,0.1)]",
                                 )}
                               >
                                 {item.category}
@@ -266,33 +266,33 @@ function HistoriquePage() {
 
                               <span
                                 className={cn(
-                                  "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1",
+                                  "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-black flex items-center gap-1 border",
                                   item.status === "terminée"
-                                    ? "bg-success/10 text-success border border-success/20"
-                                    : "bg-warning/10 text-warning border border-warning/20",
+                                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.1)]"
+                                    : "bg-amber-500/15 text-amber-400 border-amber-500/25 shadow-[0_0_8px_rgba(245,158,11,0.1)]",
                                 )}
                               >
                                 {item.status === "terminée" ? (
-                                  <CheckCircle className="h-3 w-3" />
+                                  <CheckCircle className="h-3 w-3 stroke-[2.5px]" />
                                 ) : (
-                                  <AlertCircle className="h-3 w-3" />
+                                  <AlertCircle className="h-3 w-3 stroke-[2.5px]" />
                                 )}
                                 {item.status}
                               </span>
                             </>
                           ) : (
                             <>
-                              <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-extrabold bg-orange-500/10 text-orange-400 border border-orange-500/20 flex items-center gap-1">
+                              <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-black bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 shadow-[0_0_8px_rgba(6,182,212,0.1)] flex items-center gap-1">
                                 <Heart className="h-3 w-3" /> Running
                               </span>
-                              <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-extrabold bg-success/10 text-success border border-success/20 flex items-center gap-1">
-                                <CheckCircle className="h-3 w-3" /> terminée
+                              <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.1)] flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3 stroke-[2.5px]" /> terminée
                               </span>
                             </>
                           )}
 
                           {isWorkout && item.filmed && (
-                            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black flex items-center gap-1">
                               <Video className="h-3 w-3" /> Vidéo
                             </span>
                           )}
@@ -300,33 +300,38 @@ function HistoriquePage() {
 
                         {/* Title & Stats */}
                         <div>
-                          <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors">
+                          <h3 className="font-bold text-base leading-snug text-white group-hover:text-primary transition-colors">
                             {item.title}
                           </h3>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5" /> {item.duration} min
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-slate-400 font-medium">
+                            <span className="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded">
+                              <Clock className="h-3.5 w-3.5 text-primary" /> {item.duration} min
                             </span>
                             {isWorkout ? (
                               <>
-                                <span className="flex items-center gap-1">
-                                  <Dumbbell className="h-3.5 w-3.5" /> {item.setsDone}/
+                                <span className="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded">
+                                  <Dumbbell className="h-3.5 w-3.5 text-accent" /> {item.setsDone}/
                                   {item.setsPlanned} séries
                                 </span>
                                 {item.rpe !== null && (
-                                  <span className="flex items-center gap-1">
-                                    <Sparkles className="h-3.5 w-3.5" /> RPE {item.rpe}/10
+                                  <span className="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded font-mono">
+                                    RPE {item.rpe}
                                   </span>
                                 )}
                               </>
                             ) : (
                               <>
                                 {item.distance !== null && (
-                                  <span className="flex items-center gap-1">
-                                    <Timer className="h-3.5 w-3.5" /> {item.distance} km
+                                  <span className="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded font-bold text-accent">
+                                    <Timer className="h-3.5 w-3.5 text-cyan-400" /> {item.distance}{" "}
+                                    km
                                   </span>
                                 )}
-                                {item.pace && <span className="font-mono">{item.pace} /km</span>}
+                                {item.pace && (
+                                  <span className="font-mono bg-white/5 border border-white/5 px-2 py-0.5 rounded">
+                                    {item.pace} /km
+                                  </span>
+                                )}
                               </>
                             )}
                           </div>
@@ -334,7 +339,7 @@ function HistoriquePage() {
 
                         {/* Notes */}
                         {item.notes && (
-                          <p className="text-xs text-muted-foreground border-l-2 border-border pl-2 italic line-clamp-2 mt-1">
+                          <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2.5 italic line-clamp-2 mt-2 leading-relaxed bg-white/[0.01] py-1 pr-1 rounded-r">
                             {item.notes}
                           </p>
                         )}
@@ -345,7 +350,7 @@ function HistoriquePage() {
                         <Link
                           to="/historique/$id"
                           params={{ id: item.id }}
-                          className="shrink-0 h-9 w-9 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/20 hover:text-primary transition-all self-center"
+                          className="shrink-0 h-9 w-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:bg-primary/10 group-hover:border-primary/20 transition-all self-center shadow"
                         >
                           <ChevronRight className="h-5 w-5" />
                         </Link>
