@@ -147,8 +147,10 @@ function RootComponent() {
         "/nutrition",
         "/mesures",
         "/parametres",
+        "/historique",
       ];
-      const isPrivateRoute = privateRoutes.includes(location.pathname);
+      const isPrivateRoute =
+        privateRoutes.includes(location.pathname) || location.pathname.startsWith("/historique");
 
       if (!session && isPrivateRoute) {
         navigate({ to: "/connexion" });

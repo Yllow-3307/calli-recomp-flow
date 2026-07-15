@@ -200,6 +200,7 @@ function Dashboard() {
 
       {/* Quick links */}
       <section className="px-5 mt-5 space-y-2">
+        <QuickLink to="/historique" label="Historique des séances" />
         <QuickLink to="/mesures" label="Mesures & photos" />
         <QuickLink to="/progression" label="Progression 3 mois" />
         <QuickLink to="/programme" label="Programme complet" />

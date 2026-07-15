@@ -166,6 +166,13 @@ function ParamsPage() {
           )}
         </div>
 
+        <Link
+          to="/historique"
+          className="card-premium p-4 block text-center font-semibold text-primary"
+        >
+          Consulter l'historique des séances →
+        </Link>
+
         <Link to="/mesures" className="card-premium p-4 block text-center font-semibold">
           Enregistrer mesures & photos →
         </Link>
