@@ -167,6 +167,13 @@ function ParamsPage() {
         </div>
 
         <Link
+          to="/skills"
+          className="card-premium p-4 block text-center font-semibold text-secondary"
+        >
+          Suivre mes Skills Sportifs →
+        </Link>
+
+        <Link
           to="/historique"
           className="card-premium p-4 block text-center font-semibold text-primary"
         >
