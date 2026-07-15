@@ -15,8 +15,10 @@ import { Route as ProgrammeRouteImport } from './routes/programme'
 import { Route as ParametresRouteImport } from './routes/parametres'
 import { Route as NutritionRouteImport } from './routes/nutrition'
 import { Route as MesuresRouteImport } from './routes/mesures'
+import { Route as HistoriqueRouteImport } from './routes/historique'
 import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HistoriqueIdRouteImport } from './routes/historique_.$id'
 
 const SeanceRoute = SeanceRouteImport.update({
   id: '/seance',
@@ -48,6 +50,11 @@ const MesuresRoute = MesuresRouteImport.update({
   path: '/mesures',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoriqueRoute = HistoriqueRouteImport.update({
+  id: '/historique',
+  path: '/historique',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnexionRoute = ConnexionRouteImport.update({
   id: '/connexion',
   path: '/connexion',
@@ -58,80 +65,99 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoriqueIdRoute = HistoriqueIdRouteImport.update({
+  id: '/historique_/$id',
+  path: '/historique/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connexion': typeof ConnexionRoute
+  '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/historique/$id': typeof HistoriqueIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connexion': typeof ConnexionRoute
+  '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/historique/$id': typeof HistoriqueIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/connexion': typeof ConnexionRoute
+  '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/historique_/$id': typeof HistoriqueIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/connexion'
+    | '/historique'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/historique/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/connexion'
+    | '/historique'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/historique/$id'
   id:
     | '__root__'
     | '/'
     | '/connexion'
+    | '/historique'
     | '/mesures'
     | '/nutrition'
     | '/parametres'
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/historique_/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnexionRoute: typeof ConnexionRoute
+  HistoriqueRoute: typeof HistoriqueRoute
   MesuresRoute: typeof MesuresRoute
   NutritionRoute: typeof NutritionRoute
   ParametresRoute: typeof ParametresRoute
   ProgrammeRoute: typeof ProgrammeRoute
   ProgressionRoute: typeof ProgressionRoute
   SeanceRoute: typeof SeanceRoute
+  HistoriqueIdRoute: typeof HistoriqueIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -178,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MesuresRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/historique': {
+      id: '/historique'
+      path: '/historique'
+      fullPath: '/historique'
+      preLoaderRoute: typeof HistoriqueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connexion': {
       id: '/connexion'
       path: '/connexion'
@@ -192,18 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/historique_/$id': {
+      id: '/historique_/$id'
+      path: '/historique/$id'
+      fullPath: '/historique/$id'
+      preLoaderRoute: typeof HistoriqueIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnexionRoute: ConnexionRoute,
+  HistoriqueRoute: HistoriqueRoute,
   MesuresRoute: MesuresRoute,
   NutritionRoute: NutritionRoute,
   ParametresRoute: ParametresRoute,
   ProgrammeRoute: ProgrammeRoute,
   ProgressionRoute: ProgressionRoute,
   SeanceRoute: SeanceRoute,
+  HistoriqueIdRoute: HistoriqueIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
