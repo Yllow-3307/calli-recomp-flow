@@ -1,5 +1,14 @@
 import { Link } from "@tanstack/react-router";
-import { Home, Dumbbell, TrendingUp, Apple, Ruler, Settings, CalendarDays } from "lucide-react";
+import {
+  Home,
+  Dumbbell,
+  TrendingUp,
+  Apple,
+  Ruler,
+  Settings,
+  CalendarDays,
+  History,
+} from "lucide-react";
 
 const items = [
   { to: "/", label: "Accueil", icon: Home },
@@ -38,12 +47,22 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           <h1 className="truncate text-2xl font-black tracking-tight">{title}</h1>
           {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
-        <Link
-          to="/parametres"
-          className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground"
-        >
-          <Settings className="h-5 w-5" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/historique"
+            className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:text-primary transition-colors"
+            title="Historique des séances"
+          >
+            <History className="h-5 w-5" />
+          </Link>
+          <Link
+            to="/parametres"
+            className="shrink-0 grid place-items-center h-10 w-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground"
+            title="Paramètres"
+          >
+            <Settings className="h-5 w-5" />
+          </Link>
+        </div>
       </div>
     </header>
   );
