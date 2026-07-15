@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SeanceRouteImport } from './routes/seance'
 import { Route as ProgressionRouteImport } from './routes/progression'
 import { Route as ProgrammeRouteImport } from './routes/programme'
@@ -20,6 +21,11 @@ import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HistoriqueIdRouteImport } from './routes/historique_.$id'
 
+const SkillsRoute = SkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SeanceRoute = SeanceRouteImport.update({
   id: '/seance',
   path: '/seance',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/skills': typeof SkillsRoute
   '/historique/$id': typeof HistoriqueIdRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/skills': typeof SkillsRoute
   '/historique/$id': typeof HistoriqueIdRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
   '/seance': typeof SeanceRoute
+  '/skills': typeof SkillsRoute
   '/historique_/$id': typeof HistoriqueIdRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/skills'
     | '/historique/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/skills'
     | '/historique/$id'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/programme'
     | '/progression'
     | '/seance'
+    | '/skills'
     | '/historique_/$id'
   fileRoutesById: FileRoutesById
 }
@@ -157,11 +169,19 @@ export interface RootRouteChildren {
   ProgrammeRoute: typeof ProgrammeRoute
   ProgressionRoute: typeof ProgressionRoute
   SeanceRoute: typeof SeanceRoute
+  SkillsRoute: typeof SkillsRoute
   HistoriqueIdRoute: typeof HistoriqueIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/skills': {
+      id: '/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof SkillsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/seance': {
       id: '/seance'
       path: '/seance'
@@ -245,6 +265,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProgrammeRoute: ProgrammeRoute,
   ProgressionRoute: ProgressionRoute,
   SeanceRoute: SeanceRoute,
+  SkillsRoute: SkillsRoute,
   HistoriqueIdRoute: HistoriqueIdRoute,
 }
 export const routeTree = rootRouteImport
