@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { type Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { SKILLS_GUIDE, type SkillGuide } from "./program";
 
 export interface Profile {
   weight: number;
@@ -94,6 +95,8 @@ interface AppState {
   metrics: BodyMetric[];
   tests: ProgressTest[];
   water: Record<string, number>;
+  skillNotes: Record<string, string>;
+  skillStatuses: Record<string, "non commencé" | "en cours" | "proche" | "validé" | "auto">;
 }
 
 const DEFAULT_STATE: AppState = {
@@ -113,6 +116,8 @@ const DEFAULT_STATE: AppState = {
   metrics: [],
   tests: [],
   water: {},
+  skillNotes: {},
+  skillStatuses: {},
 };
 
 const KEY = "calli-recomp-v2";
@@ -142,6 +147,8 @@ function load(): AppState {
       ...DEFAULT_STATE,
       ...parsed,
       profile: { ...DEFAULT_STATE.profile, ...parsed.profile },
+      skillNotes: parsed.skillNotes || {},
+      skillStatuses: parsed.skillStatuses || {},
     };
   } catch {
     return DEFAULT_STATE;
@@ -1077,7 +1084,84 @@ export function useAppActions() {
         }
       }, 0);
     }, []),
+    setSkillNote: useCallback((skillId: string, note: string) => {
+      setState((s) => ({
+        ...s,
+        skillNotes: { ...s.skillNotes, [skillId]: note },
+      }));
+    }, []),
+    setSkillStatus: useCallback(
+      (skillId: string, status: "non commencé" | "en cours" | "proche" | "validé" | "auto") => {
+        setState((s) => ({
+          ...s,
+          skillStatuses: { ...s.skillStatuses, [skillId]: status },
+        }));
+      },
+      [],
+    ),
   };
+}
+
+export interface SkillPracticeInfo {
+  lastPracticeDate?: string;
+  daysAgo?: number;
+  lastPerfSummary?: string;
+}
+
+export function getSkillPracticeInfo(
+  skillId: string,
+  workouts: WorkoutLog[],
+): SkillPracticeInfo | null {
+  const guide = SKILLS_GUIDE.find((g) => g.id === skillId);
+  if (!guide) return null;
+
+  const sortedWorkouts = [...workouts].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+
+  for (const w of sortedWorkouts) {
+    const matchingEx = w.exercises.find((e) =>
+      guide.matchingExercises.some((m) => e.name.toLowerCase().includes(m.toLowerCase())),
+    );
+
+    if (matchingEx) {
+      const doneSets = matchingEx.sets.filter((s) => s.done);
+      if (doneSets.length === 0) continue;
+
+      const setsCount = doneSets.length;
+      const isTime = matchingEx.kind === "time";
+      const values = doneSets
+        .map((s) => (isTime ? s.time : s.reps))
+        .filter((v): v is number => v !== undefined);
+
+      let perfStr = "";
+      if (values.length > 0) {
+        const allSame = values.every((v) => v === values[0]);
+        if (allSame) {
+          perfStr = `${setsCount}×${values[0]}${isTime ? "s" : ""}`;
+        } else {
+          perfStr = values.map((v) => `${v}${isTime ? "s" : ""}`).join("/");
+        }
+      } else {
+        perfStr = `${setsCount} séries`;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const practiceDay = new Date(w.date);
+      practiceDay.setHours(0, 0, 0, 0);
+      const diffTime = today.getTime() - practiceDay.getTime();
+      const daysAgo = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+      return {
+        lastPracticeDate: w.date,
+        daysAgo,
+        lastPerfSummary: `${matchingEx.name} (${perfStr})`,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function todayKey() {

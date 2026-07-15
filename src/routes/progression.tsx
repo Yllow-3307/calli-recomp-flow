@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { PROGRESS_TESTS, PROGRAM, type ProgressTestType } from "@/lib/program";
@@ -22,6 +22,7 @@ import {
   Sparkles,
   Plus,
   History,
+  ChevronRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -95,6 +96,30 @@ function ProgressionPage() {
   return (
     <PageShell>
       <TopBar title="Progression" subtitle={`Semaine ${week}/12 · programme 3 mois`} />
+
+      {/* Prominent link to Skills page */}
+      <div className="px-5 mb-4">
+        <Link
+          to="/skills"
+          className="card-premium block p-4 border border-primary/20 hover:border-primary/40 transition-all shadow-lg"
+          style={{ backgroundImage: "var(--gradient-card)" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                <Award className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-foreground">Suivi des Skills Sportifs</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Gère tes objectifs, niveaux et notes de calisthénie.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+          </div>
+        </Link>
+      </div>
 
       {testWeek && (
         <div className="px-5">
