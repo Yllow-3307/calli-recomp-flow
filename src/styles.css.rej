@@ -1,0 +1,146 @@
+diff a/src/styles.css b/src/styles.css	(rejected hunks)
+@@ -36,14 +36,14 @@
+ :root {
+   --radius: 0.95rem;
+ 
+-  /* Palette Premium Sombre - Violet (#8B5CF6) & Cyan (#06B6D4) & Graphite */
++  /* Palette "Coral Glass" — Corail (#FF6B4A) → Rose (#FF4D8D), Cyan (#06B6D4), Graphite */
+   --background: #05070f;
+   --foreground: #f8fafc;
+   --card: rgba(15, 23, 42, 0.45);
+   --card-foreground: #f8fafc;
+   --popover: #090d16;
+   --popover-foreground: #f8fafc;
+-  --primary: #8b5cf6;
++  --primary: #ff6b4a;
+   --primary-foreground: #ffffff;
+   --secondary: #1e293b;
+   --secondary-foreground: #f8fafc;
+@@ -55,14 +55,14 @@
+   --destructive-foreground: #ffffff;
+   --border: rgba(255, 255, 255, 0.08);
+   --input: rgba(255, 255, 255, 0.03);
+-  --ring: #8b5cf6;
++  --ring: #ff6b4a;
+   --success: #10b981;
+   --warning: #f59e0b;
+ 
+-  --gradient-primary: linear-gradient(135deg, #8b5cf6, #d946ef);
++  --gradient-primary: linear-gradient(135deg, #ff6b4a, #ff4d8d);
+   --gradient-accent: linear-gradient(135deg, #06b6d4, #3b82f6);
+   --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+-  --shadow-glow: 0 8px 30px -6px rgba(139, 92, 246, 0.4);
++  --shadow-glow: 0 8px 30px -6px rgba(255, 107, 74, 0.45);
+   --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+ }
+ 
+@@ -77,10 +77,19 @@
+   }
+   body {
+     background-color: var(--color-background);
++    /* Lueurs chaudes + texture marbre fondu dans le fond nuit */
+     background-image:
+-      radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.08), transparent 40%),
+-      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.06), transparent 40%);
++      radial-gradient(circle at 10% 20%, rgba(255, 107, 74, 0.12), transparent 40%),
++      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.07), transparent 40%),
++      radial-gradient(circle at 85% 12%, rgba(255, 77, 141, 0.09), transparent 35%),
++      url("/marble.jpg");
+     background-attachment: fixed;
++    background-size:
++      auto,
++      auto,
++      auto,
++      cover;
++    background-blend-mode: normal, normal, normal, screen;
+     color: var(--color-foreground);
+     font-family:
+       ui-sans-serif,
+@@ -111,9 +120,9 @@
+ 
+ @utility card-premium-hover {
+   &:hover {
+-    border-color: rgba(139, 92, 246, 0.25);
++    border-color: rgba(255, 107, 74, 0.3);
+     box-shadow:
+-      0 15px 35px -10px rgba(139, 92, 246, 0.15),
++      0 15px 35px -10px rgba(255, 107, 74, 0.18),
+       var(--shadow-card);
+     transform: translateY(-2px);
+   }
+@@ -142,9 +151,9 @@
+ /* Premium Gradient CSS */
+ .premium-gradient-bg {
+   background:
+-    radial-gradient(circle at 20% 10%, rgba(139, 92, 246, 0.2), transparent 35%),
++    radial-gradient(circle at 20% 10%, rgba(255, 107, 74, 0.22), transparent 35%),
+     radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.15), transparent 35%),
+-    radial-gradient(circle at 50% 90%, rgba(249, 115, 22, 0.08), transparent 35%), #05070f;
++    radial-gradient(circle at 50% 90%, rgba(255, 77, 141, 0.1), transparent 35%), #05070f;
+ }
+ 
+ /* Animations premium */
+@@ -222,7 +231,7 @@
+ 
+ @layer base {
+   ::selection {
+-    background: rgba(139, 92, 246, 0.35);
++    background: rgba(255, 77, 141, 0.35);
+     color: #ffffff;
+   }
+   body {
+@@ -236,7 +245,7 @@
+     height: 8px;
+   }
+   ::-webkit-scrollbar-thumb {
+-    background: rgba(139, 92, 246, 0.25);
++    background: rgba(255, 107, 74, 0.3);
+     border-radius: 8px;
+   }
+   ::-webkit-scrollbar-track {
+@@ -259,3 +268,45 @@
+     }
+   }
+ }
++
++/* ============ Coral Glass : panel héros corail + bouteille d'eau ============ */
++
++@utility panel-coral {
++  background:
++    radial-gradient(circle at 85% 0%, rgba(255, 77, 141, 0.3), transparent 55%),
++    radial-gradient(circle at 0% 100%, rgba(255, 140, 60, 0.28), transparent 55%),
++    linear-gradient(
++      150deg,
++      rgba(255, 107, 74, 0.22),
++      rgba(255, 77, 141, 0.08) 60%,
++      rgba(255, 255, 255, 0.02)
++    );
++  border: 1px solid rgba(255, 120, 90, 0.28);
++  box-shadow: 0 14px 40px -12px rgba(255, 90, 80, 0.35);
++  backdrop-filter: blur(14px);
++  -webkit-backdrop-filter: blur(14px);
++  border-radius: var(--radius-2xl);
++  transition:
++    border-color 0.3s ease,
++    box-shadow 0.3s ease;
++}
++
++/* Vagues de la bouteille d'eau */
++@keyframes wb-sway {
++  from {
++    transform: translateX(0);
++  }
++  to {
++    transform: translateX(-60px);
++  }
++}
++
++.wb-wave {
++  animation: wb-sway 3.2s ease-in-out infinite alternate;
++  transform-box: fill-box;
++}
++
++.wb-wave-slow {
++  animation-duration: 5.6s;
++  animation-direction: alternate-reverse;
++}

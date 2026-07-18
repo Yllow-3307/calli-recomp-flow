@@ -25,6 +25,7 @@ import {
 } from "@/lib/store";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { WaterBottle } from "@/components/WaterBottle";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -188,10 +189,10 @@ function Dashboard() {
           </p>
           <SessionTypeBadge type={today.type} />
         </div>
+        {/* Panel héros "Coral Glass" (inspi app running) */}
         <Link
           to="/seance"
-          className="card-premium card-premium-hover block p-5 relative overflow-hidden group border border-white/[0.08]"
-          style={{ backgroundImage: "var(--gradient-card)" }}
+          className="panel-coral card-premium-hover block p-5 relative overflow-hidden group"
         >
           {/* Lueur de survol subtile */}
           <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -212,45 +213,50 @@ function Dashboard() {
                 </span>
               </div>
             </div>
-            <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0 shadow-[0_4px_20px_rgba(139,92,246,0.5)] group-hover:scale-105 transition-transform duration-300">
+            <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0 shadow-[0_4px_20px_rgba(255,107,74,0.55)] group-hover:scale-105 transition-transform duration-300">
               <Play className="h-5 w-5 fill-current ml-0.5" />
             </div>
           </div>
         </Link>
       </section>
 
-      {/* Nutrition rings */}
+      {/* Nutrition — cartes colorées par catégorie (inspi dashboard) */}
       <section className="px-5 mt-6 grid grid-cols-2 gap-3">
-        <div className="card-premium p-4 border border-white/[0.05]">
+        {/* Protéines · lime */}
+        <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
-            <Beef className="h-4 w-4 text-primary" /> Protéines
+            <Beef className="h-4 w-4 text-lime-400" /> Protéines
           </div>
-          <p className="mt-3 text-2xl font-black tracking-tight">
+          <p className="mt-3 text-2xl font-black tracking-tight text-lime-200">
             {protein}
             <span className="text-xs text-muted-foreground font-medium"> / {proteinTarget}g</span>
           </p>
           <div className="mt-2.5 h-2 rounded-full bg-white/5 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-primary to-pink-500 rounded-full transition-all duration-500"
+              className="h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(183,240,76,0.5)]"
               style={{ width: `${Math.min(100, (protein / proteinTarget) * 100)}%` }}
             />
           </div>
         </div>
-        <div className="card-premium p-4 border border-white/[0.05] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
-              <Droplet className="h-4 w-4 text-accent" /> Eau
+        {/* Eau · cyan + bouteille qui se remplit */}
+        <div className="card-premium p-4 border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.12] to-transparent flex flex-col justify-between">
+          <div className="flex items-center gap-3">
+            <WaterBottle liters={water} target={waterTarget} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+                <Droplet className="h-4 w-4 text-cyan-400" /> Eau
+              </div>
+              <p className="mt-1.5 text-2xl font-black tracking-tight text-cyan-100">
+                {water.toFixed(1)}
+                <span className="text-xs text-muted-foreground font-medium"> / {waterTarget}L</span>
+              </p>
             </div>
-            <p className="mt-3 text-2xl font-black tracking-tight">
-              {water.toFixed(1)}
-              <span className="text-xs text-muted-foreground font-medium"> / {waterTarget}L</span>
-            </p>
           </div>
           <div className="mt-3 flex gap-1.5">
             <Button
               size="sm"
               variant="secondary"
-              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-white/10 text-foreground border border-white/5 rounded-lg"
+              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
               onClick={() => actions.addWater(0.25)}
             >
               +25cl
@@ -258,7 +264,7 @@ function Dashboard() {
             <Button
               size="sm"
               variant="secondary"
-              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-white/10 text-foreground border border-white/5 rounded-lg"
+              className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
               onClick={() => actions.addWater(0.5)}
             >
               +50cl

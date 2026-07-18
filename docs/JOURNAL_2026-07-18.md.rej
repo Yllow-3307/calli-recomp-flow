@@ -1,0 +1,27 @@
+diff a/docs/JOURNAL_2026-07-18.md b/docs/JOURNAL_2026-07-18.md	(rejected hunks)
+@@ -68,3 +68,25 @@ Résultat : `npx tsc --noEmit` **0 erreur** (état vérifié aussi avant toute m
+ 
+ - Faible : transitions de page remontant le contenu — aucun état n'est conservé entre routes par design (comportement router standard).
+ - Faible : SW en prod — invalider proprement (changer `VERSION` dans `sw.js`) lors de changements majeurs de stratégie de cache.
++
++## 5. Correctif mobile — labels de la barre de navigation (18/07, suite)
++
++- `BottomNav.tsx` : « Progression » → « Progrès » (trop long, débordait sur « Nutrition » aux petites largeurs d'écran / zoom d'affichage)
++- Anti-chevauchement permanent : `min-w-0` sur les `<li>`, `truncate` + `px-0.5` sur les labels → un label ne peut plus jamais empiéter sur son voisin, quelle que soit la largeur d'écran.
++- Validé : tsc ✅ lint ✅ build ✅
++
++## 6. Refonte visuelle "Coral Glass" (validée par l'utilisateur via design board)
++
++Direction : accent principal dégradé **corail → rose**, couleur par catégorie de stat, fond nuit **marbré**, cartes verre dépoli XXL.
++Inspirations utilisateur : app running (panel corail), dashboard (couleurs par stat), wellness (capsules), smoothie/travel (rayons XXL).
++
++| Élément | Implémentation |
++|---|---|
++| Palette corail | `--primary: #ff6b4a`, `--gradient-primary` corail→rose, ring/glow/selection/scrollbar harmonisés (`styles.css`) |
++| Fond marbré | texture générée `public/marble.jpg` (60 Ko, blend `screen`) + lueurs corail/cyan/rose en couches fixes sur `body` |
++| Panel héros accueil | nouvelle utility `panel-coral` (verre dépoli sur dégradé corail) pour la carte "Séance du jour" |
++| Stats par catégorie | Protéines = lime, Eau = cyan (cartes teintées + barres glow) sur `index.tsx` et `nutrition.tsx` |
++| **Bouteille d'eau** | nouveau composant `src/components/WaterBottle.tsx` (SVG pur, niveau animé, doubles vagues, glow + bouchon cyan à 100%), +25cl/+50cl conservés |
++| og-image | régénérée aux couleurs corail |
++
++Validé : tsc ✅ lint ✅ build ✅ dev (/, /nutrition, /marble.jpg → 200) ✅
