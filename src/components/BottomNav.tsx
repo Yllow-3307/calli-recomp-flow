@@ -57,6 +57,8 @@ const moreItems = [
 export function BottomNav() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+    if (location.pathname === "/onboarding") return null;
+
 
   // Check if any of the items in the "Plus" menu are currently active
   const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
