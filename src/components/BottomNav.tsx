@@ -59,10 +59,7 @@ export function BottomNav() {
   const location = useLocation();
 
   // Check if any of the items in the "Plus" menu are currently active
-  const isMoreActive = moreItems.some((item) => {
-    if (item.to === "/") return location.pathname === "/";
-    return location.pathname.startsWith(item.to);
-  });
+  const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.06] bg-slate-950/80 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.5)]">
@@ -72,10 +69,12 @@ export function BottomNav() {
             <Link
               to={to}
               activeOptions={{ exact }}
-              className="flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
+              className="relative flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
             >
               <Icon className="h-5 w-5 transition-transform duration-300 data-[status=active]:scale-110" />
               <span>{label}</span>
+              {/* Point lumineux sous l'onglet actif */}
+              <span className="absolute bottom-1 h-1 w-1 rounded-full bg-primary opacity-0 shadow-[0_0_10px_3px_var(--color-primary)] transition-opacity duration-300 [[data-status=active]_&]:opacity-100" />
             </Link>
           </li>
         ))}
@@ -83,7 +82,7 @@ export function BottomNav() {
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
               <button
-                className={`w-full flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
+                className={`relative w-full flex flex-col items-center gap-1.5 py-3 text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
                   isMoreActive || isOpen
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -91,6 +90,9 @@ export function BottomNav() {
               >
                 <MoreHorizontal className="h-5 w-5" />
                 <span>Plus</span>
+                {(isMoreActive || isOpen) && (
+                  <span className="absolute bottom-1 h-1 w-1 rounded-full bg-primary shadow-[0_0_10px_3px_var(--color-primary)] transition-opacity duration-300" />
+                )}
               </button>
             </SheetTrigger>
             <SheetContent
@@ -108,7 +110,7 @@ export function BottomNav() {
                     <Link
                       to={to}
                       onClick={() => setIsOpen(false)}
-                      activeOptions={{ exact: to === "/" }}
+                      activeOptions={{ exact: false }}
                       className="flex flex-col items-center gap-2.5 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.05] hover:border-white/10 active:scale-95 transition-all text-muted-foreground data-[status=active]:text-primary data-[status=active]:border-primary/30 data-[status=active]:bg-primary/5 group"
                     >
                       <div
@@ -136,7 +138,13 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
     <header className="px-5 pt-6 pb-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-black tracking-tight text-white">{title}</h1>
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className="h-6 w-1 shrink-0 rounded-full bg-gradient-to-b from-primary to-accent shadow-[0_0_12px_1px_var(--color-primary)]"
+            />
+            <h1 className="truncate text-2xl font-black tracking-tight text-white">{title}</h1>
+          </div>
           {subtitle && (
             <p className="text-sm text-muted-foreground mt-1 font-semibold">{subtitle}</p>
           )}

@@ -20,8 +20,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## 2. Comment appliquer les migrations
 
-Le fichier de migration contenant la structure complète des tables, les déclencheurs (triggers) et les politiques de sécurité est situé dans :
-`supabase/migrations/20240714000000_init_schema.sql`
+Les migrations sont dans `supabase/migrations/`, à appliquer **dans l'ordre chronologique** :
+
+1. `20240714000000_init_schema.sql` — schéma complet (tables, triggers, politiques RLS, templates du programme, bucket Storage `progress-photos`)
+2. `20260718000000_skill_states.sql` — table `skill_states` (notes & statuts des skills par utilisateur)
+
+Le premier fichier contient la structure initiale complète :
 
 Vous pouvez appliquer cette migration de deux manières :
 

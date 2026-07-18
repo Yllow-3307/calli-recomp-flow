@@ -9,7 +9,6 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { BottomNav } from "@/components/BottomNav";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,7 +29,7 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    console.error(error);
   }, [error]);
 
   return (
@@ -57,7 +56,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "theme-color", content: "#1a1f2e" },
+      { name: "theme-color", content: "#05070f" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Calli Recomp" },
       { title: "Aujourd'hui — Calli Recomp" },
       {
         name: "description",
@@ -71,18 +74,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "Ta séance du jour, ta progression, tes rappels." },
       {
         property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/335a21fc-e57b-4451-b09f-7be969b9956e/id-preview-8b470969--6044c4a3-32f5-412d-bda4-f1b440d666bf.lovable.app-1783970189301.png",
+        content: "https://calli-recomp-flow.vercel.app/og-image.png",
       },
       {
         name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/335a21fc-e57b-4451-b09f-7be969b9956e/id-preview-8b470969--6044c4a3-32f5-412d-bda4-f1b440d666bf.lovable.app-1783970189301.png",
+        content: "https://calli-recomp-flow.vercel.app/og-image.png",
       },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -114,6 +118,15 @@ function RootComponent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { syncAllDataWithSupabase } = useAppActions();
+
+  // Enregistre le Service Worker (PWA) — production uniquement
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch((err) => console.warn("[PWA] Échec d'enregistrement du Service Worker", err));
+  }, []);
 
   useEffect(() => {
     // Synchroniser toutes les données initialement au montage s'il y a déjà une session
@@ -166,7 +179,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="relative">
-        <Outlet />
+        {/* key = transition de page douce à chaque navigation */}
+        <div key={location.pathname} className="page-enter">
+          <Outlet />
+        </div>
         <BottomNav />
         <Toaster />
       </div>

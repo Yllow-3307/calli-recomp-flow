@@ -318,11 +318,7 @@ function SkillsPage() {
                         actions.setSkillStatus(
                           skill.id,
                           e.target.value as
-                            | "non commencé"
-                            | "en cours"
-                            | "proche"
-                            | "validé"
-                            | "auto",
+                            "non commencé" | "en cours" | "proche" | "validé" | "auto",
                         );
                         toast.success("Statut ajusté !");
                       }}

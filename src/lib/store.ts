@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { type Json } from "@/integrations/supabase/types";
+import { type Database, type Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { SKILLS_GUIDE, type SkillGuide } from "./program";
 
@@ -643,7 +643,7 @@ export function useAppActions() {
             targetMin: l.target_min !== null ? l.target_min : undefined,
             targetMax: l.target_max !== null ? l.target_max : undefined,
             kind: l.kind,
-            sets: (l.sets as SetLog[]) || [],
+            sets: (l.sets as unknown as SetLog[]) || [],
             notes: l.notes ?? undefined,
           }));
         return {
@@ -722,6 +722,58 @@ export function useAppActions() {
         if (elErr) console.error("Error inserting exercise logs during sync:", elErr);
       }
 
+      // 7bis. Sync Skill States (notes & statuts manuels des skills)
+      // Tolérant : si la table n'existe pas encore (migration non appliquée),
+      // on continue avec les données locales au lieu de faire échouer toute la synchro.
+      const { data: remoteSkillStatesData, error: skillErr } = await supabase
+        .from("skill_states")
+        .select("*")
+        .eq("user_id", userId);
+      if (skillErr) console.error("Skill states sync ignorée (migration appliquée ?) :", skillErr);
+      const remoteSkillStates = remoteSkillStatesData || [];
+
+      type SkillStatus = AppState["skillStatuses"][string];
+      const mergedSkillNotes: Record<string, string> = {};
+      const mergedSkillStatuses: AppState["skillStatuses"] = {};
+
+      for (const row of remoteSkillStates || []) {
+        if (row.note) mergedSkillNotes[row.skill_id] = row.note;
+        if (row.status) mergedSkillStatuses[row.skill_id] = row.status;
+      }
+
+      // Pousser vers Supabase les entrées locales absentes du distant
+      type SkillStateInsert = Database["public"]["Tables"]["skill_states"]["Insert"];
+      const skillStatesToUpsert: SkillStateInsert[] = [];
+      const remoteSkillIds = new Set((remoteSkillStates || []).map((r) => r.skill_id));
+      const localSkillIds = new Set([
+        ...Object.keys(localState.skillNotes),
+        ...Object.keys(localState.skillStatuses),
+      ]);
+
+      for (const skillId of localSkillIds) {
+        if (remoteSkillIds.has(skillId)) continue;
+        const status = localState.skillStatuses[skillId];
+        const note = localState.skillNotes[skillId];
+        const manualStatus: SkillStatus | null = status && status !== "auto" ? status : null;
+        if (!manualStatus && !note) continue;
+        if (manualStatus) mergedSkillStatuses[skillId] = manualStatus;
+        if (note) mergedSkillNotes[skillId] = note;
+        skillStatesToUpsert.push({
+          user_id: userId,
+          skill_id: skillId,
+          status: manualStatus,
+          note: note ?? null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      if (skillStatesToUpsert.length > 0) {
+        const { error: upsErr } = await supabase
+          .from("skill_states")
+          .upsert(skillStatesToUpsert, { onConflict: "user_id,skill_id" });
+        if (upsErr) console.error("Error upserting skill states during sync:", upsErr);
+      }
+
       // 8. Update state
       setState((s) => ({
         ...s,
@@ -734,6 +786,8 @@ export function useAppActions() {
         workouts: mergedWorkouts.sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         ),
+        skillNotes: mergedSkillNotes,
+        skillStatuses: mergedSkillStatuses,
       }));
 
       toast.success("Données synchronisées avec Supabase !");
@@ -1089,6 +1143,41 @@ export function useAppActions() {
         ...s,
         skillNotes: { ...s.skillNotes, [skillId]: note },
       }));
+
+      setTimeout(async () => {
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!session?.user) return;
+
+          const status = getState().skillStatuses[skillId];
+          const manualStatus = status && status !== "auto" ? status : null;
+          if (!manualStatus && !note) {
+            // Rien à stocker : supprimer la ligne distante si elle existe
+            await supabase
+              .from("skill_states")
+              .delete()
+              .eq("user_id", session.user.id)
+              .eq("skill_id", skillId);
+            return;
+          }
+          const { error } = await supabase.from("skill_states").upsert(
+            {
+              user_id: session.user.id,
+              skill_id: skillId,
+              status: manualStatus,
+              note: note || null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,skill_id" },
+          );
+          if (error) throw error;
+        } catch (err) {
+          console.error("Erreur d'enregistrement de la note de skill dans Supabase :", err);
+          toast.error("Note enregistrée localement. La synchronisation réseau a échoué.");
+        }
+      }, 0);
     }, []),
     setSkillStatus: useCallback(
       (skillId: string, status: "non commencé" | "en cours" | "proche" | "validé" | "auto") => {
@@ -1096,6 +1185,41 @@ export function useAppActions() {
           ...s,
           skillStatuses: { ...s.skillStatuses, [skillId]: status },
         }));
+
+        setTimeout(async () => {
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+            if (!session?.user) return;
+
+            const note = getState().skillNotes[skillId];
+            const manualStatus = status !== "auto" ? status : null;
+            if (!manualStatus && !note) {
+              // Statut "auto" (calculé) sans note : supprimer la ligne distante si elle existe
+              await supabase
+                .from("skill_states")
+                .delete()
+                .eq("user_id", session.user.id)
+                .eq("skill_id", skillId);
+              return;
+            }
+            const { error } = await supabase.from("skill_states").upsert(
+              {
+                user_id: session.user.id,
+                skill_id: skillId,
+                status: manualStatus,
+                note: note || null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,skill_id" },
+            );
+            if (error) throw error;
+          } catch (err) {
+            console.error("Erreur d'enregistrement du statut de skill dans Supabase :", err);
+            toast.error("Statut enregistré localement. La synchronisation réseau a échoué.");
+          }
+        }, 0);
       },
       [],
     ),
