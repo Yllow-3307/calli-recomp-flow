@@ -26,6 +26,8 @@ function MesuresPage() {
   const [fatigue, setFatigue] = useState(3);
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState<{ face?: string; profile?: string; back?: string }>({});
+  // Poids détecté différent du profil → proposition de recalcul des cibles
+  const [pendingWeight, setPendingWeight] = useState<number | null>(null);
 
   const lastMetric = state.metrics[0];
   const daysSinceLast = lastMetric
@@ -34,10 +36,11 @@ function MesuresPage() {
   const dueForMeasure = daysSinceLast === null || daysSinceLast >= 14;
 
   const submit = () => {
+    const w = parseFloat(form.weight);
     actions.addMetric({
       id: `bm-${Date.now()}`,
       date: new Date().toISOString(),
-      weight: parseFloat(form.weight) || undefined,
+      weight: w || undefined,
       waist: parseFloat(form.waist) || undefined,
       sleep: parseFloat(form.sleep) || undefined,
       energy,
@@ -49,6 +52,8 @@ function MesuresPage() {
     setNote("");
     setPhotos({});
     toast.success("Mesure enregistrée");
+    // Poids différent du profil → proposer le recalcul des cibles
+    if (w > 0 && Math.abs(w - state.profile.weight) >= 0.1) setPendingWeight(w);
   };
 
   const weights = useMemo(
@@ -65,6 +70,43 @@ function MesuresPage() {
   return (
     <PageShell>
       <TopBar title="Mesures & photos" subtitle="Toutes les 2 semaines" />
+
+      {pendingWeight !== null && (
+        <div className="px-5 mt-3">
+          <div className="card-premium p-4 border border-primary/30 bg-gradient-to-b from-primary/[0.10] to-transparent">
+            <p className="text-sm font-bold">
+              ⚖️ Nouveau poids : {pendingWeight} kg{" "}
+              <span className="text-muted-foreground font-semibold">
+                (profil : {state.profile.weight} kg)
+              </span>
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Recalculer tes cibles ? (kcal · protéines · glucides · lipides · eau)
+            </p>
+            <div className="flex gap-2 mt-3">
+              <Button
+                size="sm"
+                className="btn-hero h-8 text-xs font-bold"
+                onClick={() => {
+                  actions.setProfile({ weight: pendingWeight });
+                  setPendingWeight(null);
+                  toast.success("Cibles recalculées automatiquement ✅");
+                }}
+              >
+                Mettre à jour
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 text-xs bg-white/5 border border-white/10"
+                onClick={() => setPendingWeight(null)}
+              >
+                Plus tard
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {dueForMeasure && (
         <div className="px-5">

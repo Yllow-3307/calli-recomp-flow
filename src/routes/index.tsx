@@ -11,8 +11,14 @@ import {
   Trophy,
 } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, RULES } from "@/lib/program";
-import { nutritionTargets, planDays } from "@/lib/plan";
+import { getTodayProgram, RULES, type DayProgram } from "@/lib/program";
+import {
+  nutritionTargets,
+  planDays,
+  plannedSessionsPerWeek,
+  WEEKDAY_LABELS,
+  type GeneratedNutrition,
+} from "@/lib/plan";
 import {
   useAppState,
   useAppActions,
@@ -23,6 +29,11 @@ import {
   todayKey,
   isTestWeek,
   currentProgramWeek,
+  programCycle,
+  weeklyStats,
+  type Profile,
+  type WorkoutLog,
+  type WeeklyStats,
 } from "@/lib/store";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -38,9 +49,9 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { UserCheck } from "lucide-react";
+import { UserCheck, X, ClipboardList, PartyPopper } from "lucide-react";
 
 // Badges colorés de type de séance stylisés
 export function SessionTypeBadge({
@@ -98,9 +109,12 @@ function Dashboard() {
   const proteinTarget = Math.round((nut.proteinMin + nut.proteinMax) / 2);
   const water = state.water[todayKey()] || 0;
   const waterTarget = nut.waterL;
-  const daysGoal = state.profile.daysPerWeek;
+  const daysGoal = plannedSessionsPerWeek(state.profile);
   const showTestBanner = isTestWeek(state.profile);
   const week = currentProgramWeek(state.profile);
+  const weekDays = planDays(state.profile);
+  // Bilan hebdo (dimanche = semaine en cours, lundi = semaine écoulée)
+  const recap = useMemo(() => weeklyStats(state), [state]);
 
   return (
     <PageShell>
@@ -161,6 +175,12 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* Pastilles de la semaine (fait / prévu / repos) */}
+      <WeekStripCard days={weekDays} workouts={state.workouts} />
+
+      {/* Fin de cycle (semaine 12) */}
+      <CycleEndCard profile={state.profile} />
+
       {showTestBanner && (
         <div className="px-5 mt-5">
           <Link
@@ -181,6 +201,9 @@ function Dashboard() {
           </Link>
         </div>
       )}
+
+      {/* Bilan hebdo (dimanche / lundi, masquable) */}
+      <WeeklyRecapCard recap={recap} planned={daysGoal} nut={nut} />
 
       {/* Today's session */}
       <section className="px-5 mt-6">
@@ -308,6 +331,156 @@ function Dashboard() {
         />
       </section>
     </PageShell>
+  );
+}
+
+/** Vue hebdo : pastilles L→D (✓ fait · emoji = séance prévue · point = repos). */
+function WeekStripCard({ days, workouts }: { days: DayProgram[]; workouts: WorkoutLog[] }) {
+  const monday = new Date();
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const doneKeys = useMemo(() => new Set(workouts.map((w) => w.date.slice(0, 10))), [workouts]);
+  return (
+    <section className="px-5 mt-4">
+      <div className="card-premium p-3.5 border border-white/[0.05]">
+        <div className="grid grid-cols-7 gap-1.5">
+          {days.map((d, i) => {
+            const date = new Date(monday);
+            date.setDate(monday.getDate() + i);
+            const key = date.toISOString().slice(0, 10);
+            const isDone = doneKeys.has(key);
+            const isPlanned = d.type !== "rest";
+            const isToday = key === todayKey();
+            return (
+              <div key={d.key} className="flex flex-col items-center gap-1">
+                <span
+                  className={`text-[9px] font-bold uppercase ${isToday ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  {WEEKDAY_LABELS[i]}
+                </span>
+                <span
+                  className={`h-8 w-8 grid place-items-center rounded-full border text-[11px] ${
+                    isDone
+                      ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-black"
+                      : isPlanned
+                        ? "bg-white/[0.03] border-white/10 opacity-70"
+                        : "border-white/5 text-slate-600"
+                  }`}
+                >
+                  {isDone ? "✓" : isPlanned ? d.emoji : "·"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Carte « Fin du cycle » (semaine 12) → régénération du plan sur perfs réelles. */
+function CycleEndCard({ profile }: { profile: Profile }) {
+  const { cycle, cycleWeek } = programCycle(profile);
+  if (!profile.onboarded || cycleWeek !== 12) return null;
+  return (
+    <div className="px-5 mt-5">
+      <Link
+        to="/onboarding"
+        className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-amber-400 hover:border-amber-400/40"
+        style={{ backgroundImage: "var(--gradient-card)" }}
+      >
+        <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0 animate-float">
+          <PartyPopper className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-gradient">Fin du cycle {cycle} 🎉</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨
+          </p>
+        </div>
+        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+      </Link>
+    </div>
+  );
+}
+
+/** Bilan du dimanche / lundi : stats + 1 conseil ciblé (masquable jusqu'à la semaine suivante). */
+function WeeklyRecapCard({
+  recap,
+  planned,
+  nut,
+}: {
+  recap: WeeklyStats | null;
+  planned: number;
+  nut: GeneratedNutrition;
+}) {
+  const [dismissed, setDismissed] = useState<string | null>(() =>
+    typeof window !== "undefined" ? localStorage.getItem("weekly-recap-dismissed") : null,
+  );
+  if (!recap || dismissed === recap.windowKey) return null;
+  const advice =
+    recap.sessions < planned
+      ? "Sans jugement 🙂 bloque tes créneaux tout de suite — même 30 min comptent."
+      : recap.proteinAvg !== null && recap.proteinAvg < nut.proteinMin
+        ? "Protéines un peu basses : ajoute un shake ou des œufs au petit-dej."
+        : recap.waterAvg !== null && recap.waterAvg < nut.waterL
+          ? "Hydratation courte : garde une bouteille d'1L visible sur ton bureau."
+          : "Semaine carrée 🔥 Reconduis exactement ça.";
+  const close = () => {
+    localStorage.setItem("weekly-recap-dismissed", recap.windowKey);
+    setDismissed(recap.windowKey);
+  };
+  return (
+    <div className="px-5 mt-5">
+      <div className="card-premium p-4 border border-violet-400/25 bg-gradient-to-b from-violet-400/[0.08] to-transparent relative">
+        <button
+          onClick={close}
+          aria-label="Masquer le bilan"
+          className="absolute top-2.5 right-2.5 text-muted-foreground hover:text-white p-1"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+        <div className="flex items-center gap-2 text-xs font-bold text-violet-300 mb-3">
+          <ClipboardList className="h-4 w-4" /> Bilan — {recap.label}
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <div>
+            <p className="text-base font-black">
+              {recap.sessions}
+              <span className="text-[10px] text-muted-foreground font-semibold">/{planned}</span>
+            </p>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase">séances</p>
+          </div>
+          <div>
+            <p className="text-base font-black">{recap.km}</p>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase">km</p>
+          </div>
+          <div>
+            <p className="text-base font-black">
+              {recap.proteinAvg !== null ? `${recap.proteinAvg}g` : "—"}
+            </p>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase">prot/j</p>
+          </div>
+          <div>
+            <p className="text-base font-black">
+              {recap.waterAvg !== null ? `${recap.waterAvg}L` : "—"}
+            </p>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase">eau/j</p>
+          </div>
+        </div>
+        {recap.weightDelta !== null && (
+          <p className="text-[11px] text-muted-foreground mt-2.5">
+            ⚖️ Poids sur la période :{" "}
+            <b className={recap.weightDelta <= 0 ? "text-emerald-300" : "text-amber-300"}>
+              {recap.weightDelta > 0 ? "+" : ""}
+              {recap.weightDelta} kg
+            </b>
+          </p>
+        )}
+        <p className="text-[11px] text-violet-200/90 mt-2.5 leading-relaxed border-t border-white/5 pt-2.5">
+          💡 {advice}
+        </p>
+      </div>
+    </div>
   );
 }
 

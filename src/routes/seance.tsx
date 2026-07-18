@@ -1,15 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, type Exercise } from "@/lib/program";
+import { getTodayProgram, EXERCISE_SWAPS, type Exercise } from "@/lib/program";
 import { planDays } from "@/lib/plan";
 import { SessionTypeBadge } from "@/routes/index";
 import {
   useAppState,
   useAppActions,
+  suggestProgressionForExercise,
+  lastPerformanceHint,
+  personalBests,
+  findNewRecords,
   type WorkoutLog,
   type SetLog,
   type ExerciseLog,
+  type ProgressionSuggestion,
 } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +32,7 @@ import {
   Flame,
   Activity,
   Award,
+  ArrowLeftRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,6 +73,35 @@ function SeancePage() {
   const [restEx, setRestEx] = useState<Exercise | null>(null);
   const [summary, setSummary] = useState<WorkoutLog | null>(null);
 
+  // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
+  const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
+  const [swaps, setSwaps] = useState<Record<string, string>>(
+    () => state.profile.exerciseSwaps ?? {},
+  );
+  const applySwap = (ex: Exercise, alt: string | null) => {
+    const next = { ...swaps };
+    if (alt) next[slotKey(ex)] = alt;
+    else delete next[slotKey(ex)];
+    setSwaps(next);
+    actions.setProfile({ exerciseSwaps: next });
+  };
+  const nameOf = (ex: Exercise) => swaps[slotKey(ex)] ?? ex.name;
+
+  // Dernière perf + suggestion par exercice (recalculées à jour de l'historique)
+  const exMeta = useMemo(
+    () =>
+      Object.fromEntries(
+        allExercises.map((ex) => [
+          ex.id,
+          {
+            hint: lastPerformanceHint(ex.id, ex.kind, state.workouts),
+            sug: suggestProgressionForExercise(ex.id, ex.targetMax, ex.kind, state.workouts),
+          },
+        ]),
+      ) as Record<string, { hint: string | null; sug: ProgressionSuggestion | null }>,
+    [allExercises, state.workouts],
+  );
+
   const totalSets = allExercises.reduce((a, e) => a + e.sets, 0);
   const doneSets = Object.values(sets)
     .flat()
@@ -94,7 +129,7 @@ function SeancePage() {
   const finish = () => {
     const exercises: ExerciseLog[] = allExercises.map((e) => ({
       exId: e.id,
-      name: e.name,
+      name: nameOf(e),
       targetMin: e.targetMin,
       targetMax: e.targetMax,
       kind: e.kind,
@@ -132,7 +167,20 @@ function SeancePage() {
       totalVolume,
       successCount,
     };
+    // Records personnels : comparés à l'historique AVANT l'ajout de cette séance
+    const prevBests = personalBests(state.workouts);
+    const newRecords = findNewRecords(prevBests, log);
     actions.addWorkout(log);
+    if (newRecords.length)
+      toast.success("🏆 Nouveau record !", {
+        description: newRecords
+          .map(
+            (r) =>
+              `${r.name} : ${r.value}${r.kind === "time" ? " s" : " reps"}${r.weight ? ` · ${r.weight} kg` : ""}`,
+          )
+          .join(" — "),
+        duration: 6000,
+      });
     setSummary(log);
   };
 
@@ -216,6 +264,12 @@ function SeancePage() {
                 <ExerciseCard
                   key={ex.id}
                   ex={ex}
+                  displayName={nameOf(ex)}
+                  hint={exMeta[ex.id]?.hint ?? null}
+                  sug={exMeta[ex.id]?.sug ?? null}
+                  swapAlts={EXERCISE_SWAPS[ex.name] ?? []}
+                  currentSwap={swaps[slotKey(ex)]}
+                  onSwap={(alt) => applySwap(ex, alt)}
                   sets={sets[ex.id]}
                   onSetChange={(idx, patch) => updateSet(ex.id, idx, patch)}
                   onComplete={(idx) => completeSet(ex, idx)}
@@ -288,6 +342,12 @@ function SeancePage() {
 
 function ExerciseCard({
   ex,
+  displayName,
+  hint,
+  sug,
+  swapAlts,
+  currentSwap,
+  onSwap,
   sets,
   onSetChange,
   onComplete,
@@ -296,6 +356,12 @@ function ExerciseCard({
   onNote,
 }: {
   ex: Exercise;
+  displayName: string;
+  hint: string | null;
+  sug: ProgressionSuggestion | null;
+  swapAlts: string[];
+  currentSwap?: string;
+  onSwap: (alt: string | null) => void;
   sets: SetLog[];
   onSetChange: (idx: number, patch: Partial<SetLog>) => void;
   onComplete: (idx: number) => void;
@@ -308,7 +374,10 @@ function ExerciseCard({
     <div className="card-premium p-4 border border-white/[0.05] relative overflow-hidden">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-bold text-base text-white">{ex.name}</h3>
+          <h3 className="font-bold text-base text-white">{displayName}</h3>
+          {currentSwap && (
+            <p className="text-[10px] text-muted-foreground italic mt-0.5">remplace : {ex.name}</p>
+          )}
           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
             <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md font-bold text-slate-300">
               {ex.sets} séries
@@ -316,6 +385,21 @@ function ExerciseCard({
             <span>×</span>
             <span className="font-semibold text-primary">{ex.target}</span>
           </p>
+          {hint && <p className="text-[10px] text-cyan-300/80 mt-1.5">↺ Dernière : {hint}</p>}
+          {sug && (
+            <p
+              className={`text-[10px] font-bold mt-1 ${
+                sug.reason === "up"
+                  ? "text-success"
+                  : sug.reason === "down"
+                    ? "text-amber-400"
+                    : "text-muted-foreground"
+              }`}
+            >
+              {sug.reason === "up" ? "↗" : sug.reason === "down" ? "↘" : "→"} {sug.delta}
+              <span className="font-normal text-muted-foreground"> · {sug.hint}</span>
+            </p>
+          )}
           {ex.note && (
             <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed bg-white/[0.02] p-2 rounded-lg border border-white/[0.02]">
               {ex.note}
@@ -384,6 +468,26 @@ function ExerciseCard({
           </div>
         ))}
       </div>
+
+      {swapAlts.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <select
+            value={currentSwap ?? ""}
+            onChange={(e) => onSwap(e.target.value || null)}
+            className="flex-1 min-w-0 bg-white/[0.02] border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none focus:border-primary/40"
+          >
+            <option value="" className="bg-slate-900">
+              {currentSwap ? "↩ Revenir à l'exercice d'origine" : "Remplacer l'exercice…"}
+            </option>
+            {swapAlts.map((alt) => (
+              <option key={alt} value={alt} className="bg-slate-900">
+                {alt}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <button
         onClick={() => setOpenNote((v) => !v)}

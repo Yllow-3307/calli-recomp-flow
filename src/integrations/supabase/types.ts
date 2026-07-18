@@ -22,6 +22,8 @@ export type Database = {
           sex: "homme" | "femme" | null;
           capacities: Json;
           plan: Json | null;
+          training_days: Json;
+          exercise_swaps: Json;
         };
         Insert: {
           id: string;
@@ -38,6 +40,8 @@ export type Database = {
           sex?: "homme" | "femme" | null;
           capacities?: Json;
           plan?: Json | null;
+          training_days?: Json;
+          exercise_swaps?: Json;
         };
         Update: {
           id?: string;
@@ -54,6 +58,8 @@ export type Database = {
           sex?: "homme" | "femme" | null;
           capacities?: Json;
           plan?: Json | null;
+          training_days?: Json;
+          exercise_swaps?: Json;
         };
         Relationships: [
           {

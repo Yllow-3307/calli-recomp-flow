@@ -4,7 +4,7 @@
 //   objectif + capacités déclarées + niveau  →  fourchettes adaptées + cibles
 //   nutrition / hydratation calculées (Mifflin-St Jeor).
 // ─────────────────────────────────────────────────────────────────────────────
-import type { Profile } from "./store";
+import type { Profile, ProgressTest, WorkoutLog } from "./store";
 import { PROGRAM, type DayProgram, type Exercise } from "./program";
 
 // ── Objectifs ────────────────────────────────────────────────────────────────
@@ -133,6 +133,8 @@ export interface GeneratedNutrition {
   kcalTarget: number;
   proteinMin: number;
   proteinMax: number;
+  carbsTarget: number;
+  fatTarget: number;
   waterL: number;
   maintenance: number;
 }
@@ -150,19 +152,31 @@ export function computeNutrition(p: Profile): GeneratedNutrition {
   const goal = goalDefOf(p.goal);
   const maintenance = computeMaintenance(p);
   const kcalTarget = Math.max(1200, Math.round((maintenance * (1 + goal.kcalAdjust)) / 10) * 10);
+  const proteinMin = Math.round(p.weight * goal.proteinPerKg[0]);
+  const proteinMax = Math.round(p.weight * goal.proteinPerKg[1]);
+  const proteinMid = (proteinMin + proteinMax) / 2;
+  // Lipides : ~0.9 g/kg (sol hormonal), glucides = calories restantes.
+  const fatTarget = Math.max(40, Math.round(p.weight * 0.9));
+  const carbsTarget = Math.max(60, Math.round((kcalTarget - proteinMid * 4 - fatTarget * 9) / 4));
   return {
     goalId: goal.id,
     kcalTarget,
-    proteinMin: Math.round(p.weight * goal.proteinPerKg[0]),
-    proteinMax: Math.round(p.weight * goal.proteinPerKg[1]),
+    proteinMin,
+    proteinMax,
+    carbsTarget,
+    fatTarget,
     waterL: Math.max(2, Math.min(4.5, Math.round(p.weight * 0.035 * 2) / 2)),
     maintenance,
   };
 }
 
-/** Cibles à afficher partout dans l'app (plan généré en priorité, sinon calcul direct). */
+/**
+ * Cibles affichées partout dans l'app.
+ * Toujours recalculées (fonction déterministe du profil) : elles se mettent
+ * donc à jour automatiquement quand le poids change via les pesées.
+ */
 export function nutritionTargets(p: Profile): GeneratedNutrition {
-  return p.plan?.nutrition ?? computeNutrition(p);
+  return computeNutrition(p);
 }
 
 // ── Plan généré (fourchettes adaptées au palier) ─────────────────────────────
@@ -219,8 +233,116 @@ export function generatePlan(p: Profile): GeneratedPlan {
   };
 }
 
-/** Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard). */
-export function planDays(p?: Pick<Profile, "plan"> | null): DayProgram[] {
+// ── Jours d'entraînement choisis par l'utilisateur ───────────────────────────
+
+/** Indices des jours dans le plan : 0 = Lundi … 6 = Dimanche. */
+export const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
+export const DEFAULT_TRAINING_DAYS = [0, 1, 2, 3, 4, 5]; // Lun → Sam (6 jours)
+
+const REST_INSTRUCTIONS = [
+  "Récupération prioritaire — écoute ton corps",
+  "Marche légère optionnelle 20-30 min",
+  "Étirements + mobilité 10-15 min : poitrine, épaules, ischios, hanches",
+];
+
+/**
+ * Transforme en repos les jours non cochés dans les préférences.
+ * Le contenu des séances reste à son jour habituel (pas de déplacement) :
+ * c'est prévisible et facile à retenir (« le jeudi c'est Pull »).
+ */
+export function applyTrainingDays(days: DayProgram[], trainingDays?: number[]): DayProgram[] {
+  if (!trainingDays || trainingDays.length === 0) return days;
+  return days.map((d, i) => {
+    if (d.type === "rest" || trainingDays.includes(i)) return d;
+    return {
+      ...d,
+      type: "rest" as const,
+      emoji: "🧘",
+      title: "Repos / récupération",
+      summary: "Jour off choisi : marche légère, mobilité douce, hydratation.",
+      duration: 20,
+      warmup: [],
+      blocks: [
+        {
+          title: "Consignes",
+          items: REST_INSTRUCTIONS.map((name, j) => ({
+            id: `rest-${d.key}-${j}`,
+            name,
+            sets: 0,
+            target: "—",
+            rest: 0,
+            kind: "reps" as const,
+          })),
+        },
+      ],
+      alternatives: undefined,
+      finisher: undefined,
+    };
+  });
+}
+
+/** Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard),
+ *  avec les jours non choisis transformés en repos. */
+export function planDays(p?: Pick<Profile, "plan" | "trainingDays"> | null): DayProgram[] {
   const days = p?.plan?.days;
-  return Array.isArray(days) && days.length === 7 ? days : PROGRAM;
+  const base = Array.isArray(days) && days.length === 7 ? days : PROGRAM;
+  return applyTrainingDays(base, p?.trainingDays);
+}
+
+/** Nombre de séances réellement planifiées dans la semaine (hors repos). */
+export function plannedSessionsPerWeek(
+  p: Pick<Profile, "plan" | "trainingDays" | "daysPerWeek">,
+): number {
+  const planned = planDays(p).filter((d) => d.type !== "rest").length;
+  return planned > 0 ? planned : p.daysPerWeek || 6;
+}
+
+// ── Capacités déduites des vraies perfs (tests + historique de séances) ─────
+
+function bestSetValue(
+  workouts: WorkoutLog[],
+  needle: string,
+  kind: "reps" | "time",
+): number | undefined {
+  const n = needle.toLowerCase();
+  let best: number | undefined;
+  for (const w of workouts)
+    for (const e of w.exercises) {
+      if (e.kind !== kind || !e.name.toLowerCase().includes(n)) continue;
+      for (const s of e.sets) {
+        const v = kind === "time" ? s.time : s.reps;
+        if (s.done && typeof v === "number" && v > (best ?? 0)) best = v;
+      }
+    }
+  return best;
+}
+
+function bestTestValue(tests: ProgressTest[], testId: string): number | undefined {
+  const logs = tests.filter((t) => t.testId === testId);
+  return logs.length ? Math.max(...logs.map((t) => t.value)) : undefined;
+}
+
+/**
+ * Capacités = perfs réelles quand elles existent (max des tests / séances),
+ * sinon valeurs déclarées à l'onboarding (cas du 1er cycle sans historique).
+ */
+export function capacitiesFromHistory(
+  tests: ProgressTest[],
+  workouts: WorkoutLog[],
+  declared: Capacities = {},
+): { capacities: Capacities; fromReal: boolean } {
+  const real: Capacities = {
+    pullups: bestTestValue(tests, "pullups") ?? bestSetValue(workouts, "traction", "reps"),
+    pushups: bestTestValue(tests, "pushups") ?? bestSetValue(workouts, "pompe", "reps"),
+    dips: bestSetValue(workouts, "dips", "reps"),
+    handstand_s: bestTestValue(tests, "handstand") ?? bestSetValue(workouts, "handstand", "time"),
+    lsit_s: bestTestValue(tests, "lsit") ?? bestSetValue(workouts, "l-sit", "time"),
+  };
+  const fromReal = Object.values(real).some((v) => typeof v === "number" && v > 0);
+  const capacities: Capacities = { ...declared };
+  (Object.keys(real) as (keyof Capacities)[]).forEach((k) => {
+    const v = real[k];
+    if (typeof v === "number" && v > 0) capacities[k] = v;
+  });
+  return { capacities, fromReal };
 }

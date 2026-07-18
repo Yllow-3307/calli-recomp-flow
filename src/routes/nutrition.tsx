@@ -62,7 +62,7 @@ function NutritionPage() {
     <PageShell>
       <TopBar
         title="Nutrition"
-        subtitle={`Protéines ${proteinTargetMin}–${proteinTargetMax}g · Eau ${waterTarget}L · ~${nut.kcalTarget} kcal`}
+        subtitle={`P ${proteinTargetMin}–${proteinTargetMax}g · G ~${nut.carbsTarget}g · L ~${nut.fatTarget}g · ~${nut.kcalTarget} kcal · ${waterTarget}L`}
       />
 
       <div className="px-5 grid grid-cols-2 gap-3">
@@ -122,9 +122,14 @@ function NutritionPage() {
       </div>
 
       <div className="px-5 mt-3 grid grid-cols-3 gap-3">
-        <MiniStat label="Calories" value={`${kcal} kcal`} icon={<Flame className="h-3 w-3" />} />
-        <MiniStat label="Glucides" value={`${carbs}g`} />
-        <MiniStat label="Lipides" value={`${fat}g`} />
+        <MiniStat
+          label="Calories"
+          value={`${kcal} kcal`}
+          target={`/ ${nut.kcalTarget}`}
+          icon={<Flame className="h-3 w-3" />}
+        />
+        <MiniStat label="Glucides" value={`${carbs}g`} target={`/ ~${nut.carbsTarget}g`} />
+        <MiniStat label="Lipides" value={`${fat}g`} target={`/ ~${nut.fatTarget}g`} />
       </div>
 
       {/* Meal templates */}
@@ -237,10 +242,12 @@ function NutritionPage() {
 function MiniStat({
   label,
   value,
+  target,
   icon,
 }: {
   label: string;
   value: string;
+  target?: string;
   icon?: React.ReactNode;
 }) {
   return (
@@ -249,7 +256,12 @@ function MiniStat({
         {icon}
         {label}
       </p>
-      <p className="text-base font-black mt-0.5">{value}</p>
+      <p className="text-base font-black mt-0.5">
+        {value}
+        {target && (
+          <span className="text-[10px] text-muted-foreground font-semibold"> {target}</span>
+        )}
+      </p>
     </div>
   );
 }

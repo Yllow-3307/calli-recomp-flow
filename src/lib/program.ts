@@ -270,6 +270,51 @@ export const PROGRESS_TESTS: ProgressTestType[] = [
   { id: "run5k", name: "5 km course", unit: "min" },
 ];
 
+/**
+ * Remplacements d'exercices (pas de matériel, douleur, envie de varier).
+ * Clé = nom exact de l'exercice du programme ; valeurs = alternatives proches
+ * (même groupe musculaire, difficulté similaire ou régressive).
+ */
+export const EXERCISE_SWAPS: Record<string, string[]> = {
+  "Pike push-up lesté": ["Pike push-up (poids du corps)", "Pompes déclinées"],
+  "HSPU négatif mur": ["Pike push-up", "Pompes déclinées lentes"],
+  "HSPU au mur": ["HSPU négatif mur", "Pike push-up"],
+  "Pompes archer": ["Pompes standard / déclinées / diamant", "Pompes mains surélevées"],
+  Dips: ["Dips entre deux chaises", "Pompes serrées / diamant"],
+  "Pompes standard / déclinées / diamant": ["Pompes mains surélevées", "Dips entre deux chaises"],
+  "Handstand libre": ["Handstand au mur", "Marche en appui contre le mur"],
+  "Hollow body hold": ["Hollow body jambes fléchies", "Dead bug"],
+  "Hollow body iso": ["Hollow body jambes fléchies", "Dead bug"],
+  Planche: ["Planche sur les genoux", "Planche avec touchés d'épaules"],
+  "Planche + planche latérale lestée": [
+    "Planche classique + latérale",
+    "Planche touchés d'épaules",
+  ],
+  "Planche latérale lestée": ["Planche latérale simple", "Planche latérale genoux"],
+  "Tractions strictes": ["Tractions négatives", "Australian pull-ups", "Tractions avec élastique"],
+  "Chest-to-bar": ["Tractions strictes", "Tractions explosives"],
+  "Tractions explosives": ["Tractions strictes", "Australian pull-ups explosifs"],
+  "Transition muscle-up bande": [
+    "Transition allongé au sol",
+    "Dips + tractions strictes (superset)",
+  ],
+  "Rows inversés / Australian pull-ups": ["Australian sous une table", "Tirage avec élastique"],
+  "Chin-ups / tractions supinées": ["Chin-ups négatifs", "Australian chin-ups"],
+  "Relevés de jambes suspendus": ["Relevés de genoux suspendus", "Relevés de jambes au sol"],
+  "Dragon flag": ["Dragon flag jambes fléchies", "Relevés de jambes au sol (négatif lent)"],
+  "Tuck flag": ["Tuck flag une jambe tendue", "Relevés de genoux suspendus"],
+  "Bulgarian split squats": ["Fentes arrière", "Squats poids du corps"],
+  "Bulgarian split squats ou fentes": ["Fentes arrière", "Squats poids du corps"],
+  "Squats poids du corps / jump squats": ["Squats lents (tempo 3-1-3)", "Squats vers une chaise"],
+  "Fentes marchées ou inversées": ["Fentes arrière sur place", "Bulgarian split squats"],
+  "Pistol squat progression": ["Pistol squat vers une chaise", "Squats bulgares légers"],
+  "Pont fessier": ["Pont fessier une jambe", "Hip thrust dos sur banc"],
+  "Pont fessier / Hip thrusts": ["Pont fessier classique", "Hip thrust dos sur banc"],
+  "Élevés de mollets": ["Mollets sur une marche", "Mollets une jambe"],
+  "Mountain climbers": ["Mountain climbers lents", "Planche dynamique (genoux poitrine)"],
+  "L-sit progression": ["L-sit jambes fléchies (tuck)", "Relevés de genoux sur chaises"],
+};
+
 export const MEAL_TEMPLATES = [
   { name: "Œufs + avoine + fruits", kcal: 550, protein: 32, carbs: 65, fat: 18 },
   { name: "Poulet + riz + légumes", kcal: 620, protein: 48, carbs: 70, fat: 14 },

@@ -22,6 +22,8 @@ import {
   generatePlan,
   goalDefOf,
   computeNutrition,
+  WEEKDAY_LABELS,
+  capacitiesFromHistory,
   type Capacities,
   type GoalId,
 } from "@/lib/plan";
@@ -43,20 +45,53 @@ function OnboardingPage() {
   const alreadyOnboarded = state.profile.onboarded;
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<GoalId>(goalDefOf(state.profile.goal).id);
-  const [daysPerWeek, setDaysPerWeek] = useState<5 | 6>(state.profile.daysPerWeek);
+  // Jours d'entraînement (0 = Lundi … 6 = Dimanche), 3 à 6 jours
+  const [trainingDays, setTrainingDays] = useState<number[]>(() =>
+    state.profile.trainingDays?.length
+      ? [...state.profile.trainingDays].sort((a, b) => a - b)
+      : state.profile.daysPerWeek === 5
+        ? [0, 1, 2, 3, 4]
+        : [0, 1, 2, 3, 4, 5],
+  );
   const [sex, setSex] = useState<"homme" | "femme">(state.profile.sex ?? "homme");
   const [age, setAge] = useState(state.profile.age?.toString() ?? "");
   const [weight, setWeight] = useState(state.profile.weight.toString());
   const [height, setHeight] = useState(state.profile.height.toString());
   const [level, setLevel] = useState<Profile["level"]>(state.profile.level);
-  const [capacities, setCapacities] = useState<Capacities>(state.profile.capacities ?? {});
+  // Capacités : perfs réelles (tests + historique) en priorité, déclarées sinon
+  // (cycle 1 sans historique → on garde les valeurs déclarées).
+  const merged = useMemo(
+    () => capacitiesFromHistory(state.tests, state.workouts, state.profile.capacities ?? {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const perfBased = merged.fromReal;
+  const [capacities, setCapacities] = useState<Capacities>(merged.capacities);
+
+  const toggleDay = (i: number) => {
+    setTrainingDays((cur) => {
+      if (cur.includes(i)) {
+        if (cur.length <= 3) {
+          toast.error("Minimum 3 jours d'entraînement");
+          return cur;
+        }
+        return cur.filter((d) => d !== i);
+      }
+      if (cur.length >= 6) {
+        toast.error("Maximum 6 jours : garde au moins 1 jour de repos complet 🧘");
+        return cur;
+      }
+      return [...cur, i].sort((a, b) => a - b);
+    });
+  };
 
   // Aperçu live de la nutrition calculée
   const previewProfile: Profile = useMemo(
     () => ({
       ...state.profile,
       goal,
-      daysPerWeek,
+      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+      trainingDays,
       level,
       sex,
       age: parseInt(age) || undefined,
@@ -64,7 +99,7 @@ function OnboardingPage() {
       height: parseFloat(height) || state.profile.height,
       capacities,
     }),
-    [state.profile, goal, daysPerWeek, level, sex, age, weight, height, capacities],
+    [state.profile, goal, trainingDays, level, sex, age, weight, height, capacities],
   );
   const nutrition = useMemo(() => computeNutrition(previewProfile), [previewProfile]);
   const plan = useMemo(() => generatePlan(previewProfile), [previewProfile]);
@@ -73,7 +108,8 @@ function OnboardingPage() {
   const finish = () => {
     const next: Partial<Profile> = {
       goal,
-      daysPerWeek,
+      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+      trainingDays,
       level,
       sex,
       age: parseInt(age) || undefined,
@@ -145,24 +181,35 @@ function OnboardingPage() {
               ))}
             </div>
             <div className="card-premium p-4">
-              <p className="text-xs font-bold text-muted-foreground mb-2">
-                Fréquence d'entraînement
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {([5, 6] as const).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setDaysPerWeek(n)}
-                    className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                      daysPerWeek === n
-                        ? "btn-hero border-transparent"
-                        : "bg-white/5 border-white/10 text-muted-foreground"
-                    }`}
-                  >
-                    {n} jours/sem
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-muted-foreground">Tes jours d'entraînement</p>
+                <span className="text-[11px] font-extrabold text-primary">
+                  {trainingDays.length} séance(s)/sem
+                </span>
               </div>
+              <div className="grid grid-cols-7 gap-1.5">
+                {WEEKDAY_LABELS.map((lbl, i) => {
+                  const active = trainingDays.includes(i);
+                  return (
+                    <button
+                      key={lbl}
+                      onClick={() => toggleDay(i)}
+                      className={`py-2 rounded-lg text-[11px] font-bold border transition-all active:scale-90 ${
+                        active
+                          ? "btn-hero border-transparent"
+                          : "bg-white/5 border-white/10 text-muted-foreground"
+                      }`}
+                    >
+                      {lbl.slice(0, 1)}
+                      <span className="sr-only">{lbl}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Touche les jours où tu t'entraînes (3 à 6). La séance reste à son jour habituel :
+                les autres deviennent repos 🧘.
+              </p>
             </div>
           </div>
         )}
@@ -248,6 +295,14 @@ function OnboardingPage() {
               L'app ajuste la difficulté (fourchettes de reps/temps). 0 ou vide si tu ne sais pas —
               la progression RPE calibrera ensuite toute seule.
             </p>
+            {perfBased && (
+              <div className="card-premium p-3 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.10] to-transparent">
+                <p className="text-[11px] text-lime-200 font-semibold">
+                  ✨ Pré-rempli avec tes vraies perfs (tests + séances enregistrés). Ajuste si
+                  besoin — sinon laisse, c'est mesuré.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
                 <button
@@ -302,13 +357,22 @@ function OnboardingPage() {
             <p className="text-sm text-muted-foreground">
               Généré pour <b>{goalDefOf(goal).label.toLowerCase()}</b> · palier{" "}
               <b>{TIER_INFO[plan.tier].label}</b> (×{TIER_INFO[plan.tier].factor} sur les
-              fourchettes).
+              fourchettes) — calculé{" "}
+              {perfBased ? (
+                <>
+                  sur tes <b>perfs réelles</b> ✨
+                </>
+              ) : (
+                "sur tes déclarations (1er cycle)"
+              )}
+              .
             </p>
 
             {/* Semaine */}
             <div className="card-premium p-4">
               <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground mb-3">
-                <Dumbbell className="h-4 w-4 text-primary" /> Ta semaine · {daysPerWeek} jours
+                <Dumbbell className="h-4 w-4 text-primary" /> Ta semaine · {trainingDays.length}{" "}
+                séances
               </div>
               <div className="space-y-2">
                 {weekDays.map((d) => (
@@ -346,6 +410,11 @@ function OnboardingPage() {
                 <p className="text-[9px] font-bold text-muted-foreground uppercase">eau/jour</p>
               </div>
             </div>
+            <p className="text-[11px] text-muted-foreground text-center -mt-1">
+              Répartition estimée : <b className="text-foreground">~{nutrition.carbsTarget} g</b>{" "}
+              glucides · <b className="text-foreground">~{nutrition.fatTarget} g</b> lipides par
+              jour
+            </p>
 
             <div className="card-premium p-4 border border-violet-400/25">
               <div className="flex items-center gap-2 text-xs font-bold text-violet-300 mb-1.5">

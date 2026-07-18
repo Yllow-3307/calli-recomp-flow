@@ -1,0 +1,1582 @@
+diff --git a/src/integrations/supabase/types.ts b/src/integrations/supabase/types.ts
+index 5823d4d..2bb46ed 100644
+--- a/src/integrations/supabase/types.ts
++++ b/src/integrations/supabase/types.ts
+@@ -22,6 +22,8 @@ export type Database = {
+           sex: "homme" | "femme" | null;
+           capacities: Json;
+           plan: Json | null;
++          training_days: Json;
++          exercise_swaps: Json;
+         };
+         Insert: {
+           id: string;
+@@ -38,6 +40,8 @@ export type Database = {
+           sex?: "homme" | "femme" | null;
+           capacities?: Json;
+           plan?: Json | null;
++          training_days?: Json;
++          exercise_swaps?: Json;
+         };
+         Update: {
+           id?: string;
+@@ -54,6 +58,8 @@ export type Database = {
+           sex?: "homme" | "femme" | null;
+           capacities?: Json;
+           plan?: Json | null;
++          training_days?: Json;
++          exercise_swaps?: Json;
+         };
+         Relationships: [
+           {
+diff --git a/src/lib/plan.ts b/src/lib/plan.ts
+index c5d9530..952d6e0 100644
+--- a/src/lib/plan.ts
++++ b/src/lib/plan.ts
+@@ -4,7 +4,7 @@
+ //   objectif + capacités déclarées + niveau  →  fourchettes adaptées + cibles
+ //   nutrition / hydratation calculées (Mifflin-St Jeor).
+ // ─────────────────────────────────────────────────────────────────────────────
+-import type { Profile } from "./store";
++import type { Profile, ProgressTest, WorkoutLog } from "./store";
+ import { PROGRAM, type DayProgram, type Exercise } from "./program";
+ 
+ // ── Objectifs ────────────────────────────────────────────────────────────────
+@@ -133,6 +133,8 @@ export interface GeneratedNutrition {
+   kcalTarget: number;
+   proteinMin: number;
+   proteinMax: number;
++  carbsTarget: number;
++  fatTarget: number;
+   waterL: number;
+   maintenance: number;
+ }
+@@ -150,19 +152,31 @@ export function computeNutrition(p: Profile): GeneratedNutrition {
+   const goal = goalDefOf(p.goal);
+   const maintenance = computeMaintenance(p);
+   const kcalTarget = Math.max(1200, Math.round((maintenance * (1 + goal.kcalAdjust)) / 10) * 10);
++  const proteinMin = Math.round(p.weight * goal.proteinPerKg[0]);
++  const proteinMax = Math.round(p.weight * goal.proteinPerKg[1]);
++  const proteinMid = (proteinMin + proteinMax) / 2;
++  // Lipides : ~0.9 g/kg (sol hormonal), glucides = calories restantes.
++  const fatTarget = Math.max(40, Math.round(p.weight * 0.9));
++  const carbsTarget = Math.max(60, Math.round((kcalTarget - proteinMid * 4 - fatTarget * 9) / 4));
+   return {
+     goalId: goal.id,
+     kcalTarget,
+-    proteinMin: Math.round(p.weight * goal.proteinPerKg[0]),
+-    proteinMax: Math.round(p.weight * goal.proteinPerKg[1]),
++    proteinMin,
++    proteinMax,
++    carbsTarget,
++    fatTarget,
+     waterL: Math.max(2, Math.min(4.5, Math.round(p.weight * 0.035 * 2) / 2)),
+     maintenance,
+   };
+ }
+ 
+-/** Cibles à afficher partout dans l'app (plan généré en priorité, sinon calcul direct). */
++/**
++ * Cibles affichées partout dans l'app.
++ * Toujours recalculées (fonction déterministe du profil) : elles se mettent
++ * donc à jour automatiquement quand le poids change via les pesées.
++ */
+ export function nutritionTargets(p: Profile): GeneratedNutrition {
+-  return p.plan?.nutrition ?? computeNutrition(p);
++  return computeNutrition(p);
+ }
+ 
+ // ── Plan généré (fourchettes adaptées au palier) ─────────────────────────────
+@@ -219,8 +233,116 @@ export function generatePlan(p: Profile): GeneratedPlan {
+   };
+ }
+ 
+-/** Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard). */
+-export function planDays(p?: Pick<Profile, "plan"> | null): DayProgram[] {
++// ── Jours d'entraînement choisis par l'utilisateur ───────────────────────────
++
++/** Indices des jours dans le plan : 0 = Lundi … 6 = Dimanche. */
++export const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
++export const DEFAULT_TRAINING_DAYS = [0, 1, 2, 3, 4, 5]; // Lun → Sam (6 jours)
++
++const REST_INSTRUCTIONS = [
++  "Récupération prioritaire — écoute ton corps",
++  "Marche légère optionnelle 20-30 min",
++  "Étirements + mobilité 10-15 min : poitrine, épaules, ischios, hanches",
++];
++
++/**
++ * Transforme en repos les jours non cochés dans les préférences.
++ * Le contenu des séances reste à son jour habituel (pas de déplacement) :
++ * c'est prévisible et facile à retenir (« le jeudi c'est Pull »).
++ */
++export function applyTrainingDays(days: DayProgram[], trainingDays?: number[]): DayProgram[] {
++  if (!trainingDays || trainingDays.length === 0) return days;
++  return days.map((d, i) => {
++    if (d.type === "rest" || trainingDays.includes(i)) return d;
++    return {
++      ...d,
++      type: "rest" as const,
++      emoji: "🧘",
++      title: "Repos / récupération",
++      summary: "Jour off choisi : marche légère, mobilité douce, hydratation.",
++      duration: 20,
++      warmup: [],
++      blocks: [
++        {
++          title: "Consignes",
++          items: REST_INSTRUCTIONS.map((name, j) => ({
++            id: `rest-${d.key}-${j}`,
++            name,
++            sets: 0,
++            target: "—",
++            rest: 0,
++            kind: "reps" as const,
++          })),
++        },
++      ],
++      alternatives: undefined,
++      finisher: undefined,
++    };
++  });
++}
++
++/** Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard),
++ *  avec les jours non choisis transformés en repos. */
++export function planDays(p?: Pick<Profile, "plan" | "trainingDays"> | null): DayProgram[] {
+   const days = p?.plan?.days;
+-  return Array.isArray(days) && days.length === 7 ? days : PROGRAM;
++  const base = Array.isArray(days) && days.length === 7 ? days : PROGRAM;
++  return applyTrainingDays(base, p?.trainingDays);
++}
++
++/** Nombre de séances réellement planifiées dans la semaine (hors repos). */
++export function plannedSessionsPerWeek(
++  p: Pick<Profile, "plan" | "trainingDays" | "daysPerWeek">,
++): number {
++  const planned = planDays(p).filter((d) => d.type !== "rest").length;
++  return planned > 0 ? planned : p.daysPerWeek || 6;
++}
++
++// ── Capacités déduites des vraies perfs (tests + historique de séances) ─────
++
++function bestSetValue(
++  workouts: WorkoutLog[],
++  needle: string,
++  kind: "reps" | "time",
++): number | undefined {
++  const n = needle.toLowerCase();
++  let best: number | undefined;
++  for (const w of workouts)
++    for (const e of w.exercises) {
++      if (e.kind !== kind || !e.name.toLowerCase().includes(n)) continue;
++      for (const s of e.sets) {
++        const v = kind === "time" ? s.time : s.reps;
++        if (s.done && typeof v === "number" && v > (best ?? 0)) best = v;
++      }
++    }
++  return best;
++}
++
++function bestTestValue(tests: ProgressTest[], testId: string): number | undefined {
++  const logs = tests.filter((t) => t.testId === testId);
++  return logs.length ? Math.max(...logs.map((t) => t.value)) : undefined;
++}
++
++/**
++ * Capacités = perfs réelles quand elles existent (max des tests / séances),
++ * sinon valeurs déclarées à l'onboarding (cas du 1er cycle sans historique).
++ */
++export function capacitiesFromHistory(
++  tests: ProgressTest[],
++  workouts: WorkoutLog[],
++  declared: Capacities = {},
++): { capacities: Capacities; fromReal: boolean } {
++  const real: Capacities = {
++    pullups: bestTestValue(tests, "pullups") ?? bestSetValue(workouts, "traction", "reps"),
++    pushups: bestTestValue(tests, "pushups") ?? bestSetValue(workouts, "pompe", "reps"),
++    dips: bestSetValue(workouts, "dips", "reps"),
++    handstand_s: bestTestValue(tests, "handstand") ?? bestSetValue(workouts, "handstand", "time"),
++    lsit_s: bestTestValue(tests, "lsit") ?? bestSetValue(workouts, "l-sit", "time"),
++  };
++  const fromReal = Object.values(real).some((v) => typeof v === "number" && v > 0);
++  const capacities: Capacities = { ...declared };
++  (Object.keys(real) as (keyof Capacities)[]).forEach((k) => {
++    const v = real[k];
++    if (typeof v === "number" && v > 0) capacities[k] = v;
++  });
++  return { capacities, fromReal };
+ }
+diff --git a/src/lib/program.ts b/src/lib/program.ts
+index a1467fd..ee88b5a 100644
+--- a/src/lib/program.ts
++++ b/src/lib/program.ts
+@@ -270,6 +270,51 @@ export const PROGRESS_TESTS: ProgressTestType[] = [
+   { id: "run5k", name: "5 km course", unit: "min" },
+ ];
+ 
++/**
++ * Remplacements d'exercices (pas de matériel, douleur, envie de varier).
++ * Clé = nom exact de l'exercice du programme ; valeurs = alternatives proches
++ * (même groupe musculaire, difficulté similaire ou régressive).
++ */
++export const EXERCISE_SWAPS: Record<string, string[]> = {
++  "Pike push-up lesté": ["Pike push-up (poids du corps)", "Pompes déclinées"],
++  "HSPU négatif mur": ["Pike push-up", "Pompes déclinées lentes"],
++  "HSPU au mur": ["HSPU négatif mur", "Pike push-up"],
++  "Pompes archer": ["Pompes standard / déclinées / diamant", "Pompes mains surélevées"],
++  Dips: ["Dips entre deux chaises", "Pompes serrées / diamant"],
++  "Pompes standard / déclinées / diamant": ["Pompes mains surélevées", "Dips entre deux chaises"],
++  "Handstand libre": ["Handstand au mur", "Marche en appui contre le mur"],
++  "Hollow body hold": ["Hollow body jambes fléchies", "Dead bug"],
++  "Hollow body iso": ["Hollow body jambes fléchies", "Dead bug"],
++  Planche: ["Planche sur les genoux", "Planche avec touchés d'épaules"],
++  "Planche + planche latérale lestée": [
++    "Planche classique + latérale",
++    "Planche touchés d'épaules",
++  ],
++  "Planche latérale lestée": ["Planche latérale simple", "Planche latérale genoux"],
++  "Tractions strictes": ["Tractions négatives", "Australian pull-ups", "Tractions avec élastique"],
++  "Chest-to-bar": ["Tractions strictes", "Tractions explosives"],
++  "Tractions explosives": ["Tractions strictes", "Australian pull-ups explosifs"],
++  "Transition muscle-up bande": [
++    "Transition allongé au sol",
++    "Dips + tractions strictes (superset)",
++  ],
++  "Rows inversés / Australian pull-ups": ["Australian sous une table", "Tirage avec élastique"],
++  "Chin-ups / tractions supinées": ["Chin-ups négatifs", "Australian chin-ups"],
++  "Relevés de jambes suspendus": ["Relevés de genoux suspendus", "Relevés de jambes au sol"],
++  "Dragon flag": ["Dragon flag jambes fléchies", "Relevés de jambes au sol (négatif lent)"],
++  "Tuck flag": ["Tuck flag une jambe tendue", "Relevés de genoux suspendus"],
++  "Bulgarian split squats": ["Fentes arrière", "Squats poids du corps"],
++  "Bulgarian split squats ou fentes": ["Fentes arrière", "Squats poids du corps"],
++  "Squats poids du corps / jump squats": ["Squats lents (tempo 3-1-3)", "Squats vers une chaise"],
++  "Fentes marchées ou inversées": ["Fentes arrière sur place", "Bulgarian split squats"],
++  "Pistol squat progression": ["Pistol squat vers une chaise", "Squats bulgares légers"],
++  "Pont fessier": ["Pont fessier une jambe", "Hip thrust dos sur banc"],
++  "Pont fessier / Hip thrusts": ["Pont fessier classique", "Hip thrust dos sur banc"],
++  "Élevés de mollets": ["Mollets sur une marche", "Mollets une jambe"],
++  "Mountain climbers": ["Mountain climbers lents", "Planche dynamique (genoux poitrine)"],
++  "L-sit progression": ["L-sit jambes fléchies (tuck)", "Relevés de genoux sur chaises"],
++};
++
+ export const MEAL_TEMPLATES = [
+   { name: "Œufs + avoine + fruits", kcal: 550, protein: 32, carbs: 65, fat: 18 },
+   { name: "Poulet + riz + légumes", kcal: 620, protein: 48, carbs: 70, fat: 14 },
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index 3033828..c92f9d5 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -10,14 +10,16 @@ export interface Profile {
+   height: number;
+   goal: string;
+   equipment: string[];
+-  daysPerWeek: 5 | 6;
++  daysPerWeek: number; // 3 à 6 jours (dérivé de trainingDays)
+   level: "débutant" | "intermédiaire" | "avancé";
+   onboarded: boolean;
+   startDate?: string; // ISO date when program started
+   age?: number; // pour le calcul calorique (Mifflin-St Jeor)
+   sex?: "homme" | "femme";
+-  capacities?: Capacities; // capacités déclarées à l'onboarding
++  capacities?: Capacities; // capacités (déclarées ou déduites des perfs réelles)
+   plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
++  trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
++  exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
+ }
+ 
+ export interface SetLog {
+@@ -222,7 +224,7 @@ export function useAppActions() {
+             weight: data.weight,
+             height: data.height,
+             goal: data.goal || "Recomposition corporelle",
+-            daysPerWeek: (data.days_per_week === 5 ? 5 : 6) as 5 | 6,
++            daysPerWeek: typeof data.days_per_week === "number" ? data.days_per_week : 6,
+             level: data.level || "intermédiaire",
+             equipment: data.equipment || ["Barre traction", "Anneaux", "Haltères"],
+             onboarded: data.onboarded,
+@@ -231,6 +233,11 @@ export function useAppActions() {
+             sex: data.sex ?? s.profile.sex,
+             capacities: (data.capacities as Capacities | null) ?? s.profile.capacities,
+             plan: (data.plan as unknown as GeneratedPlan | null) ?? s.profile.plan,
++            trainingDays: Array.isArray(data.training_days)
++              ? (data.training_days as number[])
++              : s.profile.trainingDays,
++            exerciseSwaps:
++              (data.exercise_swaps as Record<string, string> | null) ?? s.profile.exerciseSwaps,
+           },
+         }));
+       }
+@@ -262,7 +269,8 @@ export function useAppActions() {
+           weight: profileData.weight,
+           height: profileData.height,
+           goal: profileData.goal || "Recomposition corporelle",
+-          daysPerWeek: (profileData.days_per_week === 5 ? 5 : 6) as 5 | 6,
++          daysPerWeek:
++            typeof profileData.days_per_week === "number" ? profileData.days_per_week : 6,
+           level: profileData.level || "intermédiaire",
+           equipment: profileData.equipment || ["Barre traction", "Anneaux", "Haltères"],
+           onboarded: profileData.onboarded,
+@@ -271,6 +279,12 @@ export function useAppActions() {
+           sex: profileData.sex ?? currentProfile.sex,
+           capacities: (profileData.capacities as Capacities | null) ?? currentProfile.capacities,
+           plan: (profileData.plan as unknown as GeneratedPlan | null) ?? currentProfile.plan,
++          trainingDays: Array.isArray(profileData.training_days)
++            ? (profileData.training_days as number[])
++            : currentProfile.trainingDays,
++          exerciseSwaps:
++            (profileData.exercise_swaps as Record<string, string> | null) ??
++            currentProfile.exerciseSwaps,
+         };
+       } else {
+         const mappedProfile = {
+@@ -286,6 +300,8 @@ export function useAppActions() {
+           sex: currentProfile.sex ?? null,
+           capacities: (currentProfile.capacities ?? {}) as unknown as Json,
+           plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
++          training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
++          exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
+           updated_at: new Date().toISOString(),
+         };
+         await supabase.from("profiles").upsert(mappedProfile);
+@@ -842,6 +858,8 @@ export function useAppActions() {
+               sex: profileToSync.sex ?? null,
+               capacities: (profileToSync.capacities ?? {}) as unknown as Json,
+               plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
++              training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
++              exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
+               updated_at: new Date().toISOString(),
+             };
+             supabase
+@@ -1360,58 +1378,278 @@ export interface ProgressionSuggestion {
+   name: string;
+   hint: string;
+   delta: string;
+-  reason: "up" | "hold";
++  reason: "up" | "hold" | "down";
+ }
+ 
++interface SessionEval {
++  name: string;
++  complete: boolean;
++  hitTop: boolean;
++  maxRpe: number;
++}
++
++/**
++ * Suggestion de progression V2 : regarde les 2 dernières occurrences de l'exercice.
++ *  - séance incomplète        → idem (finir d'abord)
++ *  - haut de fourchette RPE≤8 → +1/+2 reps (+5s) ; ×2 si validé 2 fois de suite
++ *  - haut de fourchette RPE9+ → consolider
++ *  - sous la fourchette 2 fois de suite → reculer d'un cran pour repartir propre
++ */
+ export function suggestProgressionForExercise(
+   exId: string,
+   targetMax: number | undefined,
+   kind: "reps" | "time" | "distance",
+   workouts: WorkoutLog[],
+ ): ProgressionSuggestion | null {
+-  const lastLog = workouts.find((w) => w.exercises.some((e) => e.exId === exId));
+-  if (!lastLog) return null;
+-  const ex = lastLog.exercises.find((e) => e.exId === exId)!;
+-  const setsDone = ex.sets.filter((s) => s.done);
+-  if (setsDone.length < ex.sets.length)
+-    return { exId, name: ex.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
+-
+-  const values = setsDone
+-    .map((s) => (kind === "time" ? s.time : s.reps))
+-    .filter((v): v is number => typeof v === "number" && v > 0);
+-  if (!values.length) return null;
+-  const min = Math.min(...values);
+-  const rpes = setsDone.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
+-  const maxRpe = rpes.length ? Math.max(...rpes) : 7;
++  const logs = workouts.filter((w) => w.exercises.some((e) => e.exId === exId)).slice(0, 2);
++  if (!logs.length) return null;
++
++  const evalSession = (w: WorkoutLog): SessionEval | null => {
++    const ex = w.exercises.find((e) => e.exId === exId)!;
++    const setsDone = ex.sets.filter((s) => s.done);
++    if (setsDone.length < ex.sets.length)
++      return { name: ex.name, complete: false, hitTop: false, maxRpe: 7 };
++    const values = setsDone
++      .map((s) => (kind === "time" ? s.time : s.reps))
++      .filter((v): v is number => typeof v === "number" && v > 0);
++    if (!values.length) return null;
++    const min = Math.min(...values);
++    const rpes = setsDone.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
++    return {
++      name: ex.name,
++      complete: true,
++      hitTop: targetMax !== undefined && min >= targetMax,
++      maxRpe: rpes.length ? Math.max(...rpes) : 7,
++    };
++  };
++
++  const cur = evalSession(logs[0]);
++  if (!cur) return null;
++  if (!cur.complete)
++    return { exId, name: cur.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
++
++  const prev = logs[1] ? evalSession(logs[1]) : null;
+ 
+-  const hitTop = targetMax !== undefined && min >= targetMax;
+-  if (hitTop && maxRpe <= 8) {
++  if (cur.hitTop && cur.maxRpe <= 8) {
++    const twice = !!prev?.hitTop;
+     if (kind === "time")
+       return {
+         exId,
+-        name: ex.name,
+-        hint: "Objectif atteint · RPE ≤ 8",
+-        delta: "+5s",
++        name: cur.name,
++        hint: twice ? "Validé 2 fois de suite 💪" : "Objectif atteint · RPE ≤ 8",
++        delta: twice || cur.maxRpe <= 7 ? "+8s" : "+5s",
+         reason: "up",
+       };
+-    const bump = maxRpe <= 7 ? 2 : 1;
++    const bump = twice || cur.maxRpe <= 7 ? 2 : 1;
+     return {
+       exId,
+-      name: ex.name,
+-      hint: "Objectif atteint · RPE ≤ 8",
++      name: cur.name,
++      hint: twice ? "Validé 2 fois de suite 💪" : "Objectif atteint · RPE ≤ 8",
+       delta: `+${bump} reps`,
+       reason: "up",
+     };
+   }
++  if (cur.hitTop && cur.maxRpe >= 9)
++    return {
++      exId,
++      name: cur.name,
++      hint: "Haut de fourchette mais RPE ≥ 9 : consolider propre",
++      delta: "= idem",
++      reason: "hold",
++    };
++  if (prev && !prev.hitTop)
++    return {
++      exId,
++      name: cur.name,
++      hint: "2 séances sous la fourchette → recule d'un cran pour repartir propre",
++      delta: kind === "time" ? "-5s" : "-1 rep",
++      reason: "down",
++    };
+   return {
+     exId,
+-    name: ex.name,
+-    hint: maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte",
++    name: cur.name,
++    hint: cur.maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte",
+     delta: "= idem",
+     reason: "hold",
+   };
+ }
+ 
++/** "8·8·7 reps · RPE 9 · 12 juil." — dernière perf affichée pendant la séance. */
++export function lastPerformanceHint(
++  exId: string,
++  kind: "reps" | "time" | "distance",
++  workouts: WorkoutLog[],
++): string | null {
++  const log = workouts.find((w) => w.exercises.some((e) => e.exId === exId));
++  if (!log) return null;
++  const ex = log.exercises.find((e) => e.exId === exId)!;
++  const done = ex.sets.filter((s) => s.done);
++  const vals = done
++    .map((s) => (kind === "time" ? s.time : s.reps))
++    .filter((v): v is number => typeof v === "number" && v > 0);
++  if (!vals.length) return null;
++  const rpes = done.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
++  const date = new Date(log.date).toLocaleDateString("fr-FR", {
++    day: "numeric",
++    month: "short",
++  });
++  return `${vals.join("·")}${kind === "time" ? " s" : ""}${rpes.length ? ` · RPE ${Math.max(...rpes)}` : ""} · ${date}`;
++}
++
++// ---------- Records personnels ----------
++
++export interface PersonalBest {
++  exId: string;
++  name: string;
++  value: number;
++  weight?: number;
++  kind: "reps" | "time" | "distance";
++  date: string;
++}
++
++/** Meilleure série enregistrée par exercice (toutes séances confondues). */
++export function personalBests(workouts: WorkoutLog[]): Record<string, PersonalBest> {
++  const out: Record<string, PersonalBest> = {};
++  for (const w of workouts)
++    for (const e of w.exercises) {
++      if (e.kind === "distance") continue;
++      for (const s of e.sets) {
++        if (!s.done) continue;
++        const v = e.kind === "time" ? s.time : s.reps;
++        if (typeof v !== "number" || v <= 0) continue;
++        const cur = out[e.exId];
++        if (!cur || v > cur.value)
++          out[e.exId] = {
++            exId: e.exId,
++            name: e.name,
++            value: v,
++            weight: s.weight,
++            kind: e.kind,
++            date: w.date,
++          };
++      }
++    }
++  return out;
++}
++
++/** Records battus par ce workout (vs l'état AVANT son ajout). */
++export function findNewRecords(
++  prevBests: Record<string, PersonalBest>,
++  log: WorkoutLog,
++): PersonalBest[] {
++  const recs: PersonalBest[] = [];
++  for (const e of log.exercises) {
++    if (e.kind === "distance") continue;
++    const prev = prevBests[e.exId];
++    if (!prev) continue; // première fois sur l'exo = mise en place, pas un "record battu"
++    let bestInLog: number | undefined;
++    let bestWeight: number | undefined;
++    for (const s of e.sets) {
++      if (!s.done) continue;
++      const v = e.kind === "time" ? s.time : s.reps;
++      if (typeof v === "number" && v > (bestInLog ?? 0)) {
++        bestInLog = v;
++        bestWeight = s.weight;
++      }
++    }
++    if (bestInLog !== undefined && bestInLog > prev.value)
++      recs.push({
++        exId: e.exId,
++        name: e.name,
++        value: bestInLog,
++        weight: bestWeight,
++        kind: e.kind,
++        date: log.date,
++      });
++  }
++  return recs;
++}
++
++// ---------- Bilan de la semaine ----------
++
++export interface WeeklyStats {
++  /** clé yyyy-mm-dd du lundi de la fenêtre (pour mémoriser le masquage) */
++  windowKey: string;
++  label: string; // "Ta semaine" (dim.) / "La semaine dernière" (lun.)
++  sessions: number;
++  km: number;
++  waterAvg: number | null; // L/jour sur la fenêtre
++  proteinAvg: number | null; // g/jour
++  weightDelta: number | null; // kg début→fin de fenêtre
++}
++
++/**
++ * Stats de la fenêtre de bilan : dimanche → semaine en cours (lun→aujourd'hui) ;
++ * lundi → semaine complète écoulée (lun→dim). null les autres jours.
++ */
++export function weeklyStats(
++  state: Pick<AppState, "workouts" | "cardio" | "meals" | "metrics" | "water">,
++): WeeklyStats | null {
++  const today = new Date();
++  const dow = today.getDay(); // 0 = dimanche
++  if (dow !== 0 && dow !== 1) return null;
++
++  const monday = new Date(today);
++  monday.setDate(monday.getDate() - ((dow + 6) % 7));
++  monday.setHours(0, 0, 0, 0);
++
++  const start = new Date(monday);
++  const end = new Date(today);
++  end.setHours(23, 59, 59, 999);
++  let label = "Ta semaine jusqu'ici";
++  if (dow === 1) {
++    start.setDate(start.getDate() - 7);
++    end.setTime(monday.getTime() - 1);
++    label = "La semaine dernière";
++  }
++
++  const inRange = (iso: string) => {
++    const t = new Date(iso).getTime();
++    return t >= start.getTime() && t <= end.getTime();
++  };
++  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 864e5)) || 1;
++
++  const sessions = state.workouts.filter((w) => inRange(w.date)).length;
++  const km = state.cardio
++    .filter((c) => c.type === "course" && inRange(c.date))
++    .reduce((a, c) => a + (c.distance || 0), 0);
++
++  // Eau / protéines : moyenne par jour sur les jours avec au moins une entrée
++  const waterKeys = Object.keys(state.water).filter((k) => {
++    const t = new Date(k + "T12:00:00").getTime();
++    return t >= start.getTime() && t <= end.getTime() && state.water[k] > 0;
++  });
++  const waterAvg = waterKeys.length
++    ? waterKeys.reduce((a, k) => a + state.water[k], 0) / Math.max(days, waterKeys.length)
++    : null;
++
++  const mealsInRange = state.meals.filter((m) => inRange(m.date));
++  const proteinDays = new Set(mealsInRange.map((m) => m.date.slice(0, 10)));
++  const proteinAvg = proteinDays.size
++    ? mealsInRange.reduce((a, m) => a + m.protein, 0) / Math.max(days, proteinDays.size)
++    : null;
++
++  const weightsInRange = state.metrics
++    .filter((m) => typeof m.weight === "number" && inRange(m.date))
++    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
++  const weightDelta =
++    weightsInRange.length >= 2
++      ? Math.round(
++          (weightsInRange[weightsInRange.length - 1].weight! - weightsInRange[0].weight!) * 10,
++        ) / 10
++      : null;
++
++  return {
++    windowKey: start.toISOString().slice(0, 10),
++    label,
++    sessions,
++    km: Math.round(km * 10) / 10,
++    waterAvg: waterAvg !== null ? Math.round(waterAvg * 10) / 10 : null,
++    proteinAvg: proteinAvg !== null ? Math.round(proteinAvg) : null,
++    weightDelta,
++  };
++}
++
+ // Current program week (1-12)
+ /**
+  * Cycles infinis de 12 semaines : l'app ne plafonne plus à S12.
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index e05b4c9..0e20c55 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -178,9 +178,10 @@ function RootComponent() {
+       } else if (session && !onboarded && location.pathname !== "/onboarding") {
+         // Profil incomplet : l'onboarding génère d'abord son plan personnalisé
+         navigate({ to: "/onboarding" });
+-      } else if (session && onboarded && location.pathname === "/onboarding") {
+-        navigate({ to: "/" });
+       }
++      // NB : un utilisateur déjà onboardé PEUT aller sur /onboarding
++      // (Paramètres → « Générer un nouveau plan » ou fin de cycle) : on ne le
++      // redirige plus vers l'accueil, sinon le bouton semblait sans effet.
+     });
+   }, [location.pathname, navigate, onboarded]);
+ 
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index c436aac..848d905 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -11,8 +11,14 @@ import {
+   Trophy,
+ } from "lucide-react";
+ import { PageShell, TopBar } from "@/components/BottomNav";
+-import { getTodayProgram, RULES } from "@/lib/program";
+-import { nutritionTargets, planDays } from "@/lib/plan";
++import { getTodayProgram, RULES, type DayProgram } from "@/lib/program";
++import {
++  nutritionTargets,
++  planDays,
++  plannedSessionsPerWeek,
++  WEEKDAY_LABELS,
++  type GeneratedNutrition,
++} from "@/lib/plan";
+ import {
+   useAppState,
+   useAppActions,
+@@ -23,6 +29,11 @@ import {
+   todayKey,
+   isTestWeek,
+   currentProgramWeek,
++  programCycle,
++  weeklyStats,
++  type Profile,
++  type WorkoutLog,
++  type WeeklyStats,
+ } from "@/lib/store";
+ import { Progress } from "@/components/ui/progress";
+ import { Button } from "@/components/ui/button";
+@@ -38,9 +49,9 @@ export const Route = createFileRoute("/")({
+   component: Dashboard,
+ });
+ 
+-import { useState, useEffect } from "react";
++import { useState, useEffect, useMemo } from "react";
+ import { supabase } from "@/integrations/supabase/client";
+-import { UserCheck } from "lucide-react";
++import { UserCheck, X, ClipboardList, PartyPopper } from "lucide-react";
+ 
+ // Badges colorés de type de séance stylisés
+ export function SessionTypeBadge({
+@@ -98,9 +109,12 @@ function Dashboard() {
+   const proteinTarget = Math.round((nut.proteinMin + nut.proteinMax) / 2);
+   const water = state.water[todayKey()] || 0;
+   const waterTarget = nut.waterL;
+-  const daysGoal = state.profile.daysPerWeek;
++  const daysGoal = plannedSessionsPerWeek(state.profile);
+   const showTestBanner = isTestWeek(state.profile);
+   const week = currentProgramWeek(state.profile);
++  const weekDays = planDays(state.profile);
++  // Bilan hebdo (dimanche = semaine en cours, lundi = semaine écoulée)
++  const recap = useMemo(() => weeklyStats(state), [state]);
+ 
+   return (
+     <PageShell>
+@@ -161,6 +175,12 @@ function Dashboard() {
+         </div>
+       </div>
+ 
++      {/* Pastilles de la semaine (fait / prévu / repos) */}
++      <WeekStripCard days={weekDays} workouts={state.workouts} />
++
++      {/* Fin de cycle (semaine 12) */}
++      <CycleEndCard profile={state.profile} />
++
+       {showTestBanner && (
+         <div className="px-5 mt-5">
+           <Link
+@@ -182,6 +202,9 @@ function Dashboard() {
+         </div>
+       )}
+ 
++      {/* Bilan hebdo (dimanche / lundi, masquable) */}
++      <WeeklyRecapCard recap={recap} planned={daysGoal} nut={nut} />
++
+       {/* Today's session */}
+       <section className="px-5 mt-6">
+         <div className="flex items-center justify-between mb-2 px-1">
+@@ -311,6 +334,156 @@ function Dashboard() {
+   );
+ }
+ 
++/** Vue hebdo : pastilles L→D (✓ fait · emoji = séance prévue · point = repos). */
++function WeekStripCard({ days, workouts }: { days: DayProgram[]; workouts: WorkoutLog[] }) {
++  const monday = new Date();
++  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
++  const doneKeys = useMemo(() => new Set(workouts.map((w) => w.date.slice(0, 10))), [workouts]);
++  return (
++    <section className="px-5 mt-4">
++      <div className="card-premium p-3.5 border border-white/[0.05]">
++        <div className="grid grid-cols-7 gap-1.5">
++          {days.map((d, i) => {
++            const date = new Date(monday);
++            date.setDate(monday.getDate() + i);
++            const key = date.toISOString().slice(0, 10);
++            const isDone = doneKeys.has(key);
++            const isPlanned = d.type !== "rest";
++            const isToday = key === todayKey();
++            return (
++              <div key={d.key} className="flex flex-col items-center gap-1">
++                <span
++                  className={`text-[9px] font-bold uppercase ${isToday ? "text-primary" : "text-muted-foreground"}`}
++                >
++                  {WEEKDAY_LABELS[i]}
++                </span>
++                <span
++                  className={`h-8 w-8 grid place-items-center rounded-full border text-[11px] ${
++                    isDone
++                      ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-black"
++                      : isPlanned
++                        ? "bg-white/[0.03] border-white/10 opacity-70"
++                        : "border-white/5 text-slate-600"
++                  }`}
++                >
++                  {isDone ? "✓" : isPlanned ? d.emoji : "·"}
++                </span>
++              </div>
++            );
++          })}
++        </div>
++      </div>
++    </section>
++  );
++}
++
++/** Carte « Fin du cycle » (semaine 12) → régénération du plan sur perfs réelles. */
++function CycleEndCard({ profile }: { profile: Profile }) {
++  const { cycle, cycleWeek } = programCycle(profile);
++  if (!profile.onboarded || cycleWeek !== 12) return null;
++  return (
++    <div className="px-5 mt-5">
++      <Link
++        to="/onboarding"
++        className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-amber-400 hover:border-amber-400/40"
++        style={{ backgroundImage: "var(--gradient-card)" }}
++      >
++        <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0 animate-float">
++          <PartyPopper className="h-5 w-5" />
++        </div>
++        <div className="flex-1 min-w-0">
++          <p className="text-sm font-black text-gradient">Fin du cycle {cycle} 🎉</p>
++          <p className="text-[11px] text-muted-foreground mt-0.5">
++            Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨
++          </p>
++        </div>
++        <ChevronRight className="h-5 w-5 text-muted-foreground" />
++      </Link>
++    </div>
++  );
++}
++
++/** Bilan du dimanche / lundi : stats + 1 conseil ciblé (masquable jusqu'à la semaine suivante). */
++function WeeklyRecapCard({
++  recap,
++  planned,
++  nut,
++}: {
++  recap: WeeklyStats | null;
++  planned: number;
++  nut: GeneratedNutrition;
++}) {
++  const [dismissed, setDismissed] = useState<string | null>(() =>
++    typeof window !== "undefined" ? localStorage.getItem("weekly-recap-dismissed") : null,
++  );
++  if (!recap || dismissed === recap.windowKey) return null;
++  const advice =
++    recap.sessions < planned
++      ? "Sans jugement 🙂 bloque tes créneaux tout de suite — même 30 min comptent."
++      : recap.proteinAvg !== null && recap.proteinAvg < nut.proteinMin
++        ? "Protéines un peu basses : ajoute un shake ou des œufs au petit-dej."
++        : recap.waterAvg !== null && recap.waterAvg < nut.waterL
++          ? "Hydratation courte : garde une bouteille d'1L visible sur ton bureau."
++          : "Semaine carrée 🔥 Reconduis exactement ça.";
++  const close = () => {
++    localStorage.setItem("weekly-recap-dismissed", recap.windowKey);
++    setDismissed(recap.windowKey);
++  };
++  return (
++    <div className="px-5 mt-5">
++      <div className="card-premium p-4 border border-violet-400/25 bg-gradient-to-b from-violet-400/[0.08] to-transparent relative">
++        <button
++          onClick={close}
++          aria-label="Masquer le bilan"
++          className="absolute top-2.5 right-2.5 text-muted-foreground hover:text-white p-1"
++        >
++          <X className="h-3.5 w-3.5" />
++        </button>
++        <div className="flex items-center gap-2 text-xs font-bold text-violet-300 mb-3">
++          <ClipboardList className="h-4 w-4" /> Bilan — {recap.label}
++        </div>
++        <div className="grid grid-cols-4 gap-2 text-center">
++          <div>
++            <p className="text-base font-black">
++              {recap.sessions}
++              <span className="text-[10px] text-muted-foreground font-semibold">/{planned}</span>
++            </p>
++            <p className="text-[9px] font-bold text-muted-foreground uppercase">séances</p>
++          </div>
++          <div>
++            <p className="text-base font-black">{recap.km}</p>
++            <p className="text-[9px] font-bold text-muted-foreground uppercase">km</p>
++          </div>
++          <div>
++            <p className="text-base font-black">
++              {recap.proteinAvg !== null ? `${recap.proteinAvg}g` : "—"}
++            </p>
++            <p className="text-[9px] font-bold text-muted-foreground uppercase">prot/j</p>
++          </div>
++          <div>
++            <p className="text-base font-black">
++              {recap.waterAvg !== null ? `${recap.waterAvg}L` : "—"}
++            </p>
++            <p className="text-[9px] font-bold text-muted-foreground uppercase">eau/j</p>
++          </div>
++        </div>
++        {recap.weightDelta !== null && (
++          <p className="text-[11px] text-muted-foreground mt-2.5">
++            ⚖️ Poids sur la période :{" "}
++            <b className={recap.weightDelta <= 0 ? "text-emerald-300" : "text-amber-300"}>
++              {recap.weightDelta > 0 ? "+" : ""}
++              {recap.weightDelta} kg
++            </b>
++          </p>
++        )}
++        <p className="text-[11px] text-violet-200/90 mt-2.5 leading-relaxed border-t border-white/5 pt-2.5">
++          💡 {advice}
++        </p>
++      </div>
++    </div>
++  );
++}
++
+ function Stat({
+   icon,
+   label,
+diff --git a/src/routes/mesures.tsx b/src/routes/mesures.tsx
+index 14d526a..88f886d 100644
+--- a/src/routes/mesures.tsx
++++ b/src/routes/mesures.tsx
+@@ -26,6 +26,8 @@ function MesuresPage() {
+   const [fatigue, setFatigue] = useState(3);
+   const [note, setNote] = useState("");
+   const [photos, setPhotos] = useState<{ face?: string; profile?: string; back?: string }>({});
++  // Poids détecté différent du profil → proposition de recalcul des cibles
++  const [pendingWeight, setPendingWeight] = useState<number | null>(null);
+ 
+   const lastMetric = state.metrics[0];
+   const daysSinceLast = lastMetric
+@@ -34,10 +36,11 @@ function MesuresPage() {
+   const dueForMeasure = daysSinceLast === null || daysSinceLast >= 14;
+ 
+   const submit = () => {
++    const w = parseFloat(form.weight);
+     actions.addMetric({
+       id: `bm-${Date.now()}`,
+       date: new Date().toISOString(),
+-      weight: parseFloat(form.weight) || undefined,
++      weight: w || undefined,
+       waist: parseFloat(form.waist) || undefined,
+       sleep: parseFloat(form.sleep) || undefined,
+       energy,
+@@ -49,6 +52,8 @@ function MesuresPage() {
+     setNote("");
+     setPhotos({});
+     toast.success("Mesure enregistrée");
++    // Poids différent du profil → proposer le recalcul des cibles
++    if (w > 0 && Math.abs(w - state.profile.weight) >= 0.1) setPendingWeight(w);
+   };
+ 
+   const weights = useMemo(
+@@ -66,6 +71,43 @@ function MesuresPage() {
+     <PageShell>
+       <TopBar title="Mesures & photos" subtitle="Toutes les 2 semaines" />
+ 
++      {pendingWeight !== null && (
++        <div className="px-5 mt-3">
++          <div className="card-premium p-4 border border-primary/30 bg-gradient-to-b from-primary/[0.10] to-transparent">
++            <p className="text-sm font-bold">
++              ⚖️ Nouveau poids : {pendingWeight} kg{" "}
++              <span className="text-muted-foreground font-semibold">
++                (profil : {state.profile.weight} kg)
++              </span>
++            </p>
++            <p className="text-[11px] text-muted-foreground mt-1">
++              Recalculer tes cibles ? (kcal · protéines · glucides · lipides · eau)
++            </p>
++            <div className="flex gap-2 mt-3">
++              <Button
++                size="sm"
++                className="btn-hero h-8 text-xs font-bold"
++                onClick={() => {
++                  actions.setProfile({ weight: pendingWeight });
++                  setPendingWeight(null);
++                  toast.success("Cibles recalculées automatiquement ✅");
++                }}
++              >
++                Mettre à jour
++              </Button>
++              <Button
++                size="sm"
++                variant="secondary"
++                className="h-8 text-xs bg-white/5 border border-white/10"
++                onClick={() => setPendingWeight(null)}
++              >
++                Plus tard
++              </Button>
++            </div>
++          </div>
++        </div>
++      )}
++
+       {dueForMeasure && (
+         <div className="px-5">
+           <div className="card-premium p-3 flex items-start gap-3 ring-1 ring-primary/40">
+diff --git a/src/routes/nutrition.tsx b/src/routes/nutrition.tsx
+index 8129925..9f5ee7a 100644
+--- a/src/routes/nutrition.tsx
++++ b/src/routes/nutrition.tsx
+@@ -62,7 +62,7 @@ function NutritionPage() {
+     <PageShell>
+       <TopBar
+         title="Nutrition"
+-        subtitle={`Protéines ${proteinTargetMin}–${proteinTargetMax}g · Eau ${waterTarget}L · ~${nut.kcalTarget} kcal`}
++        subtitle={`P ${proteinTargetMin}–${proteinTargetMax}g · G ~${nut.carbsTarget}g · L ~${nut.fatTarget}g · ~${nut.kcalTarget} kcal · ${waterTarget}L`}
+       />
+ 
+       <div className="px-5 grid grid-cols-2 gap-3">
+@@ -122,9 +122,14 @@ function NutritionPage() {
+       </div>
+ 
+       <div className="px-5 mt-3 grid grid-cols-3 gap-3">
+-        <MiniStat label="Calories" value={`${kcal} kcal`} icon={<Flame className="h-3 w-3" />} />
+-        <MiniStat label="Glucides" value={`${carbs}g`} />
+-        <MiniStat label="Lipides" value={`${fat}g`} />
++        <MiniStat
++          label="Calories"
++          value={`${kcal} kcal`}
++          target={`/ ${nut.kcalTarget}`}
++          icon={<Flame className="h-3 w-3" />}
++        />
++        <MiniStat label="Glucides" value={`${carbs}g`} target={`/ ~${nut.carbsTarget}g`} />
++        <MiniStat label="Lipides" value={`${fat}g`} target={`/ ~${nut.fatTarget}g`} />
+       </div>
+ 
+       {/* Meal templates */}
+@@ -237,10 +242,12 @@ function NutritionPage() {
+ function MiniStat({
+   label,
+   value,
++  target,
+   icon,
+ }: {
+   label: string;
+   value: string;
++  target?: string;
+   icon?: React.ReactNode;
+ }) {
+   return (
+@@ -249,7 +256,12 @@ function MiniStat({
+         {icon}
+         {label}
+       </p>
+-      <p className="text-base font-black mt-0.5">{value}</p>
++      <p className="text-base font-black mt-0.5">
++        {value}
++        {target && (
++          <span className="text-[10px] text-muted-foreground font-semibold"> {target}</span>
++        )}
++      </p>
+     </div>
+   );
+ }
+diff --git a/src/routes/onboarding.tsx b/src/routes/onboarding.tsx
+index 2425bb4..ca61a95 100644
+--- a/src/routes/onboarding.tsx
++++ b/src/routes/onboarding.tsx
+@@ -22,6 +22,8 @@ import {
+   generatePlan,
+   goalDefOf,
+   computeNutrition,
++  WEEKDAY_LABELS,
++  capacitiesFromHistory,
+   type Capacities,
+   type GoalId,
+ } from "@/lib/plan";
+@@ -43,20 +45,53 @@ function OnboardingPage() {
+   const alreadyOnboarded = state.profile.onboarded;
+   const [step, setStep] = useState(0);
+   const [goal, setGoal] = useState<GoalId>(goalDefOf(state.profile.goal).id);
+-  const [daysPerWeek, setDaysPerWeek] = useState<5 | 6>(state.profile.daysPerWeek);
++  // Jours d'entraînement (0 = Lundi … 6 = Dimanche), 3 à 6 jours
++  const [trainingDays, setTrainingDays] = useState<number[]>(() =>
++    state.profile.trainingDays?.length
++      ? [...state.profile.trainingDays].sort((a, b) => a - b)
++      : state.profile.daysPerWeek === 5
++        ? [0, 1, 2, 3, 4]
++        : [0, 1, 2, 3, 4, 5],
++  );
+   const [sex, setSex] = useState<"homme" | "femme">(state.profile.sex ?? "homme");
+   const [age, setAge] = useState(state.profile.age?.toString() ?? "");
+   const [weight, setWeight] = useState(state.profile.weight.toString());
+   const [height, setHeight] = useState(state.profile.height.toString());
+   const [level, setLevel] = useState<Profile["level"]>(state.profile.level);
+-  const [capacities, setCapacities] = useState<Capacities>(state.profile.capacities ?? {});
++  // Capacités : perfs réelles (tests + historique) en priorité, déclarées sinon
++  // (cycle 1 sans historique → on garde les valeurs déclarées).
++  const merged = useMemo(
++    () => capacitiesFromHistory(state.tests, state.workouts, state.profile.capacities ?? {}),
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++    [],
++  );
++  const perfBased = merged.fromReal;
++  const [capacities, setCapacities] = useState<Capacities>(merged.capacities);
++
++  const toggleDay = (i: number) => {
++    setTrainingDays((cur) => {
++      if (cur.includes(i)) {
++        if (cur.length <= 3) {
++          toast.error("Minimum 3 jours d'entraînement");
++          return cur;
++        }
++        return cur.filter((d) => d !== i);
++      }
++      if (cur.length >= 6) {
++        toast.error("Maximum 6 jours : garde au moins 1 jour de repos complet 🧘");
++        return cur;
++      }
++      return [...cur, i].sort((a, b) => a - b);
++    });
++  };
+ 
+   // Aperçu live de la nutrition calculée
+   const previewProfile: Profile = useMemo(
+     () => ({
+       ...state.profile,
+       goal,
+-      daysPerWeek,
++      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
++      trainingDays,
+       level,
+       sex,
+       age: parseInt(age) || undefined,
+@@ -64,7 +99,7 @@ function OnboardingPage() {
+       height: parseFloat(height) || state.profile.height,
+       capacities,
+     }),
+-    [state.profile, goal, daysPerWeek, level, sex, age, weight, height, capacities],
++    [state.profile, goal, trainingDays, level, sex, age, weight, height, capacities],
+   );
+   const nutrition = useMemo(() => computeNutrition(previewProfile), [previewProfile]);
+   const plan = useMemo(() => generatePlan(previewProfile), [previewProfile]);
+@@ -73,7 +108,8 @@ function OnboardingPage() {
+   const finish = () => {
+     const next: Partial<Profile> = {
+       goal,
+-      daysPerWeek,
++      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
++      trainingDays,
+       level,
+       sex,
+       age: parseInt(age) || undefined,
+@@ -145,24 +181,35 @@ function OnboardingPage() {
+               ))}
+             </div>
+             <div className="card-premium p-4">
+-              <p className="text-xs font-bold text-muted-foreground mb-2">
+-                Fréquence d'entraînement
+-              </p>
+-              <div className="grid grid-cols-2 gap-2">
+-                {([5, 6] as const).map((n) => (
+-                  <button
+-                    key={n}
+-                    onClick={() => setDaysPerWeek(n)}
+-                    className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+-                      daysPerWeek === n
+-                        ? "btn-hero border-transparent"
+-                        : "bg-white/5 border-white/10 text-muted-foreground"
+-                    }`}
+-                  >
+-                    {n} jours/sem
+-                  </button>
+-                ))}
++              <div className="flex items-center justify-between mb-2">
++                <p className="text-xs font-bold text-muted-foreground">Tes jours d'entraînement</p>
++                <span className="text-[11px] font-extrabold text-primary">
++                  {trainingDays.length} séance(s)/sem
++                </span>
+               </div>
++              <div className="grid grid-cols-7 gap-1.5">
++                {WEEKDAY_LABELS.map((lbl, i) => {
++                  const active = trainingDays.includes(i);
++                  return (
++                    <button
++                      key={lbl}
++                      onClick={() => toggleDay(i)}
++                      className={`py-2 rounded-lg text-[11px] font-bold border transition-all active:scale-90 ${
++                        active
++                          ? "btn-hero border-transparent"
++                          : "bg-white/5 border-white/10 text-muted-foreground"
++                      }`}
++                    >
++                      {lbl.slice(0, 1)}
++                      <span className="sr-only">{lbl}</span>
++                    </button>
++                  );
++                })}
++              </div>
++              <p className="text-[10px] text-muted-foreground mt-2">
++                Touche les jours où tu t'entraînes (3 à 6). La séance reste à son jour habituel :
++                les autres deviennent repos 🧘.
++              </p>
+             </div>
+           </div>
+         )}
+@@ -248,6 +295,14 @@ function OnboardingPage() {
+               L'app ajuste la difficulté (fourchettes de reps/temps). 0 ou vide si tu ne sais pas —
+               la progression RPE calibrera ensuite toute seule.
+             </p>
++            {perfBased && (
++              <div className="card-premium p-3 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.10] to-transparent">
++                <p className="text-[11px] text-lime-200 font-semibold">
++                  ✨ Pré-rempli avec tes vraies perfs (tests + séances enregistrés). Ajuste si
++                  besoin — sinon laisse, c'est mesuré.
++                </p>
++              </div>
++            )}
+             <div className="grid grid-cols-3 gap-2">
+               {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
+                 <button
+@@ -302,13 +357,22 @@ function OnboardingPage() {
+             <p className="text-sm text-muted-foreground">
+               Généré pour <b>{goalDefOf(goal).label.toLowerCase()}</b> · palier{" "}
+               <b>{TIER_INFO[plan.tier].label}</b> (×{TIER_INFO[plan.tier].factor} sur les
+-              fourchettes).
++              fourchettes) — calculé{" "}
++              {perfBased ? (
++                <>
++                  sur tes <b>perfs réelles</b> ✨
++                </>
++              ) : (
++                "sur tes déclarations (1er cycle)"
++              )}
++              .
+             </p>
+ 
+             {/* Semaine */}
+             <div className="card-premium p-4">
+               <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground mb-3">
+-                <Dumbbell className="h-4 w-4 text-primary" /> Ta semaine · {daysPerWeek} jours
++                <Dumbbell className="h-4 w-4 text-primary" /> Ta semaine · {trainingDays.length}{" "}
++                séances
+               </div>
+               <div className="space-y-2">
+                 {weekDays.map((d) => (
+@@ -346,6 +410,11 @@ function OnboardingPage() {
+                 <p className="text-[9px] font-bold text-muted-foreground uppercase">eau/jour</p>
+               </div>
+             </div>
++            <p className="text-[11px] text-muted-foreground text-center -mt-1">
++              Répartition estimée : <b className="text-foreground">~{nutrition.carbsTarget} g</b>{" "}
++              glucides · <b className="text-foreground">~{nutrition.fatTarget} g</b> lipides par
++              jour
++            </p>
+ 
+             <div className="card-premium p-4 border border-violet-400/25">
+               <div className="flex items-center gap-2 text-xs font-bold text-violet-300 mb-1.5">
+diff --git a/src/routes/progression.tsx b/src/routes/progression.tsx
+index 356aab8..5c2120d 100644
+--- a/src/routes/progression.tsx
++++ b/src/routes/progression.tsx
+@@ -6,6 +6,7 @@ import {
+   useAppState,
+   useAppActions,
+   suggestProgressionForExercise,
++  personalBests,
+   currentProgramWeek,
+   programCycle,
+   isTestWeek,
+@@ -17,6 +18,7 @@ import {
+   TrendingUp,
+   Target,
+   ArrowUp,
++  ArrowDown,
+   Minus,
+   Award,
+   ShieldAlert,
+@@ -24,6 +26,7 @@ import {
+   Plus,
+   History,
+   ChevronRight,
++  Trophy,
+ } from "lucide-react";
+ import { Checkbox } from "@/components/ui/checkbox";
+ 
+@@ -55,7 +58,7 @@ function ProgressionPage() {
+       name: string;
+       hint: string;
+       delta: string;
+-      reason: "up" | "hold";
++      reason: "up" | "hold" | "down";
+     }[] = [];
+     for (const d of PROGRAM) {
+       for (const b of d.blocks) {
+@@ -70,6 +73,15 @@ function ProgressionPage() {
+     return out.sort((a) => (a.reason === "up" ? -1 : 1)).slice(0, 8);
+   }, [state.workouts]);
+ 
++  // Records personnels (meilleure série par exercice)
++  const bests = useMemo(
++    () =>
++      Object.values(personalBests(state.workouts))
++        .sort((a, b) => (a.name < b.name ? -1 : 1))
++        .slice(0, 12),
++    [state.workouts],
++  );
++
+   const submit = () => {
+     const v = parseFloat(value);
+     if (isNaN(v) || v <= 0) {
+@@ -181,10 +193,18 @@ function ProgressionPage() {
+             {suggestions.map((s) => (
+               <div key={s.exId} className="flex items-center gap-3 py-1.5">
+                 <div
+-                  className={`h-8 w-8 grid place-items-center rounded-full ${s.reason === "up" ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"}`}
++                  className={`h-8 w-8 grid place-items-center rounded-full ${
++                    s.reason === "up"
++                      ? "bg-success/20 text-success"
++                      : s.reason === "down"
++                        ? "bg-amber-500/15 text-amber-400"
++                        : "bg-muted text-muted-foreground"
++                  }`}
+                 >
+                   {s.reason === "up" ? (
+                     <ArrowUp className="h-4 w-4" />
++                  ) : s.reason === "down" ? (
++                    <ArrowDown className="h-4 w-4" />
+                   ) : (
+                     <Minus className="h-4 w-4" />
+                   )}
+@@ -194,7 +214,13 @@ function ProgressionPage() {
+                   <p className="text-[11px] text-muted-foreground">{s.hint}</p>
+                 </div>
+                 <span
+-                  className={`text-xs font-bold ${s.reason === "up" ? "text-success" : "text-muted-foreground"}`}
++                  className={`text-xs font-bold ${
++                    s.reason === "up"
++                      ? "text-success"
++                      : s.reason === "down"
++                        ? "text-amber-400"
++                        : "text-muted-foreground"
++                  }`}
+                 >
+                   {s.delta}
+                 </span>
+@@ -202,9 +228,37 @@ function ProgressionPage() {
+             ))}
+           </div>
+           <p className="text-[11px] text-muted-foreground mt-2 px-1">
+-            Règle : toutes séries en haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s. Sinon →
+-            maintenir.
++            Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
++            échecs de suite → on recule d'un cran pour repartir propre.
++          </p>
++        </section>
++      )}
++
++      {bests.length > 0 && (
++        <section className="px-5 mt-5">
++          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
++            <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Records personnels
+           </p>
++          <div className="card-premium p-3 space-y-1.5">
++            {bests.map((b) => (
++              <div key={b.exId} className="flex items-center gap-3 py-1">
++                <div className="flex-1 min-w-0">
++                  <p className="text-sm font-semibold truncate">{b.name}</p>
++                  <p className="text-[10px] text-muted-foreground">
++                    {new Date(b.date).toLocaleDateString("fr-FR", {
++                      day: "numeric",
++                      month: "short",
++                    })}
++                  </p>
++                </div>
++                <span className="text-sm font-extrabold text-yellow-400 shrink-0">
++                  {b.value}
++                  {b.kind === "time" ? " s" : " reps"}
++                  {b.weight ? ` · ${b.weight}kg` : ""}
++                </span>
++              </div>
++            ))}
++          </div>
+         </section>
+       )}
+ 
+diff --git a/src/routes/seance.tsx b/src/routes/seance.tsx
+index 98b85f8..29aaecc 100644
+--- a/src/routes/seance.tsx
++++ b/src/routes/seance.tsx
+@@ -1,15 +1,20 @@
+ import { createFileRoute, useNavigate } from "@tanstack/react-router";
+ import { useMemo, useState, useEffect } from "react";
+ import { PageShell, TopBar } from "@/components/BottomNav";
+-import { getTodayProgram, type Exercise } from "@/lib/program";
++import { getTodayProgram, EXERCISE_SWAPS, type Exercise } from "@/lib/program";
+ import { planDays } from "@/lib/plan";
+ import { SessionTypeBadge } from "@/routes/index";
+ import {
+   useAppState,
+   useAppActions,
++  suggestProgressionForExercise,
++  lastPerformanceHint,
++  personalBests,
++  findNewRecords,
+   type WorkoutLog,
+   type SetLog,
+   type ExerciseLog,
++  type ProgressionSuggestion,
+ } from "@/lib/store";
+ import { Button } from "@/components/ui/button";
+ import { Textarea } from "@/components/ui/textarea";
+@@ -27,6 +32,7 @@ import {
+   Flame,
+   Activity,
+   Award,
++  ArrowLeftRight,
+ } from "lucide-react";
+ import { toast } from "sonner";
+ 
+@@ -67,6 +73,35 @@ function SeancePage() {
+   const [restEx, setRestEx] = useState<Exercise | null>(null);
+   const [summary, setSummary] = useState<WorkoutLog | null>(null);
+ 
++  // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
++  const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
++  const [swaps, setSwaps] = useState<Record<string, string>>(
++    () => state.profile.exerciseSwaps ?? {},
++  );
++  const applySwap = (ex: Exercise, alt: string | null) => {
++    const next = { ...swaps };
++    if (alt) next[slotKey(ex)] = alt;
++    else delete next[slotKey(ex)];
++    setSwaps(next);
++    actions.setProfile({ exerciseSwaps: next });
++  };
++  const nameOf = (ex: Exercise) => swaps[slotKey(ex)] ?? ex.name;
++
++  // Dernière perf + suggestion par exercice (recalculées à jour de l'historique)
++  const exMeta = useMemo(
++    () =>
++      Object.fromEntries(
++        allExercises.map((ex) => [
++          ex.id,
++          {
++            hint: lastPerformanceHint(ex.id, ex.kind, state.workouts),
++            sug: suggestProgressionForExercise(ex.id, ex.targetMax, ex.kind, state.workouts),
++          },
++        ]),
++      ) as Record<string, { hint: string | null; sug: ProgressionSuggestion | null }>,
++    [allExercises, state.workouts],
++  );
++
+   const totalSets = allExercises.reduce((a, e) => a + e.sets, 0);
+   const doneSets = Object.values(sets)
+     .flat()
+@@ -94,7 +129,7 @@ function SeancePage() {
+   const finish = () => {
+     const exercises: ExerciseLog[] = allExercises.map((e) => ({
+       exId: e.id,
+-      name: e.name,
++      name: nameOf(e),
+       targetMin: e.targetMin,
+       targetMax: e.targetMax,
+       kind: e.kind,
+@@ -132,7 +167,20 @@ function SeancePage() {
+       totalVolume,
+       successCount,
+     };
++    // Records personnels : comparés à l'historique AVANT l'ajout de cette séance
++    const prevBests = personalBests(state.workouts);
++    const newRecords = findNewRecords(prevBests, log);
+     actions.addWorkout(log);
++    if (newRecords.length)
++      toast.success("🏆 Nouveau record !", {
++        description: newRecords
++          .map(
++            (r) =>
++              `${r.name} : ${r.value}${r.kind === "time" ? " s" : " reps"}${r.weight ? ` · ${r.weight} kg` : ""}`,
++          )
++          .join(" — "),
++        duration: 6000,
++      });
+     setSummary(log);
+   };
+ 
+@@ -216,6 +264,12 @@ function SeancePage() {
+                 <ExerciseCard
+                   key={ex.id}
+                   ex={ex}
++                  displayName={nameOf(ex)}
++                  hint={exMeta[ex.id]?.hint ?? null}
++                  sug={exMeta[ex.id]?.sug ?? null}
++                  swapAlts={EXERCISE_SWAPS[ex.name] ?? []}
++                  currentSwap={swaps[slotKey(ex)]}
++                  onSwap={(alt) => applySwap(ex, alt)}
+                   sets={sets[ex.id]}
+                   onSetChange={(idx, patch) => updateSet(ex.id, idx, patch)}
+                   onComplete={(idx) => completeSet(ex, idx)}
+@@ -288,6 +342,12 @@ function SeancePage() {
+ 
+ function ExerciseCard({
+   ex,
++  displayName,
++  hint,
++  sug,
++  swapAlts,
++  currentSwap,
++  onSwap,
+   sets,
+   onSetChange,
+   onComplete,
+@@ -296,6 +356,12 @@ function ExerciseCard({
+   onNote,
+ }: {
+   ex: Exercise;
++  displayName: string;
++  hint: string | null;
++  sug: ProgressionSuggestion | null;
++  swapAlts: string[];
++  currentSwap?: string;
++  onSwap: (alt: string | null) => void;
+   sets: SetLog[];
+   onSetChange: (idx: number, patch: Partial<SetLog>) => void;
+   onComplete: (idx: number) => void;
+@@ -308,7 +374,10 @@ function ExerciseCard({
+     <div className="card-premium p-4 border border-white/[0.05] relative overflow-hidden">
+       <div className="flex items-start justify-between gap-3">
+         <div className="min-w-0">
+-          <h3 className="font-bold text-base text-white">{ex.name}</h3>
++          <h3 className="font-bold text-base text-white">{displayName}</h3>
++          {currentSwap && (
++            <p className="text-[10px] text-muted-foreground italic mt-0.5">remplace : {ex.name}</p>
++          )}
+           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+             <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md font-bold text-slate-300">
+               {ex.sets} séries
+@@ -316,6 +385,21 @@ function ExerciseCard({
+             <span>×</span>
+             <span className="font-semibold text-primary">{ex.target}</span>
+           </p>
++          {hint && <p className="text-[10px] text-cyan-300/80 mt-1.5">↺ Dernière : {hint}</p>}
++          {sug && (
++            <p
++              className={`text-[10px] font-bold mt-1 ${
++                sug.reason === "up"
++                  ? "text-success"
++                  : sug.reason === "down"
++                    ? "text-amber-400"
++                    : "text-muted-foreground"
++              }`}
++            >
++              {sug.reason === "up" ? "↗" : sug.reason === "down" ? "↘" : "→"} {sug.delta}
++              <span className="font-normal text-muted-foreground"> · {sug.hint}</span>
++            </p>
++          )}
+           {ex.note && (
+             <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed bg-white/[0.02] p-2 rounded-lg border border-white/[0.02]">
+               {ex.note}
+@@ -385,6 +469,26 @@ function ExerciseCard({
+         ))}
+       </div>
+ 
++      {swapAlts.length > 0 && (
++        <div className="mt-3 flex items-center gap-2">
++          <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
++          <select
++            value={currentSwap ?? ""}
++            onChange={(e) => onSwap(e.target.value || null)}
++            className="flex-1 min-w-0 bg-white/[0.02] border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none focus:border-primary/40"
++          >
++            <option value="" className="bg-slate-900">
++              {currentSwap ? "↩ Revenir à l'exercice d'origine" : "Remplacer l'exercice…"}
++            </option>
++            {swapAlts.map((alt) => (
++              <option key={alt} value={alt} className="bg-slate-900">
++                {alt}
++              </option>
++            ))}
++          </select>
++        </div>
++      )}
++
+       <button
+         onClick={() => setOpenNote((v) => !v)}
+         className="mt-3 text-[10px] font-bold text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+diff --git a/supabase/migrations/20260718000002_profile_v2.sql b/supabase/migrations/20260718000002_profile_v2.sql
+new file mode 100644
+index 0000000..c7bef7e
+--- /dev/null
++++ b/supabase/migrations/20260718000002_profile_v2.sql
+@@ -0,0 +1,7 @@
++-- Migration V2 : jours d'entraînement personnalisables + remplacements d'exercices
++-- training_days : tableau d'indices JSON (0 = Lundi … 6 = Dimanche)
++-- exercise_swaps : dictionnaire JSON "dayKey::exId" → nom de remplacement
++
++ALTER TABLE public.profiles
++  ADD COLUMN IF NOT EXISTS training_days JSONB NOT NULL DEFAULT '[]'::jsonb,
++  ADD COLUMN IF NOT EXISTS exercise_swaps JSONB NOT NULL DEFAULT '{}'::jsonb;

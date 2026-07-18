@@ -10,14 +10,16 @@ export interface Profile {
   height: number;
   goal: string;
   equipment: string[];
-  daysPerWeek: 5 | 6;
+  daysPerWeek: number; // 3 à 6 jours (dérivé de trainingDays)
   level: "débutant" | "intermédiaire" | "avancé";
   onboarded: boolean;
   startDate?: string; // ISO date when program started
   age?: number; // pour le calcul calorique (Mifflin-St Jeor)
   sex?: "homme" | "femme";
-  capacities?: Capacities; // capacités déclarées à l'onboarding
+  capacities?: Capacities; // capacités (déclarées ou déduites des perfs réelles)
   plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
+  trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
+  exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
 }
 
 export interface SetLog {
@@ -222,7 +224,7 @@ export function useAppActions() {
             weight: data.weight,
             height: data.height,
             goal: data.goal || "Recomposition corporelle",
-            daysPerWeek: (data.days_per_week === 5 ? 5 : 6) as 5 | 6,
+            daysPerWeek: typeof data.days_per_week === "number" ? data.days_per_week : 6,
             level: data.level || "intermédiaire",
             equipment: data.equipment || ["Barre traction", "Anneaux", "Haltères"],
             onboarded: data.onboarded,
@@ -231,6 +233,11 @@ export function useAppActions() {
             sex: data.sex ?? s.profile.sex,
             capacities: (data.capacities as Capacities | null) ?? s.profile.capacities,
             plan: (data.plan as unknown as GeneratedPlan | null) ?? s.profile.plan,
+            trainingDays: Array.isArray(data.training_days)
+              ? (data.training_days as number[])
+              : s.profile.trainingDays,
+            exerciseSwaps:
+              (data.exercise_swaps as Record<string, string> | null) ?? s.profile.exerciseSwaps,
           },
         }));
       }
@@ -262,7 +269,8 @@ export function useAppActions() {
           weight: profileData.weight,
           height: profileData.height,
           goal: profileData.goal || "Recomposition corporelle",
-          daysPerWeek: (profileData.days_per_week === 5 ? 5 : 6) as 5 | 6,
+          daysPerWeek:
+            typeof profileData.days_per_week === "number" ? profileData.days_per_week : 6,
           level: profileData.level || "intermédiaire",
           equipment: profileData.equipment || ["Barre traction", "Anneaux", "Haltères"],
           onboarded: profileData.onboarded,
@@ -271,6 +279,12 @@ export function useAppActions() {
           sex: profileData.sex ?? currentProfile.sex,
           capacities: (profileData.capacities as Capacities | null) ?? currentProfile.capacities,
           plan: (profileData.plan as unknown as GeneratedPlan | null) ?? currentProfile.plan,
+          trainingDays: Array.isArray(profileData.training_days)
+            ? (profileData.training_days as number[])
+            : currentProfile.trainingDays,
+          exerciseSwaps:
+            (profileData.exercise_swaps as Record<string, string> | null) ??
+            currentProfile.exerciseSwaps,
         };
       } else {
         const mappedProfile = {
@@ -286,6 +300,8 @@ export function useAppActions() {
           sex: currentProfile.sex ?? null,
           capacities: (currentProfile.capacities ?? {}) as unknown as Json,
           plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
+          training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
+          exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -842,6 +858,8 @@ export function useAppActions() {
               sex: profileToSync.sex ?? null,
               capacities: (profileToSync.capacities ?? {}) as unknown as Json,
               plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
+              training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
+              exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase
@@ -1360,55 +1378,275 @@ export interface ProgressionSuggestion {
   name: string;
   hint: string;
   delta: string;
-  reason: "up" | "hold";
+  reason: "up" | "hold" | "down";
 }
 
+interface SessionEval {
+  name: string;
+  complete: boolean;
+  hitTop: boolean;
+  maxRpe: number;
+}
+
+/**
+ * Suggestion de progression V2 : regarde les 2 dernières occurrences de l'exercice.
+ *  - séance incomplète        → idem (finir d'abord)
+ *  - haut de fourchette RPE≤8 → +1/+2 reps (+5s) ; ×2 si validé 2 fois de suite
+ *  - haut de fourchette RPE9+ → consolider
+ *  - sous la fourchette 2 fois de suite → reculer d'un cran pour repartir propre
+ */
 export function suggestProgressionForExercise(
   exId: string,
   targetMax: number | undefined,
   kind: "reps" | "time" | "distance",
   workouts: WorkoutLog[],
 ): ProgressionSuggestion | null {
-  const lastLog = workouts.find((w) => w.exercises.some((e) => e.exId === exId));
-  if (!lastLog) return null;
-  const ex = lastLog.exercises.find((e) => e.exId === exId)!;
-  const setsDone = ex.sets.filter((s) => s.done);
-  if (setsDone.length < ex.sets.length)
-    return { exId, name: ex.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
+  const logs = workouts.filter((w) => w.exercises.some((e) => e.exId === exId)).slice(0, 2);
+  if (!logs.length) return null;
 
-  const values = setsDone
-    .map((s) => (kind === "time" ? s.time : s.reps))
-    .filter((v): v is number => typeof v === "number" && v > 0);
-  if (!values.length) return null;
-  const min = Math.min(...values);
-  const rpes = setsDone.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
-  const maxRpe = rpes.length ? Math.max(...rpes) : 7;
+  const evalSession = (w: WorkoutLog): SessionEval | null => {
+    const ex = w.exercises.find((e) => e.exId === exId)!;
+    const setsDone = ex.sets.filter((s) => s.done);
+    if (setsDone.length < ex.sets.length)
+      return { name: ex.name, complete: false, hitTop: false, maxRpe: 7 };
+    const values = setsDone
+      .map((s) => (kind === "time" ? s.time : s.reps))
+      .filter((v): v is number => typeof v === "number" && v > 0);
+    if (!values.length) return null;
+    const min = Math.min(...values);
+    const rpes = setsDone.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
+    return {
+      name: ex.name,
+      complete: true,
+      hitTop: targetMax !== undefined && min >= targetMax,
+      maxRpe: rpes.length ? Math.max(...rpes) : 7,
+    };
+  };
 
-  const hitTop = targetMax !== undefined && min >= targetMax;
-  if (hitTop && maxRpe <= 8) {
+  const cur = evalSession(logs[0]);
+  if (!cur) return null;
+  if (!cur.complete)
+    return { exId, name: cur.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
+
+  const prev = logs[1] ? evalSession(logs[1]) : null;
+
+  if (cur.hitTop && cur.maxRpe <= 8) {
+    const twice = !!prev?.hitTop;
     if (kind === "time")
       return {
         exId,
-        name: ex.name,
-        hint: "Objectif atteint · RPE ≤ 8",
-        delta: "+5s",
+        name: cur.name,
+        hint: twice ? "Validé 2 fois de suite 💪" : "Objectif atteint · RPE ≤ 8",
+        delta: twice || cur.maxRpe <= 7 ? "+8s" : "+5s",
         reason: "up",
       };
-    const bump = maxRpe <= 7 ? 2 : 1;
+    const bump = twice || cur.maxRpe <= 7 ? 2 : 1;
     return {
       exId,
-      name: ex.name,
-      hint: "Objectif atteint · RPE ≤ 8",
+      name: cur.name,
+      hint: twice ? "Validé 2 fois de suite 💪" : "Objectif atteint · RPE ≤ 8",
       delta: `+${bump} reps`,
       reason: "up",
     };
   }
+  if (cur.hitTop && cur.maxRpe >= 9)
+    return {
+      exId,
+      name: cur.name,
+      hint: "Haut de fourchette mais RPE ≥ 9 : consolider propre",
+      delta: "= idem",
+      reason: "hold",
+    };
+  if (prev && !prev.hitTop)
+    return {
+      exId,
+      name: cur.name,
+      hint: "2 séances sous la fourchette → recule d'un cran pour repartir propre",
+      delta: kind === "time" ? "-5s" : "-1 rep",
+      reason: "down",
+    };
   return {
     exId,
-    name: ex.name,
-    hint: maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte",
+    name: cur.name,
+    hint: cur.maxRpe >= 9 ? "RPE ≥ 9 : consolider" : "Fourchette non atteinte",
     delta: "= idem",
     reason: "hold",
+  };
+}
+
+/** "8·8·7 reps · RPE 9 · 12 juil." — dernière perf affichée pendant la séance. */
+export function lastPerformanceHint(
+  exId: string,
+  kind: "reps" | "time" | "distance",
+  workouts: WorkoutLog[],
+): string | null {
+  const log = workouts.find((w) => w.exercises.some((e) => e.exId === exId));
+  if (!log) return null;
+  const ex = log.exercises.find((e) => e.exId === exId)!;
+  const done = ex.sets.filter((s) => s.done);
+  const vals = done
+    .map((s) => (kind === "time" ? s.time : s.reps))
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  if (!vals.length) return null;
+  const rpes = done.map((s) => s.rpe).filter((r): r is number => typeof r === "number");
+  const date = new Date(log.date).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
+  return `${vals.join("·")}${kind === "time" ? " s" : ""}${rpes.length ? ` · RPE ${Math.max(...rpes)}` : ""} · ${date}`;
+}
+
+// ---------- Records personnels ----------
+
+export interface PersonalBest {
+  exId: string;
+  name: string;
+  value: number;
+  weight?: number;
+  kind: "reps" | "time" | "distance";
+  date: string;
+}
+
+/** Meilleure série enregistrée par exercice (toutes séances confondues). */
+export function personalBests(workouts: WorkoutLog[]): Record<string, PersonalBest> {
+  const out: Record<string, PersonalBest> = {};
+  for (const w of workouts)
+    for (const e of w.exercises) {
+      if (e.kind === "distance") continue;
+      for (const s of e.sets) {
+        if (!s.done) continue;
+        const v = e.kind === "time" ? s.time : s.reps;
+        if (typeof v !== "number" || v <= 0) continue;
+        const cur = out[e.exId];
+        if (!cur || v > cur.value)
+          out[e.exId] = {
+            exId: e.exId,
+            name: e.name,
+            value: v,
+            weight: s.weight,
+            kind: e.kind,
+            date: w.date,
+          };
+      }
+    }
+  return out;
+}
+
+/** Records battus par ce workout (vs l'état AVANT son ajout). */
+export function findNewRecords(
+  prevBests: Record<string, PersonalBest>,
+  log: WorkoutLog,
+): PersonalBest[] {
+  const recs: PersonalBest[] = [];
+  for (const e of log.exercises) {
+    if (e.kind === "distance") continue;
+    const prev = prevBests[e.exId];
+    if (!prev) continue; // première fois sur l'exo = mise en place, pas un "record battu"
+    let bestInLog: number | undefined;
+    let bestWeight: number | undefined;
+    for (const s of e.sets) {
+      if (!s.done) continue;
+      const v = e.kind === "time" ? s.time : s.reps;
+      if (typeof v === "number" && v > (bestInLog ?? 0)) {
+        bestInLog = v;
+        bestWeight = s.weight;
+      }
+    }
+    if (bestInLog !== undefined && bestInLog > prev.value)
+      recs.push({
+        exId: e.exId,
+        name: e.name,
+        value: bestInLog,
+        weight: bestWeight,
+        kind: e.kind,
+        date: log.date,
+      });
+  }
+  return recs;
+}
+
+// ---------- Bilan de la semaine ----------
+
+export interface WeeklyStats {
+  /** clé yyyy-mm-dd du lundi de la fenêtre (pour mémoriser le masquage) */
+  windowKey: string;
+  label: string; // "Ta semaine" (dim.) / "La semaine dernière" (lun.)
+  sessions: number;
+  km: number;
+  waterAvg: number | null; // L/jour sur la fenêtre
+  proteinAvg: number | null; // g/jour
+  weightDelta: number | null; // kg début→fin de fenêtre
+}
+
+/**
+ * Stats de la fenêtre de bilan : dimanche → semaine en cours (lun→aujourd'hui) ;
+ * lundi → semaine complète écoulée (lun→dim). null les autres jours.
+ */
+export function weeklyStats(
+  state: Pick<AppState, "workouts" | "cardio" | "meals" | "metrics" | "water">,
+): WeeklyStats | null {
+  const today = new Date();
+  const dow = today.getDay(); // 0 = dimanche
+  if (dow !== 0 && dow !== 1) return null;
+
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() - ((dow + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+
+  const start = new Date(monday);
+  const end = new Date(today);
+  end.setHours(23, 59, 59, 999);
+  let label = "Ta semaine jusqu'ici";
+  if (dow === 1) {
+    start.setDate(start.getDate() - 7);
+    end.setTime(monday.getTime() - 1);
+    label = "La semaine dernière";
+  }
+
+  const inRange = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return t >= start.getTime() && t <= end.getTime();
+  };
+  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 864e5)) || 1;
+
+  const sessions = state.workouts.filter((w) => inRange(w.date)).length;
+  const km = state.cardio
+    .filter((c) => c.type === "course" && inRange(c.date))
+    .reduce((a, c) => a + (c.distance || 0), 0);
+
+  // Eau / protéines : moyenne par jour sur les jours avec au moins une entrée
+  const waterKeys = Object.keys(state.water).filter((k) => {
+    const t = new Date(k + "T12:00:00").getTime();
+    return t >= start.getTime() && t <= end.getTime() && state.water[k] > 0;
+  });
+  const waterAvg = waterKeys.length
+    ? waterKeys.reduce((a, k) => a + state.water[k], 0) / Math.max(days, waterKeys.length)
+    : null;
+
+  const mealsInRange = state.meals.filter((m) => inRange(m.date));
+  const proteinDays = new Set(mealsInRange.map((m) => m.date.slice(0, 10)));
+  const proteinAvg = proteinDays.size
+    ? mealsInRange.reduce((a, m) => a + m.protein, 0) / Math.max(days, proteinDays.size)
+    : null;
+
+  const weightsInRange = state.metrics
+    .filter((m) => typeof m.weight === "number" && inRange(m.date))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const weightDelta =
+    weightsInRange.length >= 2
+      ? Math.round(
+          (weightsInRange[weightsInRange.length - 1].weight! - weightsInRange[0].weight!) * 10,
+        ) / 10
+      : null;
+
+  return {
+    windowKey: start.toISOString().slice(0, 10),
+    label,
+    sessions,
+    km: Math.round(km * 10) / 10,
+    waterAvg: waterAvg !== null ? Math.round(waterAvg * 10) / 10 : null,
+    proteinAvg: proteinAvg !== null ? Math.round(proteinAvg) : null,
+    weightDelta,
   };
 }
 

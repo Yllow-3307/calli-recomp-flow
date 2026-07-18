@@ -178,9 +178,10 @@ function RootComponent() {
       } else if (session && !onboarded && location.pathname !== "/onboarding") {
         // Profil incomplet : l'onboarding génère d'abord son plan personnalisé
         navigate({ to: "/onboarding" });
-      } else if (session && onboarded && location.pathname === "/onboarding") {
-        navigate({ to: "/" });
       }
+      // NB : un utilisateur déjà onboardé PEUT aller sur /onboarding
+      // (Paramètres → « Générer un nouveau plan » ou fin de cycle) : on ne le
+      // redirige plus vers l'accueil, sinon le bouton semblait sans effet.
     });
   }, [location.pathname, navigate, onboarded]);
 
