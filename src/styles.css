@@ -77,19 +77,12 @@
   }
   body {
     background-color: var(--color-background);
-    /* Lueurs chaudes + texture marbre fondu dans le fond nuit */
+    /* Grand halo dégradé doux : voile mauve central + lueurs corail/rose discrètes */
     background-image:
-      radial-gradient(circle at 10% 20%, rgba(255, 107, 74, 0.12), transparent 40%),
-      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.07), transparent 40%),
-      radial-gradient(circle at 85% 12%, rgba(255, 77, 141, 0.09), transparent 35%),
-      url("/marble.jpg");
+      radial-gradient(ellipse 90% 65% at 70% 65%, rgba(150, 122, 168, 0.17), transparent 62%),
+      radial-gradient(ellipse 75% 50% at 15% 10%, rgba(255, 107, 74, 0.07), transparent 58%),
+      radial-gradient(ellipse 65% 45% at 90% 8%, rgba(255, 77, 141, 0.06), transparent 60%);
     background-attachment: fixed;
-    background-size:
-      auto,
-      auto,
-      auto,
-      cover;
-    background-blend-mode: normal, normal, normal, screen;
     color: var(--color-foreground);
     font-family:
       ui-sans-serif,
