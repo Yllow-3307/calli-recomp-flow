@@ -11,7 +11,8 @@ import {
   Trophy,
 } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, RULES, NUTRITION } from "@/lib/program";
+import { getTodayProgram, RULES } from "@/lib/program";
+import { nutritionTargets, planDays } from "@/lib/plan";
 import {
   useAppState,
   useAppActions,
@@ -78,7 +79,7 @@ export function SessionTypeBadge({
 function Dashboard() {
   const state = useAppState();
   const actions = useAppActions();
-  const today = getTodayProgram(state.profile.daysPerWeek === 5);
+  const today = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,11 +93,11 @@ function Dashboard() {
   const done = thisWeekWorkouts(state.workouts).length;
   const km = kmThisWeek(state.cardio);
   const protein = proteinToday(state.meals);
-  const proteinTarget = Math.round(
-    state.profile.weight * ((NUTRITION.protein_g_per_kg[0] + NUTRITION.protein_g_per_kg[1]) / 2),
-  );
+  // Cibles personnalisées (plan généré à l'onboarding), recalculées sinon
+  const nut = nutritionTargets(state.profile);
+  const proteinTarget = Math.round((nut.proteinMin + nut.proteinMax) / 2);
   const water = state.water[todayKey()] || 0;
-  const waterTarget = (NUTRITION.water_l_per_day[0] + NUTRITION.water_l_per_day[1]) / 2;
+  const waterTarget = nut.waterL;
   const daysGoal = state.profile.daysPerWeek;
   const showTestBanner = isTestWeek(state.profile);
   const week = currentProgramWeek(state.profile);

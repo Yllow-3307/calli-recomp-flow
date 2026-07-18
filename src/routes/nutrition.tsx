@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { useAppState, useAppActions, proteinToday, kcalToday, todayKey } from "@/lib/store";
-import { MEAL_TEMPLATES, NUTRITION } from "@/lib/program";
+import { MEAL_TEMPLATES } from "@/lib/program";
+import { nutritionTargets } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2, Beef, Flame, Droplet, Plus } from "lucide-react";
@@ -20,13 +21,14 @@ function NutritionPage() {
   const actions = useAppActions();
   const [form, setForm] = useState({ name: "", kcal: "", protein: "", carbs: "", fat: "" });
 
-  const w = state.profile.weight;
-  const [pMin, pMax] = NUTRITION.protein_g_per_kg;
-  const proteinTargetMin = Math.round(w * pMin);
-  const proteinTargetMax = Math.round(w * pMax);
-  const proteinTarget = Math.round(w * ((pMin + pMax) / 2));
-  const [wMin, wMax] = NUTRITION.water_l_per_day;
-  const waterTarget = (wMin + wMax) / 2;
+  // Cibles personnalisées selon l'objectif et la morphologie (plan généré)
+  const nut = nutritionTargets(state.profile);
+  const pMin = Math.round((nut.proteinMin / state.profile.weight) * 10) / 10;
+  const pMax = Math.round((nut.proteinMax / state.profile.weight) * 10) / 10;
+  const proteinTargetMin = nut.proteinMin;
+  const proteinTargetMax = nut.proteinMax;
+  const proteinTarget = Math.round((nut.proteinMin + nut.proteinMax) / 2);
+  const waterTarget = nut.waterL;
 
   const protein = proteinToday(state.meals);
   const kcal = kcalToday(state.meals);
@@ -60,7 +62,7 @@ function NutritionPage() {
     <PageShell>
       <TopBar
         title="Nutrition"
-        subtitle={`Protéines ${proteinTargetMin}–${proteinTargetMax}g · Eau ${wMin}–${wMax}L`}
+        subtitle={`Protéines ${proteinTargetMin}–${proteinTargetMax}g · Eau ${waterTarget}L · ~${nut.kcalTarget} kcal`}
       />
 
       <div className="px-5 grid grid-cols-2 gap-3">

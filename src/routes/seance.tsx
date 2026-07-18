@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, type Exercise } from "@/lib/program";
+import { planDays } from "@/lib/plan";
 import { SessionTypeBadge } from "@/routes/index";
 import {
   useAppState,
@@ -40,7 +41,7 @@ function SeancePage() {
   const state = useAppState();
   const actions = useAppActions();
   const navigate = useNavigate();
-  const day = getTodayProgram(state.profile.daysPerWeek === 5);
+  const day = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
   const allExercises: Exercise[] = useMemo(
     () => day.blocks.filter((b) => b.title !== "Consignes").flatMap((b) => b.items),
     [day],

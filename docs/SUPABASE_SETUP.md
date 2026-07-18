@@ -24,6 +24,7 @@ Les migrations sont dans `supabase/migrations/`, à appliquer **dans l'ordre chr
 
 1. `20240714000000_init_schema.sql` — schéma complet (tables, triggers, politiques RLS, templates du programme, bucket Storage `progress-photos`)
 2. `20260718000000_skill_states.sql` — table `skill_states` (notes & statuts des skills par utilisateur)
+3. `20260718000001_profile_plan.sql` — colonnes `profiles.age`, `sex`, `capacities`, `plan` (génération de plan personnalisé)
 
 Le premier fichier contient la structure initiale complète :
 

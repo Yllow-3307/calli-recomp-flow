@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { PROGRAM } from "@/lib/program";
-import { useAppState } from "@/lib/store";
+import { planDays } from "@/lib/plan";
+import { useAppState, programCycle } from "@/lib/store";
 import { SessionTypeBadge } from "@/routes/index";
 
 export const Route = createFileRoute("/programme")({
@@ -12,16 +12,19 @@ export const Route = createFileRoute("/programme")({
 function ProgrammePage() {
   const state = useAppState();
   const skipRunning = state.profile.daysPerWeek === 5;
+  const { cycle, cycleWeek } = programCycle(state.profile);
+  const days = planDays(state.profile);
+  const isCustomPlan = !!state.profile.plan;
 
   return (
     <PageShell>
       <TopBar
         title="Programme"
-        subtitle={`${state.profile.daysPerWeek} jours/semaine • 12 semaines`}
+        subtitle={`${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, semaine ${cycleWeek}/12`}
       />
 
       <div className="px-5 space-y-3">
-        {PROGRAM.map((d) => {
+        {days.map((d) => {
           const skipped = skipRunning && d.key === "fri";
           return (
             <div

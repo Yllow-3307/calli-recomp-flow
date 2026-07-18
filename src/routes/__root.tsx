@@ -111,13 +111,15 @@ function RootShell({ children }: { children: ReactNode }) {
 
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useAppActions } from "@/lib/store";
+import { useAppActions, useAppState } from "@/lib/store";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const location = useLocation();
   const navigate = useNavigate();
   const { syncAllDataWithSupabase } = useAppActions();
+  const { profile } = useAppState();
+  const onboarded = profile.onboarded;
 
   // Enregistre le Service Worker (PWA) — production uniquement
   useEffect(() => {
@@ -162,6 +164,7 @@ function RootComponent() {
         "/parametres",
         "/historique",
         "/skills",
+        "/onboarding",
       ];
       const isPrivateRoute =
         privateRoutes.includes(location.pathname) ||
@@ -172,9 +175,14 @@ function RootComponent() {
         navigate({ to: "/connexion" });
       } else if (session && location.pathname === "/connexion") {
         navigate({ to: "/" });
+      } else if (session && !onboarded && location.pathname !== "/onboarding") {
+        // Profil incomplet : l'onboarding génère d'abord son plan personnalisé
+        navigate({ to: "/onboarding" });
+      } else if (session && onboarded && location.pathname === "/onboarding") {
+        navigate({ to: "/" });
       }
     });
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigate, onboarded]);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { LogOut, User } from "lucide-react";
+import { ChevronRight, LogOut, User } from "lucide-react";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
@@ -137,6 +137,22 @@ function ParamsPage() {
             ))}
           </div>
         </div>
+
+        <Link
+          to="/onboarding"
+          className="card-premium card-premium-hover flex items-center justify-between p-4 border border-primary/25 group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔄</span>
+            <div>
+              <p className="font-bold text-sm">Générer un nouveau plan</p>
+              <p className="text-[11px] text-muted-foreground">
+                Objectif + capacités → plan recalculé (ton cycle n'est pas remis à zéro)
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+        </Link>
 
         <div className="card-premium p-4 space-y-2">
           <h3 className="font-bold">Équipement</h3>

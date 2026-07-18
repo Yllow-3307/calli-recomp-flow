@@ -18,6 +18,10 @@ export type Database = {
           onboarded: boolean;
           start_date: string | null;
           updated_at: string | null;
+          age: number | null;
+          sex: "homme" | "femme" | null;
+          capacities: Json;
+          plan: Json | null;
         };
         Insert: {
           id: string;
@@ -30,6 +34,10 @@ export type Database = {
           onboarded?: boolean;
           start_date?: string | null;
           updated_at?: string | null;
+          age?: number | null;
+          sex?: "homme" | "femme" | null;
+          capacities?: Json;
+          plan?: Json | null;
         };
         Update: {
           id?: string;
@@ -42,6 +50,10 @@ export type Database = {
           onboarded?: boolean;
           start_date?: string | null;
           updated_at?: string | null;
+          age?: number | null;
+          sex?: "homme" | "femme" | null;
+          capacities?: Json;
+          plan?: Json | null;
         };
         Relationships: [
           {

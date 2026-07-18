@@ -277,14 +277,16 @@ export const MEAL_TEMPLATES = [
   { name: "Poisson + patate douce + salade", kcal: 580, protein: 42, carbs: 55, fat: 18 },
 ];
 
-export function getTodayProgram(_fiveDays = false): DayProgram {
+export function getTodayProgram(_fiveDays = false, days?: DayProgram[]): DayProgram {
+  const source = days && days.length === 7 ? days : PROGRAM;
   const dow = new Date().getDay();
   const map = [6, 0, 1, 2, 3, 4, 5];
-  return PROGRAM[map[dow]];
+  return source[map[dow]] ?? PROGRAM[map[dow]];
 }
 
-export function programByKey(key: string) {
-  return PROGRAM.find((d) => d.key === key);
+export function programByKey(key: string, days?: DayProgram[]) {
+  const source = days && days.length === 7 ? days : PROGRAM;
+  return source.find((d) => d.key === key) ?? PROGRAM.find((d) => d.key === key);
 }
 
 export interface SkillGuide {

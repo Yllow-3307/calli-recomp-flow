@@ -7,6 +7,7 @@ import {
   useAppActions,
   suggestProgressionForExercise,
   currentProgramWeek,
+  programCycle,
   isTestWeek,
 } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ function ProgressionPage() {
   const [techniqueChecked, setTechniqueChecked] = useState(false);
 
   const week = currentProgramWeek(state.profile);
+  const { cycle } = programCycle(state.profile);
   const testWeek = isTestWeek(state.profile);
 
   // Filter out any seed test data by making sure we are only counting user real tests.
@@ -95,7 +97,10 @@ function ProgressionPage() {
 
   return (
     <PageShell>
-      <TopBar title="Progression" subtitle={`Semaine ${week}/12 · programme 3 mois`} />
+      <TopBar
+        title="Progression"
+        subtitle={`Cycle ${cycle} · Semaine ${week}/12 · suivi en continu`}
+      />
 
       {/* Prominent link to Skills page */}
       <div className="px-5 mb-4">

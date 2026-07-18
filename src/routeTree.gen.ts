@@ -14,6 +14,7 @@ import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as HistoriqueRouteImport } from './routes/historique'
 import { Route as MesuresRouteImport } from './routes/mesures'
 import { Route as NutritionRouteImport } from './routes/nutrition'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ParametresRouteImport } from './routes/parametres'
 import { Route as ProgrammeRouteImport } from './routes/programme'
 import { Route as ProgressionRouteImport } from './routes/progression'
@@ -44,6 +45,11 @@ const MesuresRoute = MesuresRouteImport.update({
 const NutritionRoute = NutritionRouteImport.update({
   id: '/nutrition',
   path: '/nutrition',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ParametresRoute = ParametresRouteImport.update({
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
+  '/onboarding': typeof OnboardingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
+  '/onboarding': typeof OnboardingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/historique': typeof HistoriqueRoute
   '/mesures': typeof MesuresRoute
   '/nutrition': typeof NutritionRoute
+  '/onboarding': typeof OnboardingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/progression': typeof ProgressionRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/historique'
     | '/mesures'
     | '/nutrition'
+    | '/onboarding'
     | '/parametres'
     | '/programme'
     | '/progression'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/historique'
     | '/mesures'
     | '/nutrition'
+    | '/onboarding'
     | '/parametres'
     | '/programme'
     | '/progression'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/historique'
     | '/mesures'
     | '/nutrition'
+    | '/onboarding'
     | '/parametres'
     | '/programme'
     | '/progression'
@@ -165,6 +177,7 @@ export interface RootRouteChildren {
   HistoriqueRoute: typeof HistoriqueRoute
   MesuresRoute: typeof MesuresRoute
   NutritionRoute: typeof NutritionRoute
+  OnboardingRoute: typeof OnboardingRoute
   ParametresRoute: typeof ParametresRoute
   ProgrammeRoute: typeof ProgrammeRoute
   ProgressionRoute: typeof ProgressionRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/nutrition'
       fullPath: '/nutrition'
       preLoaderRoute: typeof NutritionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parametres': {
@@ -261,6 +281,7 @@ const rootRouteChildren: RootRouteChildren = {
   HistoriqueRoute: HistoriqueRoute,
   MesuresRoute: MesuresRoute,
   NutritionRoute: NutritionRoute,
+  OnboardingRoute: OnboardingRoute,
   ParametresRoute: ParametresRoute,
   ProgrammeRoute: ProgrammeRoute,
   ProgressionRoute: ProgressionRoute,

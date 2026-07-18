@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { type Database, type Json } from "@/integrations/supabase/types";
+import type { Capacities, GeneratedPlan } from "./plan";
 import { toast } from "sonner";
 import { SKILLS_GUIDE, type SkillGuide } from "./program";
 
@@ -13,6 +14,10 @@ export interface Profile {
   level: "débutant" | "intermédiaire" | "avancé";
   onboarded: boolean;
   startDate?: string; // ISO date when program started
+  age?: number; // pour le calcul calorique (Mifflin-St Jeor)
+  sex?: "homme" | "femme";
+  capacities?: Capacities; // capacités déclarées à l'onboarding
+  plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
 }
 
 export interface SetLog {
@@ -222,6 +227,10 @@ export function useAppActions() {
             equipment: data.equipment || ["Barre traction", "Anneaux", "Haltères"],
             onboarded: data.onboarded,
             startDate: data.start_date || s.profile.startDate || new Date().toISOString(),
+            age: data.age ?? s.profile.age,
+            sex: data.sex ?? s.profile.sex,
+            capacities: (data.capacities as Capacities | null) ?? s.profile.capacities,
+            plan: (data.plan as unknown as GeneratedPlan | null) ?? s.profile.plan,
           },
         }));
       }
@@ -258,6 +267,10 @@ export function useAppActions() {
           equipment: profileData.equipment || ["Barre traction", "Anneaux", "Haltères"],
           onboarded: profileData.onboarded,
           startDate: profileData.start_date || currentProfile.startDate || new Date().toISOString(),
+          age: profileData.age ?? currentProfile.age,
+          sex: profileData.sex ?? currentProfile.sex,
+          capacities: (profileData.capacities as Capacities | null) ?? currentProfile.capacities,
+          plan: (profileData.plan as unknown as GeneratedPlan | null) ?? currentProfile.plan,
         };
       } else {
         const mappedProfile = {
@@ -269,6 +282,10 @@ export function useAppActions() {
           level: currentProfile.level,
           equipment: currentProfile.equipment,
           onboarded: currentProfile.onboarded,
+          age: currentProfile.age ?? null,
+          sex: currentProfile.sex ?? null,
+          capacities: (currentProfile.capacities ?? {}) as unknown as Json,
+          plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -821,6 +838,10 @@ export function useAppActions() {
               level: profileToSync.level,
               equipment: profileToSync.equipment,
               onboarded: profileToSync.onboarded,
+              age: profileToSync.age ?? null,
+              sex: profileToSync.sex ?? null,
+              capacities: (profileToSync.capacities ?? {}) as unknown as Json,
+              plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
               updated_at: new Date().toISOString(),
             };
             supabase
@@ -1392,12 +1413,26 @@ export function suggestProgressionForExercise(
 }
 
 // Current program week (1-12)
-export function currentProgramWeek(profile: Profile): number {
-  if (!profile.startDate) return 1;
+/**
+ * Cycles infinis de 12 semaines : l'app ne plafonne plus à S12.
+ * S13 → Cycle 2 · Semaine 1, S25 → Cycle 3 · Semaine 1… (tests toutes les 4 semaines).
+ */
+export function programCycle(profile: Profile): {
+  totalWeek: number;
+  cycle: number;
+  cycleWeek: number;
+} {
+  if (!profile.startDate) return { totalWeek: 1, cycle: 1, cycleWeek: 1 };
   const start = new Date(profile.startDate).getTime();
-  const now = Date.now();
-  const weeks = Math.floor((now - start) / (7 * 864e5)) + 1;
-  return Math.max(1, Math.min(12, weeks));
+  const totalWeek = Math.max(1, Math.floor((Date.now() - start) / (7 * 864e5)) + 1);
+  const cycle = Math.floor((totalWeek - 1) / 12) + 1;
+  const cycleWeek = ((totalWeek - 1) % 12) + 1;
+  return { totalWeek, cycle, cycleWeek };
+}
+
+/** Semaine dans le cycle courant (1-12). */
+export function currentProgramWeek(profile: Profile): number {
+  return programCycle(profile).cycleWeek;
 }
 
 export function isTestWeek(profile: Profile): boolean {
