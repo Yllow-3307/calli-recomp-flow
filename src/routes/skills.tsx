@@ -142,7 +142,7 @@ function SkillsPage() {
         </div>
       )}
 
-      <div className="px-5 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+      <div className="px-5 space-y-4 lg:space-y-0 masonry-lg">
         {SKILLS_GUIDE.map((skill) => {
           // 1. Fetch historical tests for this skill
           const logs = state.tests

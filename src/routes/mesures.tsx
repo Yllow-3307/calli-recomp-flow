@@ -122,8 +122,8 @@ function MesuresPage() {
       )}
 
       {/* Grille desktop : formulaire à gauche, courbe + timeline à droite */}
-      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-        <div className="px-5 mt-3 lg:col-start-1 lg:row-start-1">
+      <div className="masonry-lg">
+        <div className="px-5 mt-3">
           <div className="card-premium p-4 space-y-3">
             <div className="grid grid-cols-3 gap-2">
               <LabeledInput
@@ -184,7 +184,7 @@ function MesuresPage() {
         </div>
 
         {weights.length >= 2 && (
-          <section className="px-5 mt-5 lg:col-start-2 lg:row-start-1 lg:mt-0">
+          <section className="px-5 mt-5 lg:mt-0">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
               Évolution poids
             </p>
@@ -211,7 +211,7 @@ function MesuresPage() {
           </section>
         )}
 
-        <section className="px-5 mt-5 lg:col-start-2 lg:row-start-2 lg:mt-0">
+        <section className="px-5 mt-5 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Timeline</p>
           {state.metrics.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1">Aucune mesure encore.</p>

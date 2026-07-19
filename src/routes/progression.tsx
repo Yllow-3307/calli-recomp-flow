@@ -185,7 +185,7 @@ function ProgressionPage() {
       )}
 
       {/* Desktop : suggestions + records côte à côte */}
-      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+      <div className="masonry-lg">
         {suggestions.length > 0 && (
           <section className="px-5 mt-5">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">

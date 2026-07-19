@@ -116,8 +116,8 @@ function NutritionPage() {
       />
 
       {/* Grille desktop : [stats/minis/aujourd'hui] à gauche · [favoris/templates/perso] à droite */}
-      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-        <div className="px-5 grid grid-cols-2 gap-3 lg:col-start-1 lg:row-start-1">
+      <div className="masonry-lg">
+        <div className="px-5 grid grid-cols-2 gap-3">
           <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Beef className="h-4 w-4 text-lime-400" /> Protéines
@@ -179,7 +179,7 @@ function NutritionPage() {
           </div>
         </div>
 
-        <div className="px-5 mt-3 grid grid-cols-3 gap-3 lg:col-start-1 lg:row-start-2">
+        <div className="px-5 mt-3 grid grid-cols-3 gap-3">
           <MiniStat
             label="Calories"
             value={`${kcal} kcal`}
@@ -192,7 +192,7 @@ function NutritionPage() {
 
         {/* Repas favoris */}
         {favs.length > 0 && (
-          <section className="px-5 mt-5 lg:col-start-2 lg:row-start-1 lg:mt-0">
+          <section className="px-5 mt-5 lg:mt-0">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
               ⭐ Tes favoris
             </p>
@@ -226,7 +226,7 @@ function NutritionPage() {
         )}
 
         {/* Meal templates */}
-        <section className="px-5 mt-5 lg:col-start-2 lg:row-start-2 lg:mt-0">
+        <section className="px-5 mt-5 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
             Repas type du programme
           </p>
@@ -252,7 +252,7 @@ function NutritionPage() {
         </section>
 
         {/* Custom meal */}
-        <section className="px-5 mt-5 lg:col-start-2 lg:row-start-3 lg:mt-0">
+        <section className="px-5 mt-5 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
             Repas personnalisé
           </p>
@@ -303,7 +303,7 @@ function NutritionPage() {
           </div>
         </section>
 
-        <section className="px-5 mt-5 lg:col-start-1 lg:row-start-3 lg:mt-0">
+        <section className="px-5 mt-5 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
             Aujourd'hui
           </p>

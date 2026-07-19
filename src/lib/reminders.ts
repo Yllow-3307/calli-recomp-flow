@@ -11,12 +11,24 @@ export interface ReminderSettings {
   workout: boolean;
   workoutTime: string; // "HH:MM"
   hydration: boolean;
+  /** rappel d'export toutes les 2 semaines, le jour choisi (rythme pesée) */
+  exportReminder: boolean;
+  /** 0 = dimanche … 6 = samedi */
+  exportDay: number;
+  /** date d'activation : ancre la quinzaine (ISO) */
+  exportAnchor?: string;
 }
 
 const KEY = "calli-reminders-v1";
 const FIRED_KEY = "calli-reminders-fired";
 
-const DEFAULTS: ReminderSettings = { workout: false, workoutTime: "18:00", hydration: false };
+const DEFAULTS: ReminderSettings = {
+  workout: false,
+  workoutTime: "18:00",
+  hydration: false,
+  exportReminder: false,
+  exportDay: 0,
+};
 
 export function loadReminderSettings(): ReminderSettings {
   try {
@@ -48,7 +60,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 // Une seule notification par type et par jour
-type FiredMap = Record<string, { workout?: boolean; hydration?: boolean }>;
+type FiredMap = Record<string, { workout?: boolean; hydration?: boolean; export?: boolean }>;
 
 function loadFired(): FiredMap {
   try {
@@ -58,7 +70,7 @@ function loadFired(): FiredMap {
   }
 }
 
-function markFired(kind: "workout" | "hydration", dayKey: string) {
+function markFired(kind: "workout" | "hydration" | "export", dayKey: string) {
   const fired = loadFired();
   fired[dayKey] = { ...fired[dayKey], [kind]: true };
   // Ne garder que la semaine courante pour ne pas gonfler le stockage
@@ -99,7 +111,7 @@ export interface ReminderContext {
 export function startReminderLoop(getContext: () => ReminderContext): () => void {
   const tick = () => {
     const s = loadReminderSettings();
-    if (!s.workout && !s.hydration) return;
+    if (!s.workout && !s.hydration && !s.exportReminder) return;
     const now = new Date();
     const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const dayKey = now.toISOString().slice(0, 10);
@@ -122,6 +134,26 @@ export function startReminderLoop(getContext: () => ReminderContext): () => void
         "🥤 Point hydratation",
         `Tu en es à ${ctx.waterNow.toFixed(1)} L / ${ctx.waterTarget} L — un grand verre ?`,
       );
+    }
+    // Rappel d'export : toutes les 2 semaines, le jour choisi, à partir de 9h.
+    if (
+      s.exportReminder &&
+      s.exportAnchor &&
+      now.getDay() === s.exportDay &&
+      now.getHours() >= 9 &&
+      !fired[dayKey]?.export
+    ) {
+      const anchor = new Date(s.exportAnchor).getTime();
+      if (!Number.isNaN(anchor)) {
+        const weeks = Math.floor((now.getTime() - anchor) / (7 * 864e5));
+        if (weeks >= 0 && weeks % 2 === 0) {
+          markFired("export", dayKey);
+          notify(
+            "📤 Jour d'export",
+            "Pèse-toi ⚖️ puis pense à synchroniser / exporter tes données (Paramètres → Notion ou CSV).",
+          );
+        }
+      }
     }
   };
 

@@ -315,3 +315,23 @@
     display: none !important;
   }
 }
+
+/* ── Layout masonry desktop (V6) : les cartes s'emboîtent sans trous ──────
+   Remplace les placements manuels (grid + row-start) qui laissaient des
+   vides quand deux cartes d'une même ligne n'avaient pas la même hauteur. */
+@media (min-width: 1024px) {
+  .masonry-lg {
+    column-count: 2;
+    column-gap: 1.25rem;
+  }
+  .masonry-lg > * {
+    break-inside: avoid;
+    margin-bottom: 1.25rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .masonry-xl-3 {
+    column-count: 3;
+  }
+}

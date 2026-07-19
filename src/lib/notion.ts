@@ -1,15 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Synchro Notion V5 — réglages, introspection de bases existantes et
+// Synchro Notion V6 — réglages, introspection de bases existantes et
 // orchestration (create/update). Toute la logique vit ici (côté app) ; le
 // serveur ne fait que relayer les requêtes (voir notion-sync.ts).
-// Deux modes par jeu de données :
+// Une liste de bases liées, chacune associée à un jeu de données et un mode :
 //   • « auto »     → l'app crée la base dans ta page parente (simple)
 //   • « existing » → l'app écrit dans TA base, selon TES correspondances
 // ─────────────────────────────────────────────────────────────────────────────
 import { notionRequest } from "./notion-sync";
 import {
   buildNotionRows,
-  DATASET_ORDER,
   NOTION_DATASETS,
   windowStartDay,
   type DatasetDef,
@@ -39,16 +38,22 @@ async function callNotion<T>(
 
 // ── Réglages ─────────────────────────────────────────────────────────────────
 
-export type NotionMode = "off" | "auto" | "existing";
+export type NotionBaseMode = "auto" | "existing";
 
-export interface DatasetBinding {
-  mode: NotionMode;
+/** Une base Notion liée à un jeu de données de l'app. */
+export interface LinkedBase {
+  /** identifiant local (clé React / cache schéma) */
+  id: string;
+  dataset: NotionDatasetKind;
+  mode: NotionBaseMode;
   /** URL ou ID de TA base (mode « existing ») */
   databaseUrl?: string;
   /** champ app → nom de colonne Notion */
   mapping?: Record<string, string>;
   /** id de la base créée par l'app (mode « auto », rempli à la 1re synchro) */
   autoDbId?: string;
+  /** vrai nom de la base (rempli à l'analyse, pour l'affichage) */
+  knownName?: string;
 }
 
 export interface NotionSettings {
@@ -57,45 +62,91 @@ export interface NotionSettings {
   parentPageId: string;
   /** titres en mention date « @aujourd'hui » ou texte simple */
   titleStyle: "mention" | "texte";
-  bindings: Partial<Record<NotionDatasetKind, DatasetBinding>>;
+  bases: LinkedBase[];
   lastSync?: string;
 }
 
-const KEY = "calli-notion-v1"; // même clé : migration V1 → V2 transparente
+const KEY = "calli-notion-v1"; // même clé : migrations V4/V5 → V6 transparentes
 const DEFAULTS: NotionSettings = {
   secret: "",
   parentPageId: "",
   titleStyle: "mention",
-  bindings: {},
+  bases: [],
 };
+
+interface RawBindingV5 {
+  mode?: string;
+  databaseUrl?: string;
+  mapping?: Record<string, string>;
+  autoDbId?: string;
+}
+
+const DATASET_KINDS: NotionDatasetKind[] = [
+  "seances",
+  "hebdo",
+  "macros",
+  "mensuel",
+  "mesures",
+  "tests",
+];
 
 export function loadNotionSettings(): NotionSettings {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "{}") as Record<string, unknown> & {
+    const raw = JSON.parse(localStorage.getItem(KEY) || "{}") as {
+      secret?: unknown;
+      parentPageId?: unknown;
+      titleStyle?: unknown;
+      lastSync?: unknown;
+      bases?: unknown;
+      bindings?: Record<string, RawBindingV5>;
       databases?: Partial<Record<string, string>>;
     };
-    if (raw && !raw.bindings) {
-      // Migration V4 → V5 : les bases auto (Séances/Mesures/Tests) restent branchées.
-      const bindings: NotionSettings["bindings"] = {};
+    const base: NotionSettings = {
+      ...DEFAULTS,
+      secret: typeof raw.secret === "string" ? raw.secret : "",
+      parentPageId: typeof raw.parentPageId === "string" ? raw.parentPageId : "",
+      titleStyle: raw.titleStyle === "texte" ? "texte" : "mention",
+      lastSync: typeof raw.lastSync === "string" ? raw.lastSync : undefined,
+    };
+
+    // V6 déjà à jour
+    if (Array.isArray(raw.bases)) return { ...base, bases: raw.bases as LinkedBase[] };
+
+    // Migration V5 (objet par dataset) → liste de bases liées
+    if (raw.bindings && typeof raw.bindings === "object") {
+      const bases: LinkedBase[] = [];
+      for (const [k, b] of Object.entries(raw.bindings)) {
+        if (!b || !(DATASET_KINDS as string[]).includes(k)) continue;
+        if (b.mode !== "auto" && b.mode !== "existing") continue; // « off » → pas de base
+        bases.push({
+          id: k,
+          dataset: k as NotionDatasetKind,
+          mode: b.mode,
+          databaseUrl: b.databaseUrl,
+          mapping: b.mapping,
+          autoDbId: b.autoDbId,
+        });
+      }
+      return { ...base, bases };
+    }
+
+    // Migration V4 (bases auto créées par l'app)
+    if (raw.databases && typeof raw.databases === "object") {
+      const bases: LinkedBase[] = [];
       for (const [oldKey, kind] of [
         ["seances", "seances"],
         ["mesures", "mesures"],
         ["tests", "tests"],
       ] as const) {
-        const id = raw.databases?.[oldKey];
-        if (id) bindings[kind] = { mode: "auto", autoDbId: id };
+        const id = raw.databases[oldKey];
+        if (id) bases.push({ id: kind, dataset: kind, mode: "auto", autoDbId: id });
       }
-      // « repas » V4 (détail) → jeu « macros » V5 (totaux/jour) : nouvelle base auto
-      if (raw.databases?.repas) bindings.macros = { mode: "auto" };
-      return {
-        ...DEFAULTS,
-        secret: typeof raw.secret === "string" ? raw.secret : "",
-        parentPageId: typeof raw.parentPageId === "string" ? raw.parentPageId : "",
-        lastSync: typeof raw.lastSync === "string" ? raw.lastSync : undefined,
-        bindings,
-      };
+      // « repas » V4 (détail) → jeu « macros » (totaux/jour) : nouvelle base auto
+      if (raw.databases.repas) bases.push({ id: "macros", dataset: "macros", mode: "auto" });
+      return { ...base, bases };
     }
-    return { ...DEFAULTS, ...(raw as object) } as NotionSettings;
+
+    return base;
   } catch {
     return DEFAULTS;
   }
@@ -377,15 +428,10 @@ export async function syncToNotion(
   if (!settings.secret)
     return { ok: false, message: "Renseigne d'abord ta clé d'intégration.", lines: [] };
 
-  const active = DATASET_ORDER.filter((k) => {
-    const b = settings.bindings[k];
-    return b && b.mode !== "off";
-  });
-  if (!active.length)
+  if (!settings.bases.length)
     return {
       ok: false,
-      message:
-        "Aucun export activé — choisis un mode (« ma base » ou « auto ») pour au moins un jeu de données.",
+      message: "Aucune base liée — ajoute une base Notion dans la carte ci-dessus.",
       lines: [],
     };
 
@@ -395,16 +441,20 @@ export async function syncToNotion(
   let totalUpdated = 0;
   let errors = 0;
 
-  for (const kind of active) {
+  for (const binding of settings.bases) {
+    const kind = binding.dataset;
     const def = NOTION_DATASETS[kind];
-    const binding = settings.bindings[kind]!;
+    // Vrai nom de la base quand il est connu (« Macro Quotidien » plutôt que le gabarit)
+    const label = binding.knownName
+      ? `${def.emoji} « ${binding.knownName} »`
+      : `${def.emoji} ${def.label}`;
     const data = rows[kind];
     if (!data.length) {
-      lines.push(`${def.emoji} ${def.label} : aucune donnée sur la période`);
+      lines.push(`${label} : aucune donnée sur la période`);
       continue;
     }
 
-    onProgress(`${def.emoji} ${def.label} — préparation…`);
+    onProgress(`${label} — préparation…`);
 
     // 1) Résoudre base + schéma + mapping selon le mode
     let dbId: string | null = null;
@@ -442,13 +492,13 @@ export async function syncToNotion(
       if (!dbId) {
         const parent = parseNotionPageId(settings.parentPageId);
         if (!parent) {
-          lines.push(`${def.emoji} ${def.label} : page parente manquante pour le mode auto ⚠️`);
+          lines.push(`${label} : page parente manquante pour le mode auto ⚠️`);
           errors++;
           continue;
         }
         const created = await createAutoDatabase(settings.secret, parent, kind);
         if (!created.ok || !created.dbId) {
-          lines.push(`${def.emoji} ${def.label} : ${created.error ?? "création impossible"} ⚠️`);
+          lines.push(`${label} : ${created.error ?? "création impossible"} ⚠️`);
           errors++;
           continue;
         }
@@ -460,13 +510,13 @@ export async function syncToNotion(
       dbId = parseNotionPageId(binding.databaseUrl ?? "");
       mapping = binding.mapping ?? {};
       if (!dbId || !mapping.date) {
-        lines.push(`${def.emoji} ${def.label} : base non analysée ou colonne Date non associée ⚠️`);
+        lines.push(`${label} : base non analysée ou colonne Date non associée ⚠️`);
         errors++;
         continue;
       }
       const s = await fetchDatabaseSchema(settings.secret, dbId);
       if (!s.ok || !s.schema) {
-        lines.push(`${def.emoji} ${def.label} : ${s.error ?? "base illisible"} ⚠️`);
+        lines.push(`${label} : ${s.error ?? "base illisible"} ⚠️`);
         errors++;
         continue;
       }
@@ -476,7 +526,7 @@ export async function syncToNotion(
     // 2) Lignes déjà présentes
     const existing = await findExistingPages(settings.secret, dbId, def, mapping);
     if (!existing.ok) {
-      lines.push(`${def.emoji} ${def.label} : ${existing.error ?? "lecture impossible"} ⚠️`);
+      lines.push(`${label} : ${existing.error ?? "lecture impossible"} ⚠️`);
       errors++;
       continue;
     }
@@ -488,7 +538,7 @@ export async function syncToNotion(
     let i = 0;
     for (const row of data) {
       i++;
-      onProgress(`${def.emoji} ${def.label} — ${i}/${data.length}…`);
+      onProgress(`${label} — ${i}/${data.length}…`);
       const props = buildPageProps(row, def, schema, mapping, settings.titleStyle);
       const pageId = existing.byKey.get(row.key);
       const res = pageId
@@ -515,11 +565,9 @@ export async function syncToNotion(
     totalUpdated += updated;
     if (failed) {
       errors++;
-      lines.push(
-        `${def.emoji} ${def.label} : ${created} créée(s) · ${updated} màj… puis ${failed} ⚠️`,
-      );
+      lines.push(`${label} : ${created} créée(s) · ${updated} màj… puis ${failed} ⚠️`);
     } else {
-      lines.push(`${def.emoji} ${def.label} : ${created} créée(s) · ${updated} màj ✅`);
+      lines.push(`${label} : ${created} créée(s) · ${updated} màj ✅`);
     }
   }
 

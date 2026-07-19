@@ -37,7 +37,7 @@ function ProgrammePage() {
         </Button>
       </div>
 
-      <div className="px-5 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
+      <div className="px-5 space-y-3 lg:space-y-0 masonry-lg">
         {days.map((d) => {
           const skipped = skipRunning && d.key === "fri";
           return (

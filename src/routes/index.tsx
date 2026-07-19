@@ -206,9 +206,9 @@ function Dashboard() {
       <WeeklyRecapCard recap={recap} planned={daysGoal} nut={nut} />
 
       {/* Grille desktop : [séance | nutrition] puis [règles | raccourcis] — colonnes inchangées sur mobile */}
-      <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
+      <div className="masonry-lg masonry-xl-3">
         {/* Today's session */}
-        <section className="px-5 mt-6 lg:mt-0 lg:col-span-2 lg:row-start-1">
+        <section className="px-5 mt-6 lg:mt-0">
           <div className="flex items-center justify-between mb-2 px-1">
             <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
               Séance du jour
@@ -247,7 +247,7 @@ function Dashboard() {
         </section>
 
         {/* Nutrition — cartes colorées par catégorie (inspi dashboard) */}
-        <section className="px-5 mt-6 lg:mt-0 grid grid-cols-2 lg:grid-cols-1 gap-3 lg:col-start-3 lg:row-start-1">
+        <section className="px-5 mt-6 lg:mt-0 grid grid-cols-2 lg:grid-cols-1 gap-3">
           {/* Protéines · lime */}
           <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
             <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
@@ -303,7 +303,7 @@ function Dashboard() {
         </section>
 
         {/* Rules of gold */}
-        <section className="px-5 mt-6 lg:mt-0 lg:col-span-2 lg:row-start-2">
+        <section className="px-5 mt-6 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
             Règles d'or
           </p>
@@ -321,7 +321,7 @@ function Dashboard() {
         </section>
 
         {/* Quick links */}
-        <section className="px-5 mt-6 lg:mt-0 mb-8 space-y-2 lg:col-start-3 lg:row-start-2">
+        <section className="px-5 mt-6 lg:mt-0 mb-8 space-y-2">
           <QuickLink
             to="/historique"
             label="Historique des séances"

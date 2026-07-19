@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { useAppState, useAppActions } from "@/lib/store";
+import { useAppState, useAppActions, generateUUID } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
@@ -17,6 +17,7 @@ import {
   FileText,
   RefreshCw,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -35,8 +36,9 @@ import {
   fetchDatabaseSchema,
   addUidColumn,
   type NotionSettings,
-  type DatasetBinding,
+  type LinkedBase,
   type NotionSchema,
+  type NotionPropDef,
 } from "@/lib/notion";
 import {
   buildNotionRows,
@@ -99,7 +101,7 @@ function ParamsPage() {
     <PageShell>
       <TopBar title="Paramètres" subtitle="Profil, objectifs, équipement" />
 
-      <div className="px-5 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+      <div className="px-5 space-y-3 lg:space-y-0 masonry-lg">
         {userEmail && (
           <div className="card-premium p-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -350,6 +352,55 @@ function RemindersCard() {
         />
       </div>
 
+      {/* Rappel d'export (toutes les 2 semaines, rythme pesée) */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">📤 Export des données</p>
+          <p className="text-[11px] text-muted-foreground">
+            Toutes les 2 semaines, le jour choisi — pense à la pesée ⚖️
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Select
+            value={String(settings.exportDay)}
+            onValueChange={(v) => update({ exportDay: Number(v) })}
+          >
+            <SelectTrigger
+              className="w-[4.9rem] h-8 bg-input text-xs px-2"
+              aria-label="Jour du rappel d'export"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[
+                [1, "lun."],
+                [2, "mar."],
+                [3, "mer."],
+                [4, "jeu."],
+                [5, "ven."],
+                [6, "sam."],
+                [0, "dim."],
+              ].map(([v, label]) => (
+                <SelectItem key={v} value={String(v)}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Switch
+            checked={settings.exportReminder}
+            onCheckedChange={(v) =>
+              update(
+                v
+                  ? { exportReminder: true, exportAnchor: new Date().toISOString() }
+                  : { exportReminder: false },
+              )
+            }
+            aria-label="Activer le rappel d'export"
+          />
+        </div>
+      </div>
+
       {/* Permission notifications */}
       <div className="border-t border-white/5 pt-3">
         {!notificationsSupported() ? (
@@ -390,7 +441,7 @@ function ExportDataCard() {
   const datasets = buildDatasets(state);
 
   return (
-    <div className="card-premium p-4 space-y-3 lg:col-span-2">
+    <div className="card-premium p-4 space-y-3">
       <h3 className="font-bold text-sm">📤 Exporter mes données</h3>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
         Fenêtre glissante des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> — à faire toutes les 2
@@ -471,47 +522,46 @@ function typeBadge(type: string): string {
 }
 
 const IGNORE = "__ignore__";
+/** Types de colonnes Notion que l'app peut remplir. */
+const FILLABLE_TYPES: readonly string[] = ["number", "date", "rich_text", "select", "checkbox"];
 
-/** Une ligne de correspondance : champ de l'app → colonne Notion. */
-function MappingRow({
-  field,
-  schema,
-  value,
-  onChange,
+/** Une ligne du tableau de correspondance : colonne Notion → donnée de l'app. */
+function PropRow({
+  prop,
+  dataset,
+  mapping,
+  onAssign,
 }: {
-  field: FieldDef;
-  schema: NotionSchema;
-  value: string | undefined;
-  onChange: (v: string | null) => void;
+  prop: NotionPropDef;
+  dataset: NotionDatasetKind;
+  mapping: Record<string, string>;
+  onAssign: (propName: string, fieldKey: string | null) => void;
 }) {
-  const candidates = schema.props.filter(
-    (p) => p.type !== "title" && COMPAT[field.kind].includes(p.type),
-  );
-  const missing = field.required && !value;
+  const def = NOTION_DATASETS[dataset];
+  const current = Object.entries(mapping).find(([, p]) => p === prop.name)?.[0];
+  const options = def.fields.filter((f) => COMPAT[f.kind].includes(prop.type));
   return (
     <div className="flex items-center gap-2">
-      <span
-        className={`text-[11px] flex-1 min-w-0 truncate ${
-          missing ? "text-amber-300 font-semibold" : "text-muted-foreground"
-        }`}
-        title={field.label}
-      >
-        {field.label}
-        {field.required ? " *" : ""}
+      <span className="text-[11px] flex-1 min-w-0 truncate text-muted-foreground" title={prop.name}>
+        {typeBadge(prop.type)} {prop.name}
       </span>
-      <Select value={value ?? IGNORE} onValueChange={(v) => onChange(v === IGNORE ? null : v)}>
+      <Select
+        value={current ?? IGNORE}
+        onValueChange={(v) => onAssign(prop.name, v === IGNORE ? null : v)}
+      >
         <SelectTrigger className="h-7 w-[54%] shrink-0 text-[11px] bg-input">
-          <SelectValue placeholder="— Ignorer —" />
+          <SelectValue placeholder="— Ne pas remplir —" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={IGNORE}>— Ne pas envoyer —</SelectItem>
-          {candidates.map((p) => (
-            <SelectItem key={p.name} value={p.name}>
-              {typeBadge(p.type)} {p.name}
+          <SelectItem value={IGNORE}>— Ne pas remplir —</SelectItem>
+          {options.map((f) => (
+            <SelectItem key={f.key} value={f.key}>
+              {f.label}
+              {f.required ? " ★" : ""}
             </SelectItem>
           ))}
-          {value && !candidates.some((p) => p.name === value) && (
-            <SelectItem value={value}>⚠️ {value} (colonne introuvable)</SelectItem>
+          {current && !options.some((f) => f.key === current) && (
+            <SelectItem value={current}>⚠️ {current} (champ indisponible)</SelectItem>
           )}
         </SelectContent>
       </Select>
@@ -519,13 +569,13 @@ function MappingRow({
   );
 }
 
-/** Synchro automatique vers le Notion de l'utilisateur (clé perso, gratuite). */
+/** Synchro vers le Notion de l'utilisateur : liste de bases liées, nom réel + colonnes réelles. */
 function NotionSyncCard() {
   const state = useAppState();
   const { setProfile } = useAppActions();
   const [settings, setSettings] = useState<NotionSettings>(() => loadNotionSettings());
-  const [schemas, setSchemas] = useState<Partial<Record<NotionDatasetKind, NotionSchema>>>({});
-  const [analyzing, setAnalyzing] = useState<NotionDatasetKind | null>(null);
+  const [schemas, setSchemas] = useState<Record<string, NotionSchema>>({});
+  const [analyzing, setAnalyzing] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [report, setReport] = useState<string[] | null>(null);
@@ -538,7 +588,7 @@ function NotionSyncCard() {
     if (adoptedRef.current) return;
     const cloud = state.profile.notionConfig as unknown as NotionSettings | undefined;
     const local = loadNotionSettings();
-    if (cloud?.secret && !local.secret && !Object.keys(local.bindings).length) {
+    if (cloud?.secret && !local.secret && !local.bases.length) {
       adoptedRef.current = true;
       saveNotionSettings(cloud);
       setSettings(cloud);
@@ -553,23 +603,44 @@ function NotionSyncCard() {
     setProfile({ notionConfig: next as unknown as Record<string, unknown> });
   };
 
-  const bindingOf = (kind: NotionDatasetKind): DatasetBinding =>
-    settings.bindings[kind] ?? { mode: "off" };
-
-  const updateBinding = (kind: NotionDatasetKind, patch: Partial<DatasetBinding>) => {
-    update({ bindings: { ...settings.bindings, [kind]: { ...bindingOf(kind), ...patch } } });
+  const updateBase = (id: string, patch: Partial<LinkedBase>) => {
+    update({ bases: settings.bases.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   };
 
-  const setMapping = (kind: NotionDatasetKind, fieldKey: string, propName: string | null) => {
-    const mapping = { ...(bindingOf(kind).mapping ?? {}) };
-    if (propName === null) delete mapping[fieldKey];
-    else mapping[fieldKey] = propName;
-    updateBinding(kind, { mapping });
+  const addBase = () => {
+    const used = new Set(settings.bases.map((b) => b.dataset));
+    const free = DATASET_ORDER.find((k) => !used.has(k)) ?? "seances";
+    update({
+      bases: [...settings.bases, { id: generateUUID(), dataset: free, mode: "existing" }],
+    });
   };
 
-  const analyze = async (kind: NotionDatasetKind) => {
-    const b = bindingOf(kind);
-    const dbId = parseNotionPageId(b.databaseUrl ?? "");
+  const removeBase = (id: string) => {
+    update({ bases: settings.bases.filter((b) => b.id !== id) });
+    toast.success("Base retirée de la synchro.");
+  };
+
+  /** Pré-remplit les correspondances champ → colonne (n'écrase pas les choix existants). */
+  const prefillMapping = (
+    schema: NotionSchema,
+    dataset: NotionDatasetKind,
+    current: Record<string, string>,
+  ): { mapping: Record<string, string>; filled: number } => {
+    const mapping: Record<string, string> = { ...current };
+    let filled = 0;
+    for (const f of NOTION_DATASETS[dataset].fields) {
+      if (mapping[f.key]) continue;
+      const g = guessProperty(schema.props, f);
+      if (g) {
+        mapping[f.key] = g;
+        filled++;
+      }
+    }
+    return { mapping, filled };
+  };
+
+  const analyze = async (base: LinkedBase) => {
+    const dbId = parseNotionPageId(base.databaseUrl ?? "");
     if (!settings.secret) {
       toast.error("Colle d'abord ta clé d'intégration.");
       return;
@@ -578,26 +649,16 @@ function NotionSyncCard() {
       toast.error("Colle l'URL de ta base Notion.");
       return;
     }
-    setAnalyzing(kind);
+    setAnalyzing(base.id);
     try {
       const res = await fetchDatabaseSchema(settings.secret, dbId);
       if (!res.ok || !res.schema) {
         toast.error(res.error ?? "Analyse impossible.");
         return;
       }
-      setSchemas((s) => ({ ...s, [kind]: res.schema }));
-      // Pré-remplissage des correspondances (n'écrase jamais tes choix existants)
-      const mapping: Record<string, string> = { ...(b.mapping ?? {}) };
-      let filled = 0;
-      for (const f of NOTION_DATASETS[kind].fields) {
-        if (mapping[f.key]) continue;
-        const g = guessProperty(res.schema.props, f);
-        if (g) {
-          mapping[f.key] = g;
-          filled++;
-        }
-      }
-      updateBinding(kind, { mapping });
+      setSchemas((s) => ({ ...s, [base.id]: res.schema! }));
+      const { mapping, filled } = prefillMapping(res.schema, base.dataset, base.mapping ?? {});
+      updateBase(base.id, { mapping, knownName: res.schema.title });
       toast.success(
         `« ${res.schema.title} » : ${res.schema.props.length} colonnes · ${filled} correspondance(s) pré-remplie(s) ✅`,
       );
@@ -606,9 +667,26 @@ function NotionSyncCard() {
     }
   };
 
-  const createUid = async (kind: NotionDatasetKind) => {
-    const b = bindingOf(kind);
-    const dbId = parseNotionPageId(b.databaseUrl ?? "");
+  /** Changement de jeu de données : correspondances recalculées (les champs diffèrent). */
+  const changeDataset = (base: LinkedBase, dataset: NotionDatasetKind) => {
+    const schema = schemas[base.id];
+    const mapping = schema ? prefillMapping(schema, dataset, {}).mapping : {};
+    updateBase(base.id, { dataset, mapping });
+  };
+
+  /** Affecte un champ de l'app à une colonne (1 colonne = 1 champ max, et réciproquement). */
+  const assignField = (base: LinkedBase, propName: string, fieldKey: string | null) => {
+    const m = { ...(base.mapping ?? {}) };
+    for (const [f, p] of Object.entries(m)) if (p === propName) delete m[f];
+    if (fieldKey) {
+      for (const [f, p] of Object.entries(m)) if (f === fieldKey) delete m[f];
+      m[fieldKey] = propName;
+    }
+    updateBase(base.id, { mapping: m });
+  };
+
+  const createUid = async (base: LinkedBase) => {
+    const dbId = parseNotionPageId(base.databaseUrl ?? "");
     if (!settings.secret || !dbId) return;
     const res = await addUidColumn(settings.secret, dbId, "ID");
     if (!res.ok) {
@@ -616,11 +694,10 @@ function NotionSyncCard() {
       return;
     }
     toast.success("Colonne « ID » ajoutée à ta base ✅");
-    await analyze(kind); // relit le schéma + pré-remplit
+    await analyze(base); // relit le schéma + pré-remplit
   };
 
-  const activeKinds = DATASET_ORDER.filter((k) => bindingOf(k).mode !== "off");
-  const ready = !!settings.secret && activeKinds.length > 0;
+  const ready = !!settings.secret && settings.bases.length > 0;
 
   const run = async () => {
     setRunning(true);
@@ -645,7 +722,7 @@ function NotionSyncCard() {
   };
 
   return (
-    <div className="card-premium p-4 space-y-3 lg:col-span-2 border border-violet-400/20">
+    <div className="card-premium p-4 space-y-3 border border-violet-400/20">
       <h3 className="font-bold text-sm">📓 Synchro vers mon Notion</h3>
       <details className="text-xs">
         <summary className="cursor-pointer text-violet-300 font-bold">
@@ -661,12 +738,8 @@ function NotionSyncCard() {
             <b>Connexions</b> → choisis ton intégration — sinon erreur 404.
           </li>
           <li>
-            Mode <b>« Ma base »</b> : colle l'URL de ta base → <b>Analyser</b> → l'app lit tes
-            colonnes et pré-remplit les correspondances (★ = requis). Tes formules, RPE et notes ne
-            sont jamais écrasés.
-          </li>
-          <li>
-            Mode <b>« Auto »</b> : colle l'URL d'une page → l'app crée les bases pour toi.
+            Clique <b>« ➕ Ajouter une base »</b>, colle son URL → <b>Analyser</b> : le nom et les
+            colonnes de TA base s'affichent, avec les correspondances pré-remplies (★ = requis).
           </li>
           <li>
             La synchro écrit <b>une ligne par jour / semaine / mois</b> et la met à jour ensuite —
@@ -699,7 +772,7 @@ function NotionSyncCard() {
                 ["mention", "@mention date"],
                 ["texte", "Texte simple"],
               ] as const
-            ).map(([v, label]) => (
+            ).map(([v, label2]) => (
               <button
                 key={v}
                 onClick={() => update({ titleStyle: v })}
@@ -709,17 +782,17 @@ function NotionSyncCard() {
                     : "bg-card border-border text-muted-foreground"
                 }`}
               >
-                {label}
+                {label2}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {activeKinds.some((k) => bindingOf(k).mode === "auto") && (
+      {settings.bases.some((b) => b.mode === "auto") && (
         <div>
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-            Page parente (mode auto) — URL ou ID
+            Page parente (bases auto) — URL ou ID
           </label>
           <Input
             value={settings.parentPageId}
@@ -732,41 +805,73 @@ function NotionSyncCard() {
       )}
 
       <div className="space-y-2">
-        {DATASET_ORDER.map((kind) => {
-          const def = NOTION_DATASETS[kind];
-          const b = bindingOf(kind);
-          const schema = schemas[kind];
+        {settings.bases.map((base) => {
+          const def = NOTION_DATASETS[base.dataset];
+          const schema = schemas[base.id];
+          const shownName = schema?.title ?? base.knownName;
+          const fillable =
+            schema?.props.filter((p) => p.type !== "title" && FILLABLE_TYPES.includes(p.type)) ??
+            [];
+          const skipped =
+            schema?.props.filter((p) => p.type !== "title" && !FILLABLE_TYPES.includes(p.type)) ??
+            [];
+          const missingReq = def.fields.filter((f) => f.required && !base.mapping?.[f.key]);
           return (
-            <div key={kind} className="rounded-xl border border-white/10 p-3 space-y-2">
+            <div key={base.id} className="rounded-xl border border-white/10 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">
-                  {def.emoji} {def.label}
+                <p className="text-sm font-semibold truncate">
+                  🗂️ {shownName ? `« ${shownName} »` : "Nouvelle base"}
+                  <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+                    {def.emoji} {def.label} · {rows[base.dataset].length} ligne(s) · 14 j
+                  </span>
                 </p>
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  {rows[kind].length} ligne(s) · 14 j
-                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => removeBase(base.id)}
+                  title="Retirer cette base de la synchro (ta base Notion n'est pas supprimée)"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
 
-              <Select
-                value={b.mode}
-                onValueChange={(v) => updateBinding(kind, { mode: v as DatasetBinding["mode"] })}
-              >
-                <SelectTrigger className="h-8 text-xs bg-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="off">🚫 Ne pas synchroniser</SelectItem>
-                  <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
-                  <SelectItem value="auto">✨ Base auto (créée dans ma page)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={base.dataset}
+                  onValueChange={(v) => changeDataset(base, v as NotionDatasetKind)}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATASET_ORDER.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {NOTION_DATASETS[k].emoji} {NOTION_DATASETS[k].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={base.mode}
+                  onValueChange={(v) => updateBase(base.id, { mode: v as LinkedBase["mode"] })}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
+                    <SelectItem value="auto">✨ Base auto (créée par l'app)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-              {b.mode === "existing" && (
+              {base.mode === "existing" && (
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <Input
-                      value={b.databaseUrl ?? ""}
-                      onChange={(e) => updateBinding(kind, { databaseUrl: e.target.value.trim() })}
+                      value={base.databaseUrl ?? ""}
+                      onChange={(e) => updateBase(base.id, { databaseUrl: e.target.value.trim() })}
                       placeholder="URL de ta base (https://…notion.so/xxxx?v=…)"
                       className="bg-input h-8 text-xs"
                       autoComplete="off"
@@ -777,10 +882,10 @@ function NotionSyncCard() {
                       className="h-8 text-xs shrink-0 bg-white/5 border border-white/10"
                       disabled={analyzing !== null}
                       onClick={() => {
-                        void analyze(kind);
+                        void analyze(base);
                       }}
                     >
-                      {analyzing === kind ? (
+                      {analyzing === base.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : schema ? (
                         "Ré-analyser"
@@ -793,10 +898,16 @@ function NotionSyncCard() {
                   {schema && (
                     <div className="rounded-lg bg-white/5 border border-white/10 p-2.5 space-y-1.5">
                       <p className="text-[11px] text-muted-foreground">
-                        Base <b className="text-foreground">« {schema.title} »</b> · titre : colonne{" "}
-                        <b className="text-foreground">« {schema.titleProp} »</b>
+                        Titre : colonne <b className="text-foreground">« {schema.titleProp} »</b>{" "}
+                        (remplie automatiquement)
                       </p>
-                      {kind === "tests" && !b.mapping?.uid && (
+                      {missingReq.length > 0 && (
+                        <p className="text-[10px] text-amber-200 bg-amber-400/10 border border-amber-400/30 rounded-md px-2 py-1.5">
+                          ⚠️ Requis : {missingReq.map((f) => f.label).join(" + ")} — associe
+                          {missingReq.length > 1 ? "-les" : "e"} à une colonne ci-dessous.
+                        </p>
+                      )}
+                      {base.dataset === "tests" && !base.mapping?.uid && (
                         <div className="flex items-center justify-between gap-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5">
                           <p className="text-[10px] text-amber-200">
                             Tests : une colonne texte « ID » est requise contre les doublons.
@@ -806,41 +917,51 @@ function NotionSyncCard() {
                             variant="secondary"
                             className="h-7 text-[10px] shrink-0"
                             onClick={() => {
-                              void createUid(kind);
+                              void createUid(base);
                             }}
                           >
                             ➕ L'ajouter
                           </Button>
                         </div>
                       )}
-                      {def.fields.map((f) => (
-                        <MappingRow
-                          key={f.key}
-                          field={f}
-                          schema={schema}
-                          value={b.mapping?.[f.key]}
-                          onChange={(v) => setMapping(kind, f.key, v)}
+                      {fillable.map((p) => (
+                        <PropRow
+                          key={p.name}
+                          prop={p}
+                          dataset={base.dataset}
+                          mapping={base.mapping ?? {}}
+                          onAssign={(prop, f) => assignField(base, prop, f)}
                         />
                       ))}
-                      <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
-                        ★ requis · « Ne pas envoyer » = colonne jamais touchée (RPE, notes,
-                        formules… tranquilles ✌️)
-                      </p>
+                      {skipped.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/70 leading-relaxed pt-1">
+                          Colonnes ignorées (formules, relations…) :{" "}
+                          {skipped.map((p) => p.name).join(", ")} — jamais écrites ✌️
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
               )}
 
-              {b.mode === "auto" && (
+              {base.mode === "auto" && (
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  {b.autoDbId
-                    ? "✅ Base déjà créée par l'app — les colonnes y sont gérées automatiquement."
+                  {base.autoDbId
+                    ? "✅ Base déjà créée par l'app — colonnes gérées automatiquement."
                     : "La base sera créée dans ta page parente à la première synchro."}
                 </p>
               )}
             </div>
           );
         })}
+
+        <Button
+          variant="secondary"
+          className="w-full h-10 border border-dashed border-violet-400/40 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+          onClick={addBase}
+        >
+          ➕ Ajouter une base Notion
+        </Button>
       </div>
 
       <Button onClick={run} disabled={!ready || running} className="w-full h-11 btn-hero font-bold">
@@ -856,7 +977,7 @@ function NotionSyncCard() {
       </Button>
       {!ready && !settings.secret && (
         <p className="text-[10px] text-amber-300 text-center">
-          Colle ta clé d'intégration et active au moins un export pour lancer la synchro.
+          Colle ta clé d'intégration et ajoute au moins une base pour lancer la synchro.
         </p>
       )}
 
