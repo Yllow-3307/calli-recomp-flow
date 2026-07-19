@@ -108,6 +108,33 @@ function SeancePage() {
     .filter((s) => s.done).length;
   const progress = totalSets ? Math.round((doneSets / totalSets) * 100) : 0;
 
+  // Raccourcis clavier desktop : Espace = valider la série suivante, Échap = fermer le minuteur.
+  // (La logique de la séance ne change pas — ce ne sont que des alias de clics existants.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.code === "Escape" && restEx) {
+        setRestEx(null);
+        return;
+      }
+      if (e.code === "Space") {
+        e.preventDefault();
+        for (const ex of allExercises) {
+          const arr = sets[ex.id] ?? [];
+          const idx = arr.findIndex((s) => !s.done);
+          if (idx >= 0) {
+            completeSet(ex, idx);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allExercises, sets, restEx]);
+
   const updateSet = (exId: string, idx: number, patch: Partial<SetLog>) => {
     setSets((prev) => {
       const arr = [...prev[exId]];
@@ -227,6 +254,9 @@ function SeancePage() {
             <span>⏱️ Temps écoulé</span>
           </div>
         </div>
+        <p className="hidden lg:block text-[10px] text-muted-foreground mt-2 text-right">
+          Astuce PC : <b>Espace</b> = valider la série suivante · <b>Échap</b> = fermer le minuteur
+        </p>
       </div>
 
       {day.warmup.length > 0 && (
@@ -250,12 +280,12 @@ function SeancePage() {
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
             {block.title}
           </p>
-          <div className="space-y-3">
+          <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
             {block.items.map((ex) =>
               block.title === "Consignes" ? (
                 <div
                   key={ex.id}
-                  className="card-premium p-3 text-sm text-slate-300 border border-white/[0.04] flex items-start gap-2"
+                  className="card-premium p-3 text-sm text-slate-300 border border-white/[0.04] flex items-start gap-2 lg:col-span-2"
                 >
                   <span className="text-primary mt-0.5">▸</span>
                   <span>{ex.name}</span>

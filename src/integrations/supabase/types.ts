@@ -24,6 +24,7 @@ export type Database = {
           plan: Json | null;
           training_days: Json;
           exercise_swaps: Json;
+          favorite_meals: Json;
         };
         Insert: {
           id: string;
@@ -42,6 +43,7 @@ export type Database = {
           plan?: Json | null;
           training_days?: Json;
           exercise_swaps?: Json;
+          favorite_meals?: Json;
         };
         Update: {
           id?: string;
@@ -60,6 +62,7 @@ export type Database = {
           plan?: Json | null;
           training_days?: Json;
           exercise_swaps?: Json;
+          favorite_meals?: Json;
         };
         Relationships: [
           {

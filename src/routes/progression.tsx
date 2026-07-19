@@ -184,85 +184,88 @@ function ProgressionPage() {
         </div>
       )}
 
-      {suggestions.length > 0 && (
-        <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-primary" /> Progression suggérée
-          </p>
-          <div className="card-premium p-3 space-y-2">
-            {suggestions.map((s) => (
-              <div key={s.exId} className="flex items-center gap-3 py-1.5">
-                <div
-                  className={`h-8 w-8 grid place-items-center rounded-full ${
-                    s.reason === "up"
-                      ? "bg-success/20 text-success"
-                      : s.reason === "down"
-                        ? "bg-amber-500/15 text-amber-400"
-                        : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {s.reason === "up" ? (
-                    <ArrowUp className="h-4 w-4" />
-                  ) : s.reason === "down" ? (
-                    <ArrowDown className="h-4 w-4" />
-                  ) : (
-                    <Minus className="h-4 w-4" />
-                  )}
+      {/* Desktop : suggestions + records côte à côte */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+        {suggestions.length > 0 && (
+          <section className="px-5 mt-5">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" /> Progression suggérée
+            </p>
+            <div className="card-premium p-3 space-y-2">
+              {suggestions.map((s) => (
+                <div key={s.exId} className="flex items-center gap-3 py-1.5">
+                  <div
+                    className={`h-8 w-8 grid place-items-center rounded-full ${
+                      s.reason === "up"
+                        ? "bg-success/20 text-success"
+                        : s.reason === "down"
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {s.reason === "up" ? (
+                      <ArrowUp className="h-4 w-4" />
+                    ) : s.reason === "down" ? (
+                      <ArrowDown className="h-4 w-4" />
+                    ) : (
+                      <Minus className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">{s.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{s.hint}</p>
+                  </div>
+                  <span
+                    className={`text-xs font-bold ${
+                      s.reason === "up"
+                        ? "text-success"
+                        : s.reason === "down"
+                          ? "text-amber-400"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {s.delta}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{s.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.hint}</p>
-                </div>
-                <span
-                  className={`text-xs font-bold ${
-                    s.reason === "up"
-                      ? "text-success"
-                      : s.reason === "down"
-                        ? "text-amber-400"
-                        : "text-muted-foreground"
-                  }`}
-                >
-                  {s.delta}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-2 px-1">
-            Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
-            échecs de suite → on recule d'un cran pour repartir propre.
-          </p>
-        </section>
-      )}
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2 px-1">
+              Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
+              échecs de suite → on recule d'un cran pour repartir propre.
+            </p>
+          </section>
+        )}
 
-      {bests.length > 0 && (
-        <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Records personnels
-          </p>
-          <div className="card-premium p-3 space-y-1.5">
-            {bests.map((b) => (
-              <div key={b.exId} className="flex items-center gap-3 py-1">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{b.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {new Date(b.date).toLocaleDateString("fr-FR", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </p>
+        {bests.length > 0 && (
+          <section className="px-5 mt-5">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Records personnels
+            </p>
+            <div className="card-premium p-3 space-y-1.5">
+              {bests.map((b) => (
+                <div key={b.exId} className="flex items-center gap-3 py-1">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">{b.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {new Date(b.date).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </p>
+                  </div>
+                  <span className="text-sm font-extrabold text-yellow-400 shrink-0">
+                    {b.value}
+                    {b.kind === "time" ? " s" : " reps"}
+                    {b.weight ? ` · ${b.weight}kg` : ""}
+                  </span>
                 </div>
-                <span className="text-sm font-extrabold text-yellow-400 shrink-0">
-                  {b.value}
-                  {b.kind === "time" ? " s" : " reps"}
-                  {b.weight ? ` · ${b.weight}kg` : ""}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
 
-      <div className="px-5 mt-5 space-y-4">
+      <div className="px-5 mt-5 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-4 lg:items-start">
         {PROGRESS_TESTS.map((t) => {
           const logs = state.tests
             .filter((x) => x.testId === t.id)

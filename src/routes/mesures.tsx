@@ -121,106 +121,109 @@ function MesuresPage() {
         </div>
       )}
 
-      <div className="px-5 mt-3">
-        <div className="card-premium p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-2">
-            <LabeledInput
-              label="Poids (kg)"
-              value={form.weight}
-              onChange={(v) => setForm({ ...form, weight: v })}
-            />
-            <LabeledInput
-              label="Taille (cm)"
-              value={form.waist}
-              onChange={(v) => setForm({ ...form, waist: v })}
-            />
-            <LabeledInput
-              label="Sommeil (h)"
-              value={form.sleep}
-              onChange={(v) => setForm({ ...form, sleep: v })}
-            />
-          </div>
-
-          <SliderRow label="Énergie" value={energy} onChange={setEnergy} />
-          <SliderRow label="Fatigue" value={fatigue} onChange={setFatigue} />
-
-          <div>
-            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Photos (face · profil · dos)
-            </label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {(["face", "profile", "back"] as PhotoSlot[]).map((slot) => (
-                <PhotoSlotInput
-                  key={slot}
-                  slot={slot}
-                  value={photos[slot]}
-                  onChange={(path) => setPhotos((p) => ({ ...p, [slot]: path }))}
-                />
-              ))}
+      {/* Grille desktop : formulaire à gauche, courbe + timeline à droite */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+        <div className="px-5 mt-3 lg:col-start-1 lg:row-start-1">
+          <div className="card-premium p-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <LabeledInput
+                label="Poids (kg)"
+                value={form.weight}
+                onChange={(v) => setForm({ ...form, weight: v })}
+              />
+              <LabeledInput
+                label="Taille (cm)"
+                value={form.waist}
+                onChange={(v) => setForm({ ...form, waist: v })}
+              />
+              <LabeledInput
+                label="Sommeil (h)"
+                value={form.sleep}
+                onChange={(v) => setForm({ ...form, sleep: v })}
+              />
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
-              <Lock className="h-3 w-3" /> Photos privées, stockées dans ton espace sécurisé.
-            </p>
-          </div>
 
-          <Input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Note (ex: même éclairage matin)"
-            className="bg-input"
-          />
-          <Button className="w-full btn-hero h-11" onClick={submit}>
-            Enregistrer
-          </Button>
+            <SliderRow label="Énergie" value={energy} onChange={setEnergy} />
+            <SliderRow label="Fatigue" value={fatigue} onChange={setFatigue} />
 
-          <div className="pt-2 border-t border-border">
-            <p className="text-xs text-muted-foreground flex items-center gap-2">
-              <Camera className="h-4 w-4" /> Astuce : même heure, même éclairage, même tenue.
-            </p>
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                Photos (face · profil · dos)
+              </label>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {(["face", "profile", "back"] as PhotoSlot[]).map((slot) => (
+                  <PhotoSlotInput
+                    key={slot}
+                    slot={slot}
+                    value={photos[slot]}
+                    onChange={(path) => setPhotos((p) => ({ ...p, [slot]: path }))}
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
+                <Lock className="h-3 w-3" /> Photos privées, stockées dans ton espace sécurisé.
+              </p>
+            </div>
+
+            <Input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Note (ex: même éclairage matin)"
+              className="bg-input"
+            />
+            <Button className="w-full btn-hero h-11" onClick={submit}>
+              Enregistrer
+            </Button>
+
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                <Camera className="h-4 w-4" /> Astuce : même heure, même éclairage, même tenue.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {weights.length >= 2 && (
-        <section className="px-5 mt-5">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-            Évolution poids
-          </p>
-          <div className="card-premium p-4">
-            <div className="flex items-end gap-1 h-24">
-              {weights.map((m) => {
-                const h = ((m.weight! - wMin) / Math.max(0.1, wMax - wMin)) * 100;
-                return (
-                  <div key={m.id} className="flex-1 flex flex-col items-center gap-1">
-                    <div
-                      className="w-full rounded-t bg-primary/80"
-                      style={{ height: `${Math.max(6, h)}%` }}
-                      title={`${m.weight} kg`}
-                    />
-                  </div>
-                );
-              })}
+        {weights.length >= 2 && (
+          <section className="px-5 mt-5 lg:col-start-2 lg:row-start-1 lg:mt-0">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+              Évolution poids
+            </p>
+            <div className="card-premium p-4">
+              <div className="flex items-end gap-1 h-24">
+                {weights.map((m) => {
+                  const h = ((m.weight! - wMin) / Math.max(0.1, wMax - wMin)) * 100;
+                  return (
+                    <div key={m.id} className="flex-1 flex flex-col items-center gap-1">
+                      <div
+                        className="w-full rounded-t bg-primary/80"
+                        style={{ height: `${Math.max(6, h)}%` }}
+                        title={`${m.weight} kg`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                <span>{weights[0].weight}kg</span>
+                <span>{weights[weights.length - 1].weight}kg</span>
+              </div>
             </div>
-            <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-              <span>{weights[0].weight}kg</span>
-              <span>{weights[weights.length - 1].weight}kg</span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="px-5 mt-5">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Timeline</p>
-        {state.metrics.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-1">Aucune mesure encore.</p>
-        ) : (
-          <div className="space-y-3">
-            {state.metrics.slice(0, 30).map((m) => (
-              <MetricCard key={m.id} m={m} onRemove={() => actions.removeMetric(m.id)} />
-            ))}
-          </div>
+          </section>
         )}
-      </section>
+
+        <section className="px-5 mt-5 lg:col-start-2 lg:row-start-2 lg:mt-0">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Timeline</p>
+          {state.metrics.length === 0 ? (
+            <p className="text-sm text-muted-foreground px-1">Aucune mesure encore.</p>
+          ) : (
+            <div className="space-y-3">
+              {state.metrics.slice(0, 30).map((m) => (
+                <MetricCard key={m.id} m={m} onRemove={() => actions.removeMetric(m.id)} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </PageShell>
   );
 }

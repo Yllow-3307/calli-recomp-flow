@@ -303,3 +303,15 @@
   animation-duration: 5.6s;
   animation-direction: alternate-reverse;
 }
+
+/* ── Impression (export PDF de la semaine) ───────────────────────────────── */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  nav,
+  .print-hidden,
+  .print\:hidden {
+    display: none !important;
+  }
+}

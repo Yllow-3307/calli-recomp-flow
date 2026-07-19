@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Home,
   Dumbbell,
@@ -13,6 +13,9 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { useAppState, computeStreak } from "@/lib/store";
+import { supabase } from "@/integrations/supabase/client";
 
 const mainItems = [
   { to: "/", label: "Aujourd’hui", icon: Home, exact: true },
@@ -64,7 +67,7 @@ export function BottomNav() {
   const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.06] bg-slate-950/80 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.5)]">
+    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.06] bg-slate-950/80 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.5)] lg:hidden">
       <ul className="grid grid-cols-5 max-w-md mx-auto">
         {mainItems.map(({ to, label, icon: Icon, exact }) => (
           <li key={to} className="min-w-0">
@@ -157,7 +160,103 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
   );
 }
 
-export function PageShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen max-w-md mx-auto pb-24 relative">{children}</div>;
+export function PageShell({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-h-screen max-w-md mx-auto pb-24 relative lg:m-0 lg:max-w-none lg:pl-20 xl:pl-64 lg:pb-10",
+        className,
+      )}
+    >
+      <div className="lg:max-w-6xl lg:mx-auto lg:px-6">{children}</div>
+    </div>
+  );
 }
+
+/**
+ * Barre latérale desktop (lg = icônes seules, xl = icônes + labels).
+ * Masquée sur mobile (la BottomNav prend le relais) et pendant l'onboarding.
+ */
+export function DesktopNav() {
+  const location = useLocation();
+  const state = useAppState();
+  const streak = computeStreak(state.workouts);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) setEmail(session.user.email);
+    });
+  }, []);
+
+  // Assistant plein écran, même logique que la BottomNav
+  if (location.pathname === "/onboarding") return null;
+
+  const items = [...mainItems, ...moreItems];
+
+  return (
+    <nav className="hidden lg:flex fixed left-0 top-0 bottom-0 z-40 w-20 xl:w-64 flex-col border-r border-white/[0.06] bg-slate-950/85 backdrop-blur-xl">
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-4 xl:px-6 pt-7 pb-8">
+        <span
+          aria-hidden
+          className="h-8 w-8 shrink-0 rounded-xl bg-gradient-to-tr from-primary to-accent shadow-[0_0_20px_-2px_var(--color-primary)] grid place-items-center text-white font-black text-sm"
+        >
+          C
+        </span>
+        <div className="hidden xl:block min-w-0">
+          <p className="font-black text-base leading-tight text-gradient truncate">Calli Recomp</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            Tracker
+          </p>
+        </div>
+      </div>
+
+      {/* Liens de navigation */}
+      <ul className="flex-1 space-y-1 px-3">
+        {items.map(({ to, label, icon: Icon, ...rest }) => {
+          const exact = "exact" in rest ? !!rest.exact : to === "/";
+          return (
+            <li key={to}>
+              <Link
+                to={to}
+                activeOptions={{ exact }}
+                title={label}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all justify-center xl:justify-start data-[status=active]:text-primary data-[status=active]:bg-primary/10 data-[status=active]:border-primary/25"
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                <span className="hidden xl:inline truncate">{label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Pied : streak + compte */}
+      <div className="px-3 pb-6 space-y-2">
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-center xl:text-left">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hidden xl:block">
+            Streak
+          </p>
+          <p className="text-lg font-black text-gradient">🔥 {streak}j</p>
+        </div>
+        {email && (
+          <p
+            className="hidden xl:block text-[10px] text-muted-foreground truncate px-1"
+            title={email}
+          >
+            {email}
+          </p>
+        )}
+      </div>
+    </nav>
+  );
+}
+
 export { Ruler };

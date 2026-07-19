@@ -130,7 +130,7 @@ function OnboardingPage() {
     step === 0 ? true : step === 1 ? !!weight && !!height && !!age : step === 2 ? true : true;
 
   return (
-    <PageShell>
+    <PageShell className="lg:max-w-xl lg:mx-auto lg:pl-0 xl:pl-0">
       {/* Barre de progression */}
       <div className="px-5 pt-7">
         <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground">
@@ -432,7 +432,7 @@ function OnboardingPage() {
 
       {/* Navigation bas fixe */}
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.06] bg-slate-950/85 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
-        <div className="max-w-md mx-auto flex items-center gap-3 px-5 py-3.5">
+        <div className="max-w-md lg:max-w-xl mx-auto flex items-center gap-3 px-5 py-3.5">
           {step > 0 ? (
             <Button
               variant="secondary"

@@ -14,6 +14,15 @@ function syncFailureToast(what: string) {
 }
 import { SKILLS_GUIDE, type SkillGuide } from "./program";
 
+export interface FavoriteMeal {
+  id: string;
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export interface Profile {
   weight: number;
   height: number;
@@ -29,6 +38,7 @@ export interface Profile {
   plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
   trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
+  favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
 }
 
 export interface SetLog {
@@ -247,6 +257,9 @@ export function useAppActions() {
               : s.profile.trainingDays,
             exerciseSwaps:
               (data.exercise_swaps as Record<string, string> | null) ?? s.profile.exerciseSwaps,
+            favoriteMeals: Array.isArray(data.favorite_meals)
+              ? (data.favorite_meals as unknown as FavoriteMeal[])
+              : s.profile.favoriteMeals,
           },
         }));
       }
@@ -294,6 +307,9 @@ export function useAppActions() {
           exerciseSwaps:
             (profileData.exercise_swaps as Record<string, string> | null) ??
             currentProfile.exerciseSwaps,
+          favoriteMeals: Array.isArray(profileData.favorite_meals)
+            ? (profileData.favorite_meals as unknown as FavoriteMeal[])
+            : currentProfile.favoriteMeals,
         };
       } else {
         const mappedProfile = {
@@ -311,6 +327,7 @@ export function useAppActions() {
           plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
           training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
+          favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -869,6 +886,7 @@ export function useAppActions() {
               plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
               training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
+              favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase

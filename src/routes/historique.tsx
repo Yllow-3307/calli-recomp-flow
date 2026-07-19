@@ -230,7 +230,7 @@ function HistoriquePage() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
             {items.map((item) => {
               const isWorkout = item.type === "workout";
 

@@ -7,8 +7,33 @@ import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ChevronRight, LogOut, User, Bell, BellRing } from "lucide-react";
+import {
+  ChevronRight,
+  LogOut,
+  User,
+  Bell,
+  BellRing,
+  FileDown,
+  FileText,
+  RefreshCw,
+  Loader2,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  buildDatasets,
+  datasetToCSV,
+  datasetToMarkdown,
+  download,
+  exportFilename,
+  EXPORT_WINDOW_DAYS,
+} from "@/lib/exporter";
+import {
+  loadNotionSettings,
+  saveNotionSettings,
+  parseNotionPageId,
+  syncToNotion,
+  type NotionSettings,
+} from "@/lib/notion";
 import {
   loadReminderSettings,
   saveReminderSettings,
@@ -54,7 +79,7 @@ function ParamsPage() {
     <PageShell>
       <TopBar title="Paramètres" subtitle="Profil, objectifs, équipement" />
 
-      <div className="px-5 space-y-3">
+      <div className="px-5 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
         {userEmail && (
           <div className="card-premium p-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -164,6 +189,10 @@ function ParamsPage() {
         </Link>
 
         <RemindersCard />
+
+        <ExportDataCard />
+
+        <NotionSyncCard />
 
         <div className="card-premium p-4 space-y-2">
           <h3 className="font-bold">Équipement</h3>
@@ -331,6 +360,188 @@ function RemindersCard() {
           → installe l'app (Partager → « Sur l'écran d'accueil ») pour recevoir les notifs.
         </p>
       </div>
+    </div>
+  );
+}
+
+/** Export fichiers (2 dernières semaines) — CSV pour base Notion/Excel, Markdown à coller. */
+function ExportDataCard() {
+  const state = useAppState();
+  const datasets = buildDatasets(state);
+
+  return (
+    <div className="card-premium p-4 space-y-3 lg:col-span-2">
+      <h3 className="font-bold text-sm">📤 Exporter mes données</h3>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Fenêtre glissante des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> — à faire toutes les 2
+        semaines, en même temps que ta pesée 😉 Le CSV s'importe tel quel dans Notion (base de
+        données), Google Sheets ou Excel ; le Markdown se colle dans une page Notion.
+      </p>
+      <div className="space-y-2">
+        {datasets.map((ds) => (
+          <div key={ds.key} className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">{ds.label}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {ds.rows.length} ligne(s) sur la période
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!ds.rows.length}
+              className="h-8 text-xs bg-white/5 border border-white/10 gap-1"
+              onClick={() => {
+                download(exportFilename(ds.key, "csv"), datasetToCSV(ds), "text/csv");
+                toast.success(`${ds.label} : CSV téléchargé`);
+              }}
+            >
+              <FileDown className="h-3.5 w-3.5" /> CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!ds.rows.length}
+              className="h-8 text-xs bg-white/5 border border-white/10 gap-1"
+              onClick={() => {
+                download(exportFilename(ds.key, "md"), datasetToMarkdown(ds), "text/markdown");
+                toast.success(`${ds.label} : Markdown téléchargé`);
+              }}
+            >
+              <FileText className="h-3.5 w-3.5" /> MD
+            </Button>
+          </div>
+        ))}
+      </div>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-primary font-bold">
+          Comment importer dans Notion ?
+        </summary>
+        <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
+          <li>Dans Notion, ouvre la page où tu veux tes données.</li>
+          <li>Clique ⋯ (en haut) → « Importer » → choisis le fichier CSV téléchargé.</li>
+          <li>
+            Ton tableau Notion est créé — tu peux le trier, filtrer, le lier à d'autres pages.
+          </li>
+          <li>Alternative : ouvre le fichier .md, copie tout, colle directement dans une page.</li>
+        </ol>
+      </details>
+    </div>
+  );
+}
+
+/** Synchro automatique vers le Notion de l'utilisateur (clé perso, gratuite). */
+function NotionSyncCard() {
+  const state = useAppState();
+  const [settings, setSettings] = useState<NotionSettings>(() => loadNotionSettings());
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  const update = (patch: Partial<NotionSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    saveNotionSettings(next);
+  };
+
+  const run = async () => {
+    update({ parentPageId: parseNotionPageId(settings.parentPageId) });
+    setRunning(true);
+    setProgress("Préparation…");
+    try {
+      const res = await syncToNotion(state, setProgress);
+      if (res.ok) {
+        toast.success(res.message);
+        setSettings(loadNotionSettings());
+      } else {
+        toast.error(res.message);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("La synchro a échoué. Réessaie dans un instant.");
+    } finally {
+      setRunning(false);
+      setProgress("");
+    }
+  };
+
+  const ready = !!settings.secret && !!parseNotionPageId(settings.parentPageId);
+
+  return (
+    <div className="card-premium p-4 space-y-3 lg:col-span-2 border border-violet-400/20">
+      <h3 className="font-bold text-sm">📓 Synchro automatique vers mon Notion</h3>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-violet-300 font-bold">
+          Config (une seule fois, ~10 min, gratuit)
+        </summary>
+        <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
+          <li>
+            Va sur <b>notion.so/profile/integrations</b> → « + Nouvelle intégration » → donne-lui un
+            nom (ex. Calli Recomp) → copie la <b>clé interne</b> (commence par ntn_).
+          </li>
+          <li>Crée une page Notion « Calli Recomp » (ou utilise une page existante).</li>
+          <li>
+            Sur cette page : ⋯ en haut à droite → <b>Connexions</b> → choisis ton intégration
+            (obligatoire, sinon erreur 404).
+          </li>
+          <li>Colle ci-dessous la clé + l'URL de la page → Synchroniser. C'est fini 🎉</li>
+        </ol>
+      </details>
+
+      <div className="space-y-2">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+            Clé d'intégration
+          </label>
+          <Input
+            type="password"
+            value={settings.secret}
+            onChange={(e) => update({ secret: e.target.value.trim() })}
+            placeholder="ntn_…"
+            className="bg-input mt-1"
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+            Page Notion (URL ou ID)
+          </label>
+          <Input
+            value={settings.parentPageId}
+            onChange={(e) => update({ parentPageId: e.target.value.trim() })}
+            placeholder="https://www.notion.so/Calli-Recomp-5f3a…"
+            className="bg-input mt-1"
+            autoComplete="off"
+          />
+        </div>
+      </div>
+
+      <Button onClick={run} disabled={!ready || running} className="w-full h-11 btn-hero font-bold">
+        {running ? (
+          <span className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> {progress || "Synchro…"}
+          </span>
+        ) : (
+          <span className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" /> Synchroniser les {EXPORT_WINDOW_DAYS} derniers jours
+          </span>
+        )}
+      </Button>
+
+      {settings.lastSync && (
+        <p className="text-[10px] text-muted-foreground text-center">
+          Dernière synchro :{" "}
+          {new Date(settings.lastSync).toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </p>
+      )}
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        🔒 Ta clé reste sur cet appareil (rien n'est stocké côté serveur). La synchro passe par ton
+        propre hébergement Vercel uniquement pour contourner la règle CORS de Notion.
+      </p>
     </div>
   );
 }

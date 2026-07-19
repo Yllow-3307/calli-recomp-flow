@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { planDays } from "@/lib/plan";
+import { planDays, nutritionTargets, TIER_INFO, goalDefOf } from "@/lib/plan";
 import { useAppState, programCycle } from "@/lib/store";
+import { Button } from "@/components/ui/button";
 import { SessionTypeBadge } from "@/routes/index";
 
 export const Route = createFileRoute("/programme")({
@@ -15,6 +16,8 @@ function ProgrammePage() {
   const { cycle, cycleWeek } = programCycle(state.profile);
   const days = planDays(state.profile);
   const isCustomPlan = !!state.profile.plan;
+  const nut = nutritionTargets(state.profile);
+  const tierLabel = state.profile.plan ? TIER_INFO[state.profile.plan.tier].label : "Standard";
 
   return (
     <PageShell>
@@ -23,7 +26,18 @@ function ProgrammePage() {
         subtitle={`${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, semaine ${cycleWeek}/12`}
       />
 
-      <div className="px-5 space-y-3">
+      <div className="px-5 mb-3 flex justify-end print:hidden">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="bg-white/5 border border-white/10 text-xs"
+          onClick={() => window.print()}
+        >
+          🖨️ Exporter ma semaine (PDF)
+        </Button>
+      </div>
+
+      <div className="px-5 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
         {days.map((d) => {
           const skipped = skipRunning && d.key === "fri";
           return (
@@ -137,6 +151,49 @@ function ProgrammePage() {
             Les semaines colorées en dégradé sont des phases de tests physiques (S4, S8, S12).
           </p>
         </div>
+      </div>
+
+      {/* Feuille imprimable (PDF) — visible uniquement à l'impression */}
+      <div className="hidden print:block print:text-black print:bg-white print:-ml-20 xl:print:-ml-64 print:px-10 print:py-6">
+        <h1 className="text-2xl font-black">Calli Recomp — Ma semaine</h1>
+        <p className="text-sm mt-1">
+          Exporté le {new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} ·
+          Cycle {cycle} · Semaine {cycleWeek}/12 · Objectif : {goalDefOf(state.profile.goal).label}{" "}
+          · Palier : {tierLabel}
+        </p>
+        <table className="w-full text-sm mt-4 border-collapse">
+          <thead>
+            <tr className="border-b-2 border-black text-left">
+              <th className="py-1.5 pr-2">Jour</th>
+              <th className="py-1.5 pr-2">Séance</th>
+              <th className="py-1.5 pr-2">Durée</th>
+              <th className="py-1.5">Contenu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((d) => (
+              <tr key={d.key} className="border-b border-slate-300 align-top">
+                <td className="py-1.5 pr-2 font-bold whitespace-nowrap">{d.day}</td>
+                <td className="py-1.5 pr-2">
+                  {d.emoji} {d.title}
+                </td>
+                <td className="py-1.5 pr-2 whitespace-nowrap">~{d.duration} min</td>
+                <td className="py-1.5 text-xs">
+                  {d.blocks
+                    .filter((b) => b.title !== "Consignes")
+                    .flatMap((b) => b.items)
+                    .slice(0, 6)
+                    .map((it) => `${it.sets}×${it.target} ${it.name}`)
+                    .join(" · ") || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-sm mt-4">
+          Cibles : ~{nut.kcalTarget} kcal · Protéines {nut.proteinMin}–{nut.proteinMax} g · Glucides
+          ~{nut.carbsTarget} g · Lipides ~{nut.fatTarget} g · Eau {nut.waterL} L
+        </p>
       </div>
     </PageShell>
   );

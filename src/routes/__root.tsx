@@ -9,7 +9,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { BottomNav } from "@/components/BottomNav";
+import { BottomNav, DesktopNav } from "@/components/BottomNav";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -220,6 +220,7 @@ function RootComponent() {
           <Outlet />
         </div>
         <BottomNav />
+        <DesktopNav />
         <Toaster />
       </div>
     </QueryClientProvider>
