@@ -27,49 +27,13 @@ import {
   ArrowLeft,
   Check,
 } from "lucide-react";
+import { EvolutionChartDialog } from "@/components/EvolutionChart";
+import { computeAutoStatus } from "@/lib/skill-status";
 
 export const Route = createFileRoute("/skills")({
   head: () => ({ meta: [{ title: "Mes Skills — Calli Recomp" }] }),
   component: SkillsPage,
 });
-
-function computeAutoStatus(
-  skillId: string,
-  latestValue: number | undefined,
-): "non commencé" | "en cours" | "proche" | "validé" {
-  if (latestValue === undefined || latestValue === null || latestValue === 0) {
-    return "non commencé";
-  }
-
-  switch (skillId) {
-    case "handstand":
-      if (latestValue < 25) return "en cours";
-      if (latestValue >= 30 || latestValue >= 10) return "validé";
-      return "proche";
-    case "hspu":
-      if (latestValue < 4) return "en cours";
-      if (latestValue >= 5) return "validé";
-      return "proche";
-    case "muscleup":
-      if (latestValue < 1) return "en cours";
-      if (latestValue >= 5) return "validé";
-      return "proche";
-    case "tuckflag":
-      if (latestValue < 5) return "en cours";
-      if (latestValue >= 10) return "validé";
-      return "proche";
-    case "dragonflag":
-      if (latestValue < 5) return "en cours";
-      if (latestValue >= 10) return "validé";
-      return "proche";
-    case "lsit":
-      if (latestValue < 12) return "en cours";
-      if (latestValue < 25) return "proche";
-      return "validé";
-    default:
-      return "en cours";
-  }
-}
 
 function StatusBadge({ status }: { status: "non commencé" | "en cours" | "proche" | "validé" }) {
   const styles = {
@@ -97,6 +61,7 @@ function SkillsPage() {
   // Tracks which skill's technical notes or settings are open/editable
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [chartSkill, setChartSkill] = useState<string | null>(null);
 
   const handleSaveNotes = (skillId: string, value: string) => {
     actions.setSkillNote(skillId, value);
@@ -203,6 +168,16 @@ function SkillsPage() {
                 </div>
 
                 <div className="text-right flex flex-col items-end gap-1.5">
+                  {logs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setChartSkill(skill.id)}
+                      className="p-1.5 rounded-lg hover:bg-muted text-primary transition-colors flex items-center gap-1 text-xs font-semibold"
+                    >
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      <span>Évolution</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setExpandedSkill(isExpanded ? null : skill.id)}
                     className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors flex items-center gap-1 text-xs font-semibold"
@@ -442,6 +417,8 @@ function SkillsPage() {
           );
         })}
       </div>
+
+      <EvolutionChartDialog testId={chartSkill} onClose={() => setChartSkill(null)} />
 
       <div className="px-5 mt-6 mb-8 text-center">
         <Link

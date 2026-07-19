@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { GOALS, goalDefOf } from "@/lib/plan";
+import { NAV_CANDIDATES, MAX_NAV_PICKS, normalizeNavPicks } from "@/lib/nav-menu";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Check,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -228,6 +230,14 @@ function ParamsPage() {
         </section>
 
         {/* 📓 Notion & données */}
+        {/* 📱 Barre de menu mobile */}
+        <section>
+          <SectionTitle>📱 Barre de menu (mobile)</SectionTitle>
+          <div className="mt-1.5">
+            <NavMenuCard />
+          </div>
+        </section>
+
         <section>
           <SectionTitle>📓 Notion & données</SectionTitle>
           <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
@@ -709,6 +719,34 @@ function PropRow({
 }
 
 /** Synchro vers le Notion de l'utilisateur : liste de bases liées, nom réel + colonnes réelles. */
+type SyncPeriod = "14j" | "semaine" | "2semaines" | "mois" | "custom";
+
+const PERIOD_LABELS: Record<SyncPeriod, string> = {
+  "14j": "14 derniers jours",
+  semaine: "semaine dernière",
+  "2semaines": "2 dernières semaines",
+  mois: "mois au choix",
+  custom: "période personnalisée",
+};
+
+function todayLocalISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDaysISO(day: string, n: number): string {
+  const d = new Date(`${day}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return fmtISO(d);
+}
+function fmtISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function mondayOfISO(day: string): string {
+  const d = new Date(`${day}T12:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return fmtISO(d);
+}
+
 function NotionSyncCard() {
   const state = useAppState();
   const { setProfile } = useAppActions();
@@ -719,8 +757,41 @@ function NotionSyncCard() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [report, setReport] = useState<string[] | null>(null);
+  const [period, setPeriod] = useState<SyncPeriod>("14j");
+  const [monthPick, setMonthPick] = useState(() => todayLocalISO().slice(0, 7));
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [pickedBases, setPickedBases] = useState<string[]>([]); // [] = toutes
 
-  const rows = useMemo(() => buildNotionRows(state), [state]);
+  /** Période choisie → bornes ISO (undefined = fenêtre par défaut de 14 j). */
+  const range = useMemo<{ from: string; to: string } | undefined>(() => {
+    const today = todayLocalISO();
+    switch (period) {
+      case "14j":
+        return undefined;
+      case "semaine": {
+        const monday = mondayOfISO(today);
+        return { from: addDaysISO(monday, -7), to: addDaysISO(monday, -1) };
+      }
+      case "2semaines": {
+        const monday = mondayOfISO(today);
+        return { from: addDaysISO(monday, -14), to: addDaysISO(monday, -1) };
+      }
+      case "mois": {
+        const from = `${monthPick}-01`;
+        const d = new Date(`${from}T12:00:00`);
+        d.setMonth(d.getMonth() + 1, 0); // dernier jour du mois
+        const to = fmtISO(d);
+        return { from, to: to > today ? today : to };
+      }
+      case "custom":
+        return customFrom && customTo
+          ? { from: customFrom, to: customTo < customFrom ? customFrom : customTo }
+          : undefined;
+    }
+  }, [period, monthPick, customFrom, customTo]);
+
+  const rows = useMemo(() => buildNotionRows(state, range), [state, range]);
 
   // Sur un nouvel appareil : adopte la config enregistrée dans le profil (si l'appareil est vierge).
   const adoptedRef = useRef(false);
@@ -853,7 +924,11 @@ function NotionSyncCard() {
     setReport(null);
     setProgress("Préparation…");
     try {
-      const res = await syncToNotion(state, setProgress);
+      const onlyBases =
+        pickedBases.length > 0 && pickedBases.length < settings.bases.length
+          ? pickedBases
+          : undefined; // [] ou tout coché = toutes les bases
+      const res = await syncToNotion(state, setProgress, { range, onlyBases });
       setReport(res.lines);
       if (res.ok) {
         toast.success(res.message);
@@ -1130,6 +1205,92 @@ function NotionSyncCard() {
         </Button>
       </div>
 
+      {/* Période à synchroniser */}
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-muted-foreground">Période à synchroniser</p>
+        <div className="flex flex-wrap gap-1.5">
+          {(Object.keys(PERIOD_LABELS) as SyncPeriod[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setPeriod(k)}
+              className={`px-3 h-8 rounded-full text-[11px] font-bold border transition-all ${
+                period === k
+                  ? "bg-violet-400/15 border-violet-400/50 text-violet-200"
+                  : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {PERIOD_LABELS[k]}
+            </button>
+          ))}
+        </div>
+        {period === "mois" && (
+          <Input
+            type="month"
+            value={monthPick}
+            onChange={(e) => e.target.value && setMonthPick(e.target.value)}
+            className="bg-input h-9 text-sm w-44"
+          />
+        )}
+        {period === "custom" && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="bg-input h-9 text-sm flex-1"
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="bg-input h-9 text-sm flex-1"
+            />
+          </div>
+        )}
+        {period === "custom" && (!customFrom || !customTo) && (
+          <p className="text-[10px] text-amber-300">Choisis une date de début et de fin.</p>
+        )}
+      </div>
+
+      {/* Bases à synchroniser */}
+      {settings.bases.length > 1 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-bold text-muted-foreground">Bases à synchroniser</p>
+          <div className="flex flex-wrap gap-1.5">
+            {settings.bases.map((b) => {
+              const def = NOTION_DATASETS[b.dataset];
+              const on = pickedBases.length === 0 || pickedBases.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() =>
+                    setPickedBases((prev) => {
+                      const all = settings.bases.map((x) => x.id);
+                      const cur = prev.length === 0 ? all : prev;
+                      const next = cur.includes(b.id)
+                        ? cur.filter((x) => x !== b.id)
+                        : [...cur, b.id];
+                      return next.length >= all.length ? [] : next;
+                    })
+                  }
+                  className={`px-3 h-8 rounded-full text-[11px] font-bold border transition-all ${
+                    on
+                      ? "bg-violet-400/15 border-violet-400/50 text-violet-200"
+                      : "bg-white/[0.03] border-white/10 text-muted-foreground/50"
+                  }`}
+                >
+                  {on ? "✓ " : ""}
+                  {def.emoji} {b.knownName ? `« ${b.knownName} »` : def.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <Button onClick={run} disabled={!ready || running} className="w-full h-11 btn-hero font-bold">
         {running ? (
           <span className="flex items-center gap-2">
@@ -1137,7 +1298,7 @@ function NotionSyncCard() {
           </span>
         ) : (
           <span className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" /> Synchroniser les {EXPORT_WINDOW_DAYS} derniers jours
+            <RefreshCw className="h-4 w-4" /> Synchroniser : {PERIOD_LABELS[period]}
           </span>
         )}
       </Button>
@@ -1172,6 +1333,70 @@ function NotionSyncCard() {
         🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
         accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
         fait que contourner la règle CORS de Notion.
+      </p>
+    </div>
+  );
+}
+
+/** Choix des 3 menus de la barre du bas (mobile) — Accueil & Plus sont fixes. */
+function NavMenuCard() {
+  const picks = normalizeNavPicks(useAppState().profile.navMenus);
+  const { setProfile } = useAppActions();
+
+  const toggle = (id: string) => {
+    if (picks.includes(id)) {
+      if (picks.length <= 1) {
+        toast.error("Garde au moins un menu dans la barre.");
+        return;
+      }
+      setProfile({ navMenus: picks.filter((p) => p !== id) });
+    } else {
+      if (picks.length >= MAX_NAV_PICKS) {
+        toast.error(`Maximum ${MAX_NAV_PICKS} menus — « Accueil » et « Plus » sont toujours là.`);
+        return;
+      }
+      setProfile({ navMenus: [...picks, id] });
+    }
+  };
+
+  return (
+    <div className="card-premium p-4 space-y-3">
+      <h3 className="font-bold">Barre du bas (téléphone)</h3>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Choisis jusqu'à <strong>{MAX_NAV_PICKS} menus</strong> affichés dans la barre du bas. «
+        Accueil » et « Plus » y sont toujours — le reste se range automatiquement dans « Plus ».
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {NAV_CANDIDATES.map((c) => {
+          const Icon = c.icon;
+          const on = picks.includes(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => toggle(c.id)}
+              aria-pressed={on}
+              className={`flex items-center gap-2 px-3 h-10 rounded-xl border text-xs font-bold transition-all ${
+                on
+                  ? "bg-primary/10 border-primary/40 text-foreground"
+                  : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span className={`p-1.5 rounded-lg border ${c.color} shrink-0`}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="truncate flex-1 text-left">{c.label}</span>
+              {on && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Dans la barre : <strong>Accueil</strong>
+        {NAV_CANDIDATES.filter((c) => picks.includes(c.id))
+          .map((c) => ` · ${c.label}`)
+          .join("")}{" "}
+        · <strong>Plus</strong>
       </p>
     </div>
   );

@@ -29,6 +29,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EvolutionChartDialog } from "@/components/EvolutionChart";
 
 export const Route = createFileRoute("/progression")({
   head: () => ({ meta: [{ title: "Progression — Calli Recomp" }] }),
@@ -41,6 +42,7 @@ function ProgressionPage() {
   const [testId, setTestId] = useState(PROGRESS_TESTS[0].id);
   const [value, setValue] = useState("");
   const [techniqueChecked, setTechniqueChecked] = useState(false);
+  const [chartTest, setChartTest] = useState<string | null>(null);
 
   const week = currentProgramWeek(state.profile);
   const { cycle } = programCycle(state.profile);
@@ -368,9 +370,18 @@ function ProgressionPage() {
               {/* Detailed chronological list */}
               {logs.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
-                    Historique des tests
-                  </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Historique des tests
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setChartTest(t.id)}
+                      className="text-[10px] font-bold text-primary flex items-center gap-1 hover:underline"
+                    >
+                      <TrendingUp className="h-3 w-3" /> Voir l'évolution
+                    </button>
+                  </div>
                   <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
                     {logs.map((log, index) => {
                       const prevLog = logs[index + 1];
@@ -419,6 +430,8 @@ function ProgressionPage() {
         })}
       </div>
 
+      <EvolutionChartDialog testId={chartTest} onClose={() => setChartTest(null)} />
+
       <div id="test-form-container" className="px-5 mt-6 mb-8">
         <div className="card-premium p-4">
           <h3 className="font-bold mb-1">Enregistrer un test</h3>
@@ -438,7 +451,7 @@ function ProgressionPage() {
             ))}
           </select>
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-1.5">
             <Input
               type="number"
               inputMode="decimal"
@@ -448,6 +461,14 @@ function ProgressionPage() {
               className="flex-1 h-11 bg-input"
             />
           </div>
+          <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
+            💡 <strong>« Valeur »</strong> = ton meilleur résultat du jour sur ce test :{" "}
+            {PROGRESS_TESTS.find((x) => x.id === testId)?.unit === "s"
+              ? "durée de tenue en secondes (ex. 12 = 12 s de L-sit)."
+              : PROGRESS_TESTS.find((x) => x.id === testId)?.unit === "min"
+                ? "temps total en minutes (ex. 27,5 = 27 min 30 s — plus petit = mieux)."
+                : "nombre de répétitions max avec une technique propre (ex. 8 = 8 pompes)."}
+          </p>
 
           <div className="flex items-start gap-2.5 mb-4 p-2 bg-muted/30 rounded-lg">
             <Checkbox

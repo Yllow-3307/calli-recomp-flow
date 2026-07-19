@@ -11,14 +11,18 @@ import {
   Trophy,
   Pencil,
   Check,
-  ChevronUp,
-  ChevronDown,
-  Minus,
-  Plus,
   Trash2,
+  GripVertical,
+  MoveDiagonal2,
+  RefreshCw,
+  Loader2,
+  Music,
+  Wheat,
+  Egg,
+  Medal,
 } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, RULES, type DayProgram } from "@/lib/program";
+import { getTodayProgram, RULES, SKILLS_GUIDE, type DayProgram } from "@/lib/program";
 import {
   nutritionTargets,
   planDays,
@@ -57,6 +61,7 @@ import { toast } from "sonner";
 import {
   normalizeHomeLayout,
   HOME_BLOCKS,
+  blockKeyOf,
   type HomeBlockInstance,
   type HomeBlockKind,
   type HomeSection,
@@ -73,7 +78,10 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { computeAutoStatus, SKILL_STATUS_META } from "@/lib/skill-status";
+import { loadNotionSettings, syncToNotion } from "@/lib/notion";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { UserCheck, X, ClipboardList, PartyPopper } from "lucide-react";
 
@@ -149,24 +157,105 @@ function Dashboard() {
 
   const applyLayout = (next: HomeSection[]) => actions.setProfile({ homeLayout: next });
 
-  const moveBlock = (si: number, bi: number, dir: -1 | 1) => {
-    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
-    const [b] = next[si].blocks.splice(bi, 1);
-    if (dir === -1) {
-      if (bi > 0) next[si].blocks.splice(bi - 1, 0, b);
-      else if (si > 0) next[si - 1].blocks.push(b);
-      else next[si].blocks.unshift(b);
-    } else if (bi < next[si].blocks.length) next[si].blocks.splice(bi + 1, 0, b);
-    else if (si < next.length - 1) next[si + 1].blocks.unshift(b);
-    else next[si].blocks.push(b);
+  // ---- Glisser-déposer des blocs (Pointer Events : tactile ET souris) ----
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const dragOrigin = useRef<{ x: number; y: number } | null>(null);
+  const [drag, setDrag] = useState<{
+    from: { si: number; bi: number };
+    dx: number;
+    dy: number;
+    over: { si: number; bi: number } | null;
+  } | null>(null);
+  const dragging = drag !== null;
+
+  const moveBlockToIndex = (from: { si: number; bi: number }, to: { si: number; bi: number }) => {
+    if (from.si === to.si && (to.bi === from.bi || to.bi === from.bi + 1)) return;
+    const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    const fromSec = next[from.si];
+    const toSec = next[to.si];
+    if (!fromSec || !toSec) return;
+    const [b] = fromSec.blocks.splice(from.bi, 1);
+    if (!b) return;
+    const ti = from.si === to.si && to.bi > from.bi ? to.bi - 1 : to.bi;
+    toSec.blocks.splice(Math.min(ti, toSec.blocks.length), 0, b);
     applyLayout(next);
   };
 
-  const resizeBlock = (si: number, bi: number, dir: -1 | 1) => {
-    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
-    const b = next[si].blocks[bi];
-    b.span = Math.min(3, Math.max(1, b.span + dir)) as 1 | 2 | 3;
+  const startBlockDrag = (e: React.PointerEvent, si: number, bi: number) => {
+    e.preventDefault();
+    dragOrigin.current = { x: e.clientX, y: e.clientY };
+    setDrag({ from: { si, bi }, dx: 0, dy: 0, over: null });
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (ev: PointerEvent) => {
+      const origin = dragOrigin.current;
+      if (!origin) return;
+      const dx = ev.clientX - origin.x;
+      const dy = ev.clientY - origin.y;
+      let over: { si: number; bi: number } | null = null;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const cell = el?.closest?.("[data-block-pos]");
+      if (cell) {
+        const [s, b] = (cell.getAttribute("data-block-pos") ?? "0:0").split(":").map(Number);
+        const r = cell.getBoundingClientRect();
+        over = { si: s, bi: ev.clientY > r.top + r.height / 2 ? b + 1 : b };
+      } else {
+        const grid = el?.closest?.("[data-sec-grid]");
+        if (grid) {
+          const s = Number(grid.getAttribute("data-sec-grid"));
+          over = { si: s, bi: layoutRef.current[s]?.blocks.length ?? 0 };
+        }
+      }
+      setDrag((d) => (d ? { ...d, dx, dy, over } : d));
+    };
+    const onUp = () => {
+      setDrag((d) => {
+        if (d?.over && (Math.abs(d.dx) > 6 || Math.abs(d.dy) > 6)) moveBlockToIndex(d.from, d.over);
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
+
+  // ---- Redimensionnement façon widget Apple (poignée au coin bas-droit) ----
+  const resizeRef = useRef<{ x: number; span: number; si: number; bi: number } | null>(null);
+  const setBlockSpan = (si: number, bi: number, span: 1 | 2 | 3) => {
+    const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    if (!next[si]?.blocks[bi]) return;
+    next[si].blocks[bi].span = span;
     applyLayout(next);
+  };
+  const startResize = (e: React.PointerEvent, si: number, bi: number) => {
+    e.preventDefault();
+    resizeRef.current = { x: e.clientX, span: layoutRef.current[si].blocks[bi].span, si, bi };
+    const onMove = (ev: PointerEvent) => {
+      const r = resizeRef.current;
+      if (!r) return;
+      // ~110 px de tirée = 1 colonne gagnée/perdue (desktop à 3 colonnes)
+      const steps = Math.round((ev.clientX - r.x) / 110);
+      const span = Math.min(3, Math.max(1, r.span + steps)) as 1 | 2 | 3;
+      if (layoutRef.current[r.si]?.blocks[r.bi]?.span !== span) setBlockSpan(r.si, r.bi, span);
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   const removeBlock = (si: number, bi: number) => {
@@ -175,9 +264,18 @@ function Dashboard() {
     applyLayout(next);
   };
 
-  const addBlock = (si: number, kind: HomeBlockKind) => {
+  const addBlock = (si: number, kind: HomeBlockKind, refId?: string) => {
     const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
-    next[si].blocks.push({ kind, span: HOME_BLOCKS[kind].defaultSpan });
+    const inst: HomeBlockInstance = { kind, span: HOME_BLOCKS[kind].defaultSpan };
+    if (refId) inst.refId = refId;
+    next[si].blocks.push(inst);
+    applyLayout(next);
+  };
+
+  const setBlockRef = (si: number, bi: number, refId: string) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    if (!next[si]?.blocks[bi]) return;
+    next[si].blocks[bi].refId = refId;
     applyLayout(next);
   };
 
@@ -207,11 +305,41 @@ function Dashboard() {
 
   const usedKinds = new Set(layout.flatMap((s) => s.blocks.map((b) => b.kind)));
   const unusedKinds = (Object.keys(HOME_BLOCKS) as HomeBlockKind[]).filter(
-    (k) => !usedKinds.has(k),
+    (k) => !HOME_BLOCKS[k].multi && !usedKinds.has(k),
   );
+  const usedSkillRefs = new Set(
+    layout.flatMap((s) =>
+      s.blocks.filter((b) => b.kind === "skill" && b.refId).map((b) => b.refId as string),
+    ),
+  );
+  /** Entrées proposées par le bouton « + Bloc » (blocs restants + chaque skill individuel). */
+  const addableEntries: { kind: HomeBlockKind; refId?: string; label: string; hint?: string }[] = [
+    ...unusedKinds.map((k) => ({
+      kind: k,
+      label: HOME_BLOCKS[k].label,
+      hint: HOME_BLOCKS[k].hint,
+    })),
+    ...SKILLS_GUIDE.filter((g) => !usedSkillRefs.has(g.id)).map((g) => ({
+      kind: "skill" as HomeBlockKind,
+      refId: g.id,
+      label: `🎯 ${g.name}`,
+      hint: "Carte dédiée à ce skill (niveau + record)",
+    })),
+  ];
+  const [addOpen, setAddOpen] = useState(false);
+  const [addTarget, setAddTarget] = useState(0);
 
-  const blockContent = (kind: HomeBlockKind) => {
-    switch (kind) {
+  // Totaux nutrition du jour (blocs Kcal / Glucides / Lipides)
+  const todayMeals = useMemo(
+    () => state.meals.filter((m) => (m.date ?? "").slice(0, 10) === todayKey()),
+    [state.meals],
+  );
+  const kcalToday = Math.round(todayMeals.reduce((a, m) => a + m.kcal, 0));
+  const carbsToday = Math.round(todayMeals.reduce((a, m) => a + m.carbs, 0));
+  const fatToday = Math.round(todayMeals.reduce((a, m) => a + m.fat, 0));
+
+  const blockContent = (si: number, bi: number, b: HomeBlockInstance) => {
+    switch (b.kind) {
       case "cycle":
         return <CycleEndCard profile={state.profile} />;
       case "testsBanner":
@@ -373,40 +501,116 @@ function Dashboard() {
             />
           </div>
         );
+      case "kcal":
+        return (
+          <MacroBlock
+            label="Kcal du jour"
+            icon={<Flame className="h-4 w-4 text-orange-400" />}
+            value={kcalToday}
+            target={nut.kcalTarget}
+            unit="kcal"
+            gradient="from-orange-400 to-amber-400"
+            textCls="text-orange-200"
+            borderCls="border-orange-400/25 from-orange-400/[0.12]"
+          />
+        );
+      case "glucides":
+        return (
+          <MacroBlock
+            label="Glucides du jour"
+            icon={<Wheat className="h-4 w-4 text-sky-400" />}
+            value={carbsToday}
+            target={nut.carbsTarget}
+            unit="g"
+            gradient="from-sky-400 to-cyan-400"
+            textCls="text-sky-200"
+            borderCls="border-sky-400/25 from-sky-400/[0.12]"
+          />
+        );
+      case "lipides":
+        return (
+          <MacroBlock
+            label="Lipides du jour"
+            icon={<Egg className="h-4 w-4 text-yellow-400" />}
+            value={fatToday}
+            target={nut.fatTarget}
+            unit="g"
+            gradient="from-yellow-400 to-amber-400"
+            textCls="text-yellow-200"
+            borderCls="border-yellow-400/25 from-yellow-400/[0.12]"
+          />
+        );
+      case "skills":
+        return <HomeSkillsBlock />;
+      case "skill":
+        return (
+          <HomeSkillBlock
+            skillId={b.refId}
+            editing={editing}
+            onPick={(id) => setBlockRef(si, bi, id)}
+          />
+        );
+      case "syncData":
+        return <SyncDataBlock />;
+      case "mesures":
+        return <HomeMesuresBlock />;
+      case "musique":
+        return <MusiqueBlock />;
     }
   };
 
   const renderBlock = (si: number, bi: number, b: HomeBlockInstance) => {
-    const content = blockContent(b.kind);
+    const content = blockContent(si, bi, b);
     if (!editing && content === null) return null;
     const spanCls = b.span === 3 ? "lg:col-span-3" : b.span === 2 ? "lg:col-span-2" : "";
-    const isFirst = si === 0 && bi === 0;
-    const lastSec = layout.length - 1;
-    const isLast = si === lastSec && bi === layout[lastSec].blocks.length - 1;
+    const isDragged = drag?.from.si === si && drag?.from.bi === bi;
+    const isDropTarget = editing && drag?.over?.si === si && drag?.over?.bi === bi && !isDragged;
     return (
-      <div key={b.kind} className={`relative ${spanCls}`}>
+      <div
+        key={blockKeyOf(b)}
+        data-block-pos={`${si}:${bi}`}
+        className={`relative ${spanCls} ${
+          isDropTarget
+            ? "rounded-2xl outline-2 outline-dashed outline-primary/70 -outline-offset-2"
+            : ""
+        }`}
+        style={
+          isDragged && drag
+            ? {
+                transform: `translate(${drag.dx}px, ${drag.dy}px)`,
+                zIndex: 40,
+                opacity: 0.85,
+                pointerEvents: "none",
+              }
+            : undefined
+        }
+      >
         {editing && (
           <div className="absolute -top-2 right-2 z-20 flex gap-1 rounded-full border border-primary/40 bg-slate-950/95 p-1 shadow-lg">
-            <EditBtn title="Monter" disabled={isFirst} onClick={() => moveBlock(si, bi, -1)}>
-              <ChevronUp className="h-3.5 w-3.5" />
-            </EditBtn>
-            <EditBtn title="Descendre" disabled={isLast} onClick={() => moveBlock(si, bi, 1)}>
-              <ChevronDown className="h-3.5 w-3.5" />
-            </EditBtn>
-            <EditBtn
-              title="Retrecir"
-              disabled={b.span <= 1}
-              onClick={() => resizeBlock(si, bi, -1)}
+            <button
+              type="button"
+              title="Glisser pour deplacer"
+              aria-label="Glisser pour deplacer"
+              onPointerDown={(e) => startBlockDrag(e, si, bi)}
+              className="h-6 w-6 grid place-items-center rounded-md cursor-grab active:cursor-grabbing touch-none hover:bg-white/10 transition-colors"
             >
-              <Minus className="h-3.5 w-3.5" />
-            </EditBtn>
-            <EditBtn title="Elargir" disabled={b.span >= 3} onClick={() => resizeBlock(si, bi, 1)}>
-              <Plus className="h-3.5 w-3.5" />
-            </EditBtn>
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
             <EditBtn title="Retirer" danger onClick={() => removeBlock(si, bi)}>
               <Trash2 className="h-3.5 w-3.5" />
             </EditBtn>
           </div>
+        )}
+        {editing && (
+          <button
+            type="button"
+            title="Tirer pour redimensionner"
+            aria-label="Tirer pour redimensionner"
+            onPointerDown={(e) => startResize(e, si, bi)}
+            className="absolute -bottom-2 -right-2 z-20 h-6 w-6 grid place-items-center rounded-full border border-primary/40 bg-slate-950/95 shadow-lg cursor-nwse-resize touch-none hover:scale-110 transition-transform"
+          >
+            <MoveDiagonal2 className="h-3 w-3 text-primary" />
+          </button>
         )}
         <div
           className={
@@ -453,7 +657,7 @@ function Dashboard() {
             <div className="mt-4">
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-white/[0.04] border border-white/5 rounded-full px-3 py-1 w-fit">
                 <UserCheck className="h-3 w-3 text-accent" />
-                <span>Connecté : {userEmail}</span>
+                <span>Connecté : {state.profile.username || userEmail}</span>
               </div>
             </div>
           )}
@@ -494,6 +698,17 @@ function Dashboard() {
               onClick={addSection}
             >
               + Sous-section
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full text-xs border-dashed"
+              onClick={() => {
+                setAddTarget(Math.max(0, layout.length - 1));
+                setAddOpen(true);
+              }}
+            >
+              + Bloc
             </Button>
             <Button
               size="sm"
@@ -543,28 +758,73 @@ function Dashboard() {
                 </h2>
               )
             )}
-            <div className="grid grid-cols-1 gap-3 px-5 lg:grid-cols-3 lg:gap-6 lg:grid-flow-dense">
+            <div
+              data-sec-grid={si}
+              className="grid grid-cols-1 gap-3 px-5 lg:grid-cols-3 lg:gap-6 lg:grid-flow-dense"
+            >
               {sec.blocks.map((b, bi) => renderBlock(si, bi, b))}
-              {editing && unusedKinds.length > 0 && (
-                <div className="flex items-center">
-                  <Select value="" onValueChange={(v) => addBlock(si, v as HomeBlockKind)}>
-                    <SelectTrigger className="h-8 w-56 max-w-full text-xs bg-input border-dashed">
-                      <SelectValue placeholder="+ Ajouter un bloc ici..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {unusedKinds.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {HOME_BLOCKS[k].label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {editing && sec.blocks.length === 0 && (
+                <p className="text-[11px] text-muted-foreground/70 italic py-2">
+                  Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.
+                </p>
               )}
             </div>
           </section>
         ))}
       </div>
+
+      {/* Panneau « + Bloc » : tous les blocs de l'app, section cible au choix */}
+      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+        <SheetContent
+          side="bottom"
+          className="rounded-t-[2rem] border-t border-white/10 bg-slate-950/95 backdrop-blur-2xl pb-8 max-w-md mx-auto max-h-[75vh] overflow-y-auto"
+        >
+          <SheetHeader>
+            <SheetTitle className="text-center font-black">Ajouter un bloc</SheetTitle>
+          </SheetHeader>
+          <div className="pt-3 pb-1 flex items-center gap-2">
+            <p className="text-xs text-muted-foreground shrink-0">Dans la sous-section :</p>
+            <Select value={String(addTarget)} onValueChange={(v) => setAddTarget(Number(v))}>
+              <SelectTrigger className="h-8 flex-1 text-xs bg-input">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {layout.map((s, i) => (
+                  <SelectItem key={s.id} value={String(i)}>
+                    {s.title.trim() || `Sous-section ${i + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {addableEntries.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-6 text-center">
+              Tous les blocs sont deja sur ton accueil 🎉
+            </p>
+          ) : (
+            <div className="grid gap-2 pt-2">
+              {addableEntries.map((e) => (
+                <button
+                  key={`${e.kind}|${e.refId ?? ""}`}
+                  type="button"
+                  onClick={() => {
+                    addBlock(addTarget, e.kind, e.refId);
+                    setAddOpen(false);
+                  }}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/10 text-left hover:bg-white/[0.06] active:scale-[0.98] transition-all"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold">{e.label}</p>
+                    {e.hint && (
+                      <p className="text-[11px] text-muted-foreground truncate">{e.hint}</p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </PageShell>
   );
 }
@@ -801,6 +1061,263 @@ function PlaceholderBlock({ text }: { text: string }) {
   return (
     <div className="rounded-xl border border-dashed border-white/15 p-4 text-[11px] text-muted-foreground">
       {text}
+    </div>
+  );
+}
+
+/** Carte macro generique (Kcal / Glucides / Lipides) avec barre de progression. */
+function MacroBlock({
+  label,
+  icon,
+  value,
+  target,
+  unit,
+  gradient,
+  textCls,
+  borderCls,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: number;
+  target: number;
+  unit: string;
+  gradient: string;
+  textCls: string;
+  borderCls: string;
+}) {
+  const ratio = target > 0 ? Math.min(100, (value / target) * 100) : 0;
+  return (
+    <div className={`card-premium p-4 border bg-gradient-to-b to-transparent ${borderCls}`}>
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+        {icon} {label}
+      </div>
+      <p className={`mt-3 text-2xl font-black tracking-tight ${textCls}`}>
+        {value}
+        <span className="text-xs text-muted-foreground font-medium">
+          {" "}
+          / {target} {unit}
+        </span>
+      </p>
+      <div className="mt-2.5 h-2 rounded-full bg-white/5 overflow-hidden">
+        <div
+          className={`h-full bg-gradient-to-r ${gradient} rounded-full transition-all duration-500`}
+          style={{ width: `${ratio}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Bloc « Mes skills » : statut de chaque skill en un coup d'oeil. */
+function HomeSkillsBlock() {
+  const state = useAppState();
+  return (
+    <Link
+      to="/skills"
+      className="card-premium p-4 block border border-amber-400/25 bg-gradient-to-b from-amber-400/[0.10] to-transparent h-full hover:border-amber-400/40 transition-colors"
+    >
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+        <Trophy className="h-4 w-4 text-amber-400" /> Mes skills
+      </div>
+      <div className="mt-3 space-y-1.5">
+        {SKILLS_GUIDE.map((g) => {
+          const logs = state.tests
+            .filter((t) => t.testId === g.id)
+            .sort((a, b2) => +new Date(b2.date) - +new Date(a.date));
+          const latest = logs[0]?.value;
+          const meta = SKILL_STATUS_META[computeAutoStatus(g.id, latest)];
+          return (
+            <div key={g.id} className="flex items-center justify-between text-xs gap-2">
+              <span className="text-slate-300 truncate">
+                {meta.emoji} {g.name}
+              </span>
+              <span className="font-bold text-foreground shrink-0">
+                {latest !== undefined ? `${latest} ${g.unit}` : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Link>
+  );
+}
+
+/** Bloc « Un skill » : carte dediee a un skill precis (choisi dans le bloc). */
+function HomeSkillBlock({
+  skillId,
+  editing,
+  onPick,
+}: {
+  skillId?: string;
+  editing: boolean;
+  onPick: (id: string) => void;
+}) {
+  const state = useAppState();
+  const guide = SKILLS_GUIDE.find((g) => g.id === skillId) ?? SKILLS_GUIDE[0];
+  const logs = state.tests
+    .filter((t) => t.testId === guide.id)
+    .sort((a, b2) => +new Date(b2.date) - +new Date(a.date));
+  const latest = logs[0]?.value;
+  const best = logs.length ? Math.max(...logs.map((l) => l.value)) : null;
+  const meta = SKILL_STATUS_META[computeAutoStatus(guide.id, latest)];
+  return (
+    <div className="card-premium p-4 border border-amber-400/25 bg-gradient-to-b from-amber-400/[0.10] to-transparent h-full">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold min-w-0">
+          <Medal className="h-4 w-4 text-amber-400 shrink-0" />
+          <span className="truncate">{guide.name}</span>
+        </div>
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 border border-white/10 shrink-0">
+          {meta.emoji} {meta.label}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+        <div className="rounded-lg bg-white/[0.03] border border-white/5 py-2">
+          <p className="text-lg font-black">
+            {latest ?? "—"}
+            <span className="text-[10px] text-muted-foreground font-semibold"> {guide.unit}</span>
+          </p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            Niveau
+          </p>
+        </div>
+        <div className="rounded-lg bg-white/[0.03] border border-white/5 py-2">
+          <p className="text-lg font-black">
+            {best ?? "—"}
+            <span className="text-[10px] text-muted-foreground font-semibold"> {guide.unit}</span>
+          </p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            Record
+          </p>
+        </div>
+      </div>
+      {editing ? (
+        <Select value={guide.id} onValueChange={onPick}>
+          <SelectTrigger className="mt-3 h-8 w-full text-xs bg-input border-dashed">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SKILLS_GUIDE.map((g) => (
+              <SelectItem key={g.id} value={g.id}>
+                {g.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Link
+          to="/skills"
+          className="mt-3 block text-center text-[11px] font-bold text-primary hover:underline"
+        >
+          Voir mes skills →
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Bloc « Synchroniser mes donnees » : lance la synchro Notion depuis l'accueil. */
+function SyncDataBlock() {
+  const state = useAppState();
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    const s = loadNotionSettings();
+    if (!s.secret || !s.bases.length) {
+      toast.error("Configure d'abord ta synchro : Parametres → Notion & donnees.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await syncToNotion(state, () => {});
+      if (res.ok) toast.success(res.message);
+      else toast.error(res.message);
+    } catch {
+      toast.error("La synchro a echoue. Reessaie dans un instant.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card-premium p-4 border border-violet-400/25 bg-gradient-to-b from-violet-400/[0.10] to-transparent h-full flex flex-col">
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+        <RefreshCw className="h-4 w-4 text-violet-400" /> Synchronisation
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed flex-1">
+        Envoie tes 14 derniers jours vers ton Notion.
+      </p>
+      <Button
+        size="sm"
+        onClick={run}
+        disabled={busy}
+        className="mt-2.5 w-full h-8 text-xs font-bold bg-violet-500/20 hover:bg-violet-500/30 text-violet-100 border border-violet-400/30"
+      >
+        {busy ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Synchro…
+          </span>
+        ) : (
+          "Synchroniser"
+        )}
+      </Button>
+    </div>
+  );
+}
+
+/** Bloc « Mes mesures » : derniere pesee + sommeil. */
+function HomeMesuresBlock() {
+  const state = useAppState();
+  const latest = [...state.metrics].sort((a, b2) => +new Date(b2.date) - +new Date(a.date))[0];
+  return (
+    <Link
+      to="/mesures"
+      className="card-premium p-4 block border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.10] to-transparent h-full hover:border-cyan-400/40 transition-colors"
+    >
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+        <Target className="h-4 w-4 text-cyan-400" /> Mes mesures
+      </div>
+      {latest ? (
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-lg font-black">{latest.weight ?? "—"}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              kg
+            </p>
+          </div>
+          <div>
+            <p className="text-lg font-black">{latest.waist ?? "—"}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              cm
+            </p>
+          </div>
+          <div>
+            <p className="text-lg font-black">{latest.sleep ?? "—"}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              h sommeil
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
+          Aucune mesure pour l'instant — un rappel tous les 14 jours 📏
+        </p>
+      )}
+    </Link>
+  );
+}
+
+/** Bloc « Musique » : coquille en attendant le contenu (V10). */
+function MusiqueBlock() {
+  return (
+    <div className="card-premium p-5 border border-pink-400/25 bg-gradient-to-b from-pink-400/[0.10] to-transparent relative overflow-hidden h-full">
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+        <Music className="h-4 w-4 text-pink-400" /> Musique
+      </div>
+      <p className="mt-3 text-sm font-black">Ton bloc musique 🎧</p>
+      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+        Lecteur & playlists d'entrainement — le contenu arrive dans la prochaine version.
+      </p>
     </div>
   );
 }

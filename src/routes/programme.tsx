@@ -142,7 +142,7 @@ function ProgrammePage() {
                   {isGold && (
                     <span
                       aria-hidden
-                      className="pointer-events-none select-none absolute inset-x-0 top-1/2 -translate-y-1/2 -rotate-12 text-center text-[10px] font-black tracking-[0.15em] text-white/15"
+                      className="pointer-events-none select-none absolute inset-1.5 grid place-items-center -rotate-12 text-center font-black tracking-[0.12em] text-white/15 text-[clamp(14px,5vw,30px)] leading-none"
                     >
                       TEST
                     </span>

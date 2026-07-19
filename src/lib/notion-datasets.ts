@@ -276,6 +276,12 @@ const frDay = (day: string) =>
 const frShort = (day: string) =>
   atNoon(day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 
+/** Période de synchro personnalisée (jours ISO « YYYY-MM-DD », bornes incluses). */
+export interface NotionRange {
+  from: string;
+  to: string;
+}
+
 // ── Heuristiques sportives (meilleure série du jour par famille d'exos) ──────
 
 const EXO_KEYWORDS = {
@@ -307,18 +313,19 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 
 // ── Agrégat « Séances du jour » (muscu + cardio fusionnés par jour) ──────────
 
-function buildSeances(state: NotionStateSlice): NotionRow[] {
-  const start = windowStartDay();
+function buildSeances(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const start = range?.from ?? windowStartDay();
+  const end = range?.to;
   const workoutsByDay = new Map<string, WorkoutLog[]>();
   const cardioByDay = new Map<string, CardioLog[]>();
   for (const w of state.workouts) {
     const d = dayOf(w.date);
-    if (d < start) continue;
+    if (d < start || (end && d > end)) continue;
     workoutsByDay.set(d, [...(workoutsByDay.get(d) ?? []), w]);
   }
   for (const c of state.cardio) {
     const d = dayOf(c.date);
-    if (d < start) continue;
+    if (d < start || (end && d > end)) continue;
     cardioByDay.set(d, [...(cardioByDay.get(d) ?? []), c]);
   }
   const days = [...new Set([...workoutsByDay.keys(), ...cardioByDay.keys()])].sort();
@@ -400,13 +407,11 @@ function buildSeances(state: NotionStateSlice): NotionRow[] {
 
 // ── Agrégat « Résumé hebdo » (semaines chevauchant la fenêtre) ───────────────
 
-function buildHebdo(state: NotionStateSlice): NotionRow[] {
+function buildHebdo(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const periodFrom = range?.from ?? windowStartDay();
+  const periodTo = range?.to ?? fmtLocalDay(new Date());
   const mondays = new Set<string>();
-  for (let i = 0; i <= EXPORT_WINDOW_DAYS; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    mondays.add(mondayOf(fmtLocalDay(d)));
-  }
+  for (let d = periodFrom; d <= periodTo; d = addDays(d, 1)) mondays.add(mondayOf(d));
   const planned = plannedSessionsPerWeek(state.profile);
 
   const rows: NotionRow[] = [];
@@ -414,7 +419,7 @@ function buildHebdo(state: NotionStateSlice): NotionRow[] {
     const end = addDays(m, 6);
     const inWeek = (iso: string) => {
       const dd = dayOf(iso);
-      return dd >= m && dd <= end;
+      return dd >= m && dd <= end && dd >= periodFrom && dd <= periodTo;
     };
     const sessions =
       state.workouts.filter((w) => inWeek(w.date)).length +
@@ -454,15 +459,16 @@ function buildHebdo(state: NotionStateSlice): NotionRow[] {
 
 // ── Agrégat « Macros du jour » (totaux + cibles recalculées du plan) ─────────
 
-function buildMacros(state: NotionStateSlice): NotionRow[] {
-  const start = windowStartDay();
+function buildMacros(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const start = range?.from ?? windowStartDay();
+  const end = range?.to;
   const t = nutritionTargets(state.profile);
   const protCible = Math.round((t.proteinMin + t.proteinMax) / 2);
 
   const byDay = new Map<string, MealLog[]>();
   for (const m of state.meals) {
     const d = dayOf(m.date);
-    if (d < start) continue;
+    if (d < start || (end && d > end)) continue;
     byDay.set(d, [...(byDay.get(d) ?? []), m]);
   }
 
@@ -495,13 +501,11 @@ function buildMacros(state: NotionStateSlice): NotionRow[] {
 
 // ── Agrégat « Résumé mensuel » (poids début/fin, moyennes, rigueur) ──────────
 
-function buildMensuel(state: NotionStateSlice): NotionRow[] {
+function buildMensuel(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const periodFrom = range?.from ?? windowStartDay();
+  const periodTo = range?.to ?? fmtLocalDay(new Date());
   const starts = new Set<string>();
-  for (let i = 0; i <= EXPORT_WINDOW_DAYS; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    starts.add(fmtLocalDay(d).slice(0, 8) + "01");
-  }
+  for (let d = periodFrom; d <= periodTo; d = addDays(d, 1)) starts.add(d.slice(0, 8) + "01");
   const t = nutritionTargets(state.profile);
 
   const rows: NotionRow[] = [];
@@ -509,7 +513,7 @@ function buildMensuel(state: NotionStateSlice): NotionRow[] {
     const next = addDays(m, 32).slice(0, 8) + "01"; // 1er du mois suivant
     const inMonth = (iso: string) => {
       const dd = dayOf(iso);
-      return dd >= m && dd < next;
+      return dd >= m && dd < next && dd >= periodFrom && dd <= periodTo;
     };
 
     const weights = state.metrics
@@ -568,10 +572,11 @@ function buildMensuel(state: NotionStateSlice): NotionRow[] {
 
 // ── Mesures & tests (1 ligne par élément, fenêtre 14 jours) ──────────────────
 
-function buildMesures(state: NotionStateSlice): NotionRow[] {
-  const start = windowStartDay();
+function buildMesures(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const start = range?.from ?? windowStartDay();
+  const end = range?.to;
   return state.metrics
-    .filter((m) => dayOf(m.date) >= start)
+    .filter((m) => dayOf(m.date) >= start && (!end || dayOf(m.date) <= end))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((m) => {
       const d = dayOf(m.date);
@@ -592,10 +597,11 @@ function buildMesures(state: NotionStateSlice): NotionRow[] {
     });
 }
 
-function buildTests(state: NotionStateSlice): NotionRow[] {
-  const start = windowStartDay();
+function buildTests(state: NotionStateSlice, range?: NotionRange): NotionRow[] {
+  const start = range?.from ?? windowStartDay();
+  const end = range?.to;
   return state.tests
-    .filter((t) => dayOf(t.date) >= start)
+    .filter((t) => dayOf(t.date) >= start && (!end || dayOf(t.date) <= end))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((t) => {
       const def = PROGRESS_TESTS.find((x) => x.id === t.testId);
@@ -615,15 +621,18 @@ function buildTests(state: NotionStateSlice): NotionRow[] {
     });
 }
 
-/** Construit les 6 jeux de données (fenêtre glissante de 14 jours). */
-export function buildNotionRows(state: NotionStateSlice): Record<NotionDatasetKind, NotionRow[]> {
+/** Construit les 6 jeux de données (par défaut : fenêtre glissante de 14 jours). */
+export function buildNotionRows(
+  state: NotionStateSlice,
+  range?: NotionRange,
+): Record<NotionDatasetKind, NotionRow[]> {
   return {
-    seances: buildSeances(state),
-    hebdo: buildHebdo(state),
-    macros: buildMacros(state),
-    mensuel: buildMensuel(state),
-    mesures: buildMesures(state),
-    tests: buildTests(state),
+    seances: buildSeances(state, range),
+    hebdo: buildHebdo(state, range),
+    macros: buildMacros(state, range),
+    mensuel: buildMensuel(state, range),
+    mesures: buildMesures(state, range),
+    tests: buildTests(state, range),
   };
 }
 

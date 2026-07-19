@@ -1,7 +1,7 @@
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Graphique d'Ã©volution d'un test (ligne SVG faite maison â†’ zÃ©ro dÃ©pendance).
-// UtilisÃ© par Â« Voir l'Ã©volution Â» dans ProgrÃ¨s et dans Skills.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// Graphique d'évolution d'un test (ligne SVG faite maison → zéro dépendance).
+// Utilisé par « Voir l'évolution » dans Progrès et dans Skills.
+// ─────────────────────────────────────────────────────────────────────────────
 import { useMemo } from "react";
 import { useAppState } from "@/lib/store";
 import { PROGRESS_TESTS } from "@/lib/program";
@@ -18,7 +18,7 @@ export function EvolutionChartDialog({
   testId,
   onClose,
 }: {
-  /** id du test (PROGRESS_TESTS), ou null = fermÃ© */
+  /** id du test (PROGRESS_TESTS), ou null = fermé */
   testId: string | null;
   onClose: () => void;
 }) {
@@ -33,7 +33,7 @@ export function EvolutionChartDialog({
     [state.tests, testId],
   );
 
-  // Pour les tests chronomÃ©trÃ©s (5 km), le meilleur = le plus PETIT.
+  // Pour les tests chronométrés (5 km), le meilleur = le plus PETIT.
   const lowerBetter = def?.unit === "min";
   const best = points.length
     ? points.reduce(
@@ -48,7 +48,7 @@ export function EvolutionChartDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-black">
             <TrendingUp className="h-4 w-4 text-primary" />
-            Ã‰volution â€” {def?.name ?? "Test"}
+            Évolution — {def?.name ?? "Test"}
             {def && (
               <span className="text-xs font-semibold text-muted-foreground">({def.unit})</span>
             )}
@@ -57,14 +57,14 @@ export function EvolutionChartDialog({
 
         {points.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            Aucun test enregistrÃ© pour l'instant. Fais ta premiÃ¨re mesure (semaines S4, S8, S12) ðŸ’ª
+            Aucun test enregistré pour l'instant. Fais ta première mesure (semaines S4, S8, S12) 💪
           </p>
         ) : (
           <>
             <LineChart points={points} lowerBetter={lowerBetter} best={best as number} />
             <div className="flex items-center justify-between text-xs text-muted-foreground -mt-1">
               <span>
-                {points.length} mesure{points.length > 1 ? "s" : ""} Â· {frDay(points[0].date)} â†’{" "}
+                {points.length} mesure{points.length > 1 ? "s" : ""} · {frDay(points[0].date)} →{" "}
                 {frDay(points[points.length - 1].date)}
               </span>
               <span className="flex items-center gap-1 font-bold text-amber-400">
@@ -74,8 +74,8 @@ export function EvolutionChartDialog({
             </div>
             <p className="text-[11px] text-muted-foreground/80 mt-1.5">
               {lowerBetter
-                ? "â±ï¸ Pour un temps, plus la courbe descend, mieux c'est."
-                : "ðŸ“ˆ Plus la courbe monte, plus tu progresses."}
+                ? "⏱️ Pour un temps, plus la courbe descend, mieux c'est."
+                : "📈 Plus la courbe monte, plus tu progresses."}
             </p>
           </>
         )}
@@ -122,7 +122,7 @@ function LineChart({
   const last = points[points.length - 1];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Courbe d'Ã©volution">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Courbe d'évolution">
       {/* grille horizontale */}
       {[0, 1, 2].map((i) => {
         const yy = padT + (i * (H - padT - padB)) / 2;
@@ -143,7 +143,7 @@ function LineChart({
         );
       })}
 
-      {/* ligne d'Ã©volution */}
+      {/* ligne d'évolution */}
       <path
         d={path}
         fill="none"
@@ -182,7 +182,7 @@ function LineChart({
         );
       })}
 
-      {/* dates dÃ©but / fin */}
+      {/* dates début / fin */}
       <text x={x(0)} y={H - 8} textAnchor="middle" fontSize="9" fill="rgba(148,163,184,0.9)">
         {frDay(points[0].date)}
       </text>

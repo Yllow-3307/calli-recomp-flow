@@ -15,6 +15,7 @@ import {
   type NotionDatasetKind,
   type NotionRow,
   type NotionStateSlice,
+  type NotionRange,
 } from "./notion-datasets";
 
 export type { NotionDatasetKind, NotionStateSlice } from "./notion-datasets";
@@ -420,9 +421,17 @@ export interface SyncReport {
   lines: string[];
 }
 
+export interface SyncOptions {
+  /** période personnalisée (défaut : 14 derniers jours) */
+  range?: NotionRange;
+  /** ne synchroniser que ces bases liées (ids) */
+  onlyBases?: string[];
+}
+
 export async function syncToNotion(
   state: NotionStateSlice,
   onProgress: (msg: string) => void,
+  opts?: SyncOptions,
 ): Promise<SyncReport> {
   const settings = loadNotionSettings();
   if (!settings.secret)
@@ -435,13 +444,14 @@ export async function syncToNotion(
       lines: [],
     };
 
-  const rows = buildNotionRows(state);
+  const rows = buildNotionRows(state, opts?.range);
   const lines: string[] = [];
   let totalCreated = 0;
   let totalUpdated = 0;
   let errors = 0;
 
   for (const binding of settings.bases) {
+    if (opts?.onlyBases && !opts.onlyBases.includes(binding.id)) continue; // synchro ciblée
     const kind = binding.dataset;
     const def = NOTION_DATASETS[kind];
     // Vrai nom de la base quand il est connu (« Macro Quotidien » plutôt que le gabarit)

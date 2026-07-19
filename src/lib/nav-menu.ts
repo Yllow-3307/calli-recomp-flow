@@ -1,8 +1,8 @@
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Barre de menu mobile personnalisable (V9).
-// Â« Accueil Â» et Â« Plus Â» sont fixes ; l'utilisateur en choisit 3 (sauvegardÃ©
-// dans profiles.nav_menus), le reste se range automatiquement dans Â« Plus Â».
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// « Accueil » et « Plus » sont fixes ; l'utilisateur en choisit 3 (sauvegardé
+// dans profiles.nav_menus), le reste se range automatiquement dans « Plus ».
+// ─────────────────────────────────────────────────────────────────────────────
 import {
   Dumbbell,
   Apple,
@@ -18,7 +18,7 @@ export const NAV_CANDIDATES = [
   {
     id: "seance",
     to: "/seance",
-    label: "SÃ©ance",
+    label: "Séance",
     icon: Dumbbell,
     color: "text-orange-400 bg-orange-500/10 border-orange-500/20",
   },
@@ -32,7 +32,7 @@ export const NAV_CANDIDATES = [
   {
     id: "progression",
     to: "/progression",
-    label: "ProgrÃ¨s",
+    label: "Progrès",
     icon: TrendingUp,
     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
   },
@@ -67,7 +67,7 @@ export const NAV_CANDIDATES = [
   {
     id: "parametres",
     to: "/parametres",
-    label: "ParamÃ¨tres",
+    label: "Paramètres",
     icon: Settings,
     color: "text-slate-400 bg-slate-500/10 border-slate-500/20",
   },
@@ -76,7 +76,7 @@ export const NAV_CANDIDATES = [
 export const DEFAULT_NAV_PICKS: string[] = ["seance", "nutrition", "progression"];
 export const MAX_NAV_PICKS = 3;
 
-/** Choix sauvegardÃ©s â†’ 1 Ã  3 ids valides, dans l'ordre canonique. */
+/** Choix sauvegardés → 1 à 3 ids valides, dans l'ordre canonique. */
 export function normalizeNavPicks(raw: unknown): string[] {
   const saved = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
   const valid = NAV_CANDIDATES.filter((c) => saved.includes(c.id)).map((c) => c.id);

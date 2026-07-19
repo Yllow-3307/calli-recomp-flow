@@ -28,6 +28,7 @@ export type Database = {
           notion_config: Json;
           username: string | null;
           home_layout: Json;
+          nav_menus: Json;
         };
         Insert: {
           id: string;
@@ -50,6 +51,7 @@ export type Database = {
           notion_config?: Json;
           username?: string | null;
           home_layout?: Json;
+          nav_menus?: Json;
         };
         Update: {
           id?: string;
@@ -72,6 +74,7 @@ export type Database = {
           notion_config?: Json;
           username?: string | null;
           home_layout?: Json;
+          nav_menus?: Json;
         };
         Relationships: [
           {

@@ -23,9 +23,9 @@ export function BottomNav() {
   ];
   const moreItems = NAV_CANDIDATES.filter((c) => !picks.includes(c.id));
 
-  // L'onboarding est un assistant plein Ã©cran : sa propre barre (Continuer/Retour)
-  // est fixÃ©e en bas, il faut masquer la navigation sinon elle passe par-dessus
-  // et bloque le bouton Continuer (mÃªme z-index, rendue aprÃ¨s dans le DOM).
+  // L'onboarding est un assistant plein écran : sa propre barre (Continuer/Retour)
+  // est fixée en bas, il faut masquer la navigation sinon elle passe par-dessus
+  // et bloque le bouton Continuer (même z-index, rendue après dans le DOM).
   if (location.pathname === "/onboarding") return null;
 
   // Check if any of the items in the "Plus" menu are currently active
@@ -145,8 +145,8 @@ export function PageShell({
 }
 
 /**
- * Barre latÃ©rale desktop (lg = icÃ´nes seules, xl = icÃ´nes + labels).
- * MasquÃ©e sur mobile (la BottomNav prend le relais) et pendant l'onboarding.
+ * Barre latérale desktop (lg = icônes seules, xl = icônes + labels).
+ * Masquée sur mobile (la BottomNav prend le relais) et pendant l'onboarding.
  */
 export function DesktopNav() {
   const location = useLocation();
@@ -160,10 +160,10 @@ export function DesktopNav() {
     });
   }, []);
 
-  // Assistant plein Ã©cran, mÃªme logique que la BottomNav
+  // Assistant plein écran, même logique que la BottomNav
   if (location.pathname === "/onboarding") return null;
 
-  // Sur desktop, la barre latÃ©rale affiche TOUS les menus (pas de Â« Plus Â»).
+  // Sur desktop, la barre latérale affiche TOUS les menus (pas de « Plus »).
   const items = [
     { to: "/", label: "Accueil", icon: Home, exact: true as const },
     ...NAV_CANDIDATES.map((c) => ({ to: c.to, label: c.label, icon: c.icon, exact: false })),
@@ -213,14 +213,14 @@ export function DesktopNav() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hidden xl:block">
             Streak
           </p>
-          <p className="text-lg font-black text-gradient">ðŸ”¥ {streak}j</p>
+          <p className="text-lg font-black text-gradient">🔥 {streak}j</p>
         </div>
         {email && (
           <p
             className="hidden xl:block text-[10px] text-muted-foreground truncate px-1"
             title={email}
           >
-            {state.profile.username ? `ðŸ‘¤ ${state.profile.username} Â· ${email}` : email}
+            {state.profile.username ? `👤 ${state.profile.username} · ${email}` : email}
           </p>
         )}
       </div>

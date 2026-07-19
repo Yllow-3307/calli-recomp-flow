@@ -42,6 +42,7 @@ export interface Profile {
   notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
   username?: string; // nom d'affichage du compte (V7)
   homeLayout?: unknown[]; // disposition personnalisée de l'accueil (V8, voir home-layout.ts)
+  navMenus?: string[]; // 3 entrées choisies de la barre de menu mobile (V9)
 }
 
 export interface SetLog {
@@ -269,6 +270,9 @@ export function useAppActions() {
             homeLayout: Array.isArray(data.home_layout)
               ? (data.home_layout as unknown[])
               : s.profile.homeLayout,
+            navMenus: Array.isArray(data.nav_menus)
+              ? (data.nav_menus as string[])
+              : s.profile.navMenus,
           },
         }));
       }
@@ -326,6 +330,9 @@ export function useAppActions() {
           homeLayout: Array.isArray(profileData.home_layout)
             ? (profileData.home_layout as unknown[])
             : currentProfile.homeLayout,
+          navMenus: Array.isArray(profileData.nav_menus)
+            ? (profileData.nav_menus as string[])
+            : currentProfile.navMenus,
         };
       } else {
         const mappedProfile = {
@@ -347,6 +354,7 @@ export function useAppActions() {
           notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
           username: currentProfile.username ?? null,
           home_layout: (currentProfile.homeLayout ?? []) as unknown as Json,
+          nav_menus: (currentProfile.navMenus ?? []) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -909,6 +917,7 @@ export function useAppActions() {
               notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
               username: profileToSync.username ?? null,
               home_layout: (profileToSync.homeLayout ?? []) as unknown as Json,
+              nav_menus: (profileToSync.navMenus ?? []) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase
