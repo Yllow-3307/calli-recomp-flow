@@ -18,7 +18,7 @@ import { useAppState, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
 
 const mainItems = [
-  { to: "/", label: "Aujourd’hui", icon: Home, exact: true },
+  { to: "/", label: "Accueil", icon: Home, exact: true },
   { to: "/seance", label: "Séance", icon: Dumbbell, exact: false },
   { to: "/nutrition", label: "Nutrition", icon: Apple, exact: false },
   { to: "/progression", label: "Progrès", icon: TrendingUp, exact: false },

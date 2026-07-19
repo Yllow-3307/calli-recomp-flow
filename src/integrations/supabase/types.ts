@@ -27,6 +27,7 @@ export type Database = {
           favorite_meals: Json;
           notion_config: Json;
           username: string | null;
+          home_layout: Json;
         };
         Insert: {
           id: string;
@@ -48,6 +49,7 @@ export type Database = {
           favorite_meals?: Json;
           notion_config?: Json;
           username?: string | null;
+          home_layout?: Json;
         };
         Update: {
           id?: string;
@@ -69,6 +71,7 @@ export type Database = {
           favorite_meals?: Json;
           notion_config?: Json;
           username?: string | null;
+          home_layout?: Json;
         };
         Relationships: [
           {

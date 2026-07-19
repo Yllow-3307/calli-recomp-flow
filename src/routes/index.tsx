@@ -9,6 +9,13 @@ import {
   Sparkles,
   Target,
   Trophy,
+  Pencil,
+  Check,
+  ChevronUp,
+  ChevronDown,
+  Minus,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, RULES, type DayProgram } from "@/lib/program";
@@ -31,18 +38,35 @@ import {
   currentProgramWeek,
   programCycle,
   weeklyStats,
+  generateUUID,
   type Profile,
   type WorkoutLog,
   type WeeklyStats,
 } from "@/lib/store";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import {
+  normalizeHomeLayout,
+  HOME_BLOCKS,
+  type HomeBlockInstance,
+  type HomeBlockKind,
+  type HomeSection,
+} from "@/lib/home-layout";
 import { WaterBottle } from "@/components/WaterBottle";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Aujourd'hui — Calli Recomp" },
+      { title: "Accueil — Calli Recomp" },
       { name: "description", content: "Ta séance du jour, ta progression, tes rappels." },
     ],
   }),
@@ -116,6 +140,287 @@ function Dashboard() {
   // Bilan hebdo (dimanche = semaine en cours, lundi = semaine écoulée)
   const recap = useMemo(() => weeklyStats(state), [state]);
 
+  // ---- Mise en page personnalisable de l'accueil ----
+  const layout = useMemo(
+    () => normalizeHomeLayout(state.profile.homeLayout ?? []),
+    [state.profile.homeLayout],
+  );
+  const [editing, setEditing] = useState(false);
+
+  const applyLayout = (next: HomeSection[]) => actions.setProfile({ homeLayout: next });
+
+  const moveBlock = (si: number, bi: number, dir: -1 | 1) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    const [b] = next[si].blocks.splice(bi, 1);
+    if (dir === -1) {
+      if (bi > 0) next[si].blocks.splice(bi - 1, 0, b);
+      else if (si > 0) next[si - 1].blocks.push(b);
+      else next[si].blocks.unshift(b);
+    } else if (bi < next[si].blocks.length) next[si].blocks.splice(bi + 1, 0, b);
+    else if (si < next.length - 1) next[si + 1].blocks.unshift(b);
+    else next[si].blocks.push(b);
+    applyLayout(next);
+  };
+
+  const resizeBlock = (si: number, bi: number, dir: -1 | 1) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    const b = next[si].blocks[bi];
+    b.span = Math.min(3, Math.max(1, b.span + dir)) as 1 | 2 | 3;
+    applyLayout(next);
+  };
+
+  const removeBlock = (si: number, bi: number) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    next[si].blocks.splice(bi, 1);
+    applyLayout(next);
+  };
+
+  const addBlock = (si: number, kind: HomeBlockKind) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    next[si].blocks.push({ kind, span: HOME_BLOCKS[kind].defaultSpan });
+    applyLayout(next);
+  };
+
+  const addSection = () => applyLayout([...layout, { id: generateUUID(), title: "", blocks: [] }]);
+
+  const renameSection = (si: number, title: string) => {
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    next[si].title = title;
+    applyLayout(next);
+  };
+
+  const removeSection = (si: number) => {
+    if (layout.length <= 1) {
+      toast.error("Il faut garder au moins une sous-section.");
+      return;
+    }
+    const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    const [removed] = next.splice(si, 1);
+    const target = si > 0 ? si - 1 : 0;
+    next[target].blocks.push(...removed.blocks);
+    applyLayout(next);
+  };
+
+  const resetLayout = () => {
+    if (confirm("Revenir a la mise en page d'origine de l'accueil ?")) applyLayout([]);
+  };
+
+  const usedKinds = new Set(layout.flatMap((s) => s.blocks.map((b) => b.kind)));
+  const unusedKinds = (Object.keys(HOME_BLOCKS) as HomeBlockKind[]).filter(
+    (k) => !usedKinds.has(k),
+  );
+
+  const blockContent = (kind: HomeBlockKind) => {
+    switch (kind) {
+      case "cycle":
+        return <CycleEndCard profile={state.profile} />;
+      case "testsBanner":
+        return showTestBanner ? (
+          <div>
+            <Link
+              to="/progression"
+              className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-primary hover:border-primary/40"
+              style={{ backgroundImage: "var(--gradient-card)" }}
+            >
+              <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0 animate-float">
+                <Target className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-gradient">Semaine de test S{week}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Enregistre tes max reps &amp; temps.
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </Link>
+          </div>
+        ) : editing ? (
+          <PlaceholderBlock text="Banniere << semaine de test >> : visible automatiquement les semaines S4, S8 et S12." />
+        ) : null;
+      case "bilan":
+        return <WeeklyRecapCard recap={recap} planned={daysGoal} nut={nut} />;
+      case "seance":
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
+                Seance du jour
+              </p>
+              <SessionTypeBadge type={today.type} />
+            </div>
+            <Link
+              to="/seance"
+              className="panel-coral card-premium-hover block p-5 relative overflow-hidden group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="flex items-start justify-between gap-3 relative z-10">
+                <div className="min-w-0">
+                  <div className="text-4xl mb-3">{today.emoji}</div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {today.day}
+                  </p>
+                  <h2 className="text-xl font-black mt-1 group-hover:text-primary transition-colors">
+                    {today.title}
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{today.summary}</p>
+                  <div className="flex items-center gap-2 mt-3 text-xs font-semibold text-muted-foreground">
+                    <span className="bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                      ~{today.duration} min
+                    </span>
+                  </div>
+                </div>
+                <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0 shadow-[0_4px_20px_rgba(255,107,74,0.55)] group-hover:scale-105 transition-transform duration-300">
+                  <Play className="h-5 w-5 fill-current ml-0.5" />
+                </div>
+              </div>
+            </Link>
+          </div>
+        );
+      case "nutrition":
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+            <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+                <Beef className="h-4 w-4 text-lime-400" /> Proteines
+              </div>
+              <p className="mt-3 text-2xl font-black tracking-tight text-lime-200">
+                {protein}
+                <span className="text-xs text-muted-foreground font-medium">
+                  {" "}
+                  / {proteinTarget}g
+                </span>
+              </p>
+              <div className="mt-2.5 h-2 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(183,240,76,0.5)]"
+                  style={{ width: `${Math.min(100, (protein / proteinTarget) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className="card-premium p-4 border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.12] to-transparent flex flex-col justify-between">
+              <div className="flex items-center gap-3">
+                <WaterBottle liters={water} target={waterTarget} />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+                    <Droplet className="h-4 w-4 text-cyan-400" /> Eau
+                  </div>
+                  <p className="mt-1.5 text-2xl font-black tracking-tight text-cyan-100">
+                    {water.toFixed(1)}
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {" "}
+                      / {waterTarget}L
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-1.5">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
+                  onClick={() => actions.addWater(0.25)}
+                >
+                  +25cl
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
+                  onClick={() => actions.addWater(0.5)}
+                >
+                  +50cl
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      case "regles":
+        return (
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
+              Regles d'or
+            </p>
+            <div className="card-premium p-5 space-y-3 border border-white/[0.05]">
+              {RULES.map((r, idx) => (
+                <p
+                  key={r}
+                  className="text-sm flex items-start gap-2.5 text-slate-300 leading-relaxed"
+                >
+                  <span className="text-primary font-black mt-0.5 text-base">0{idx + 1}</span>
+                  <span>{r}</span>
+                </p>
+              ))}
+            </div>
+          </div>
+        );
+      case "liens":
+        return (
+          <div className="space-y-2">
+            <QuickLink
+              to="/historique"
+              label="Historique des seances"
+              icon={<Trophy className="h-4 w-4 text-purple-400" />}
+            />
+            <QuickLink
+              to="/mesures"
+              label="Mesures &amp; photos"
+              icon={<Target className="h-4 w-4 text-cyan-400" />}
+            />
+            <QuickLink
+              to="/progression"
+              label="Progression 3 mois"
+              icon={<Sparkles className="h-4 w-4 text-amber-400" />}
+            />
+          </div>
+        );
+    }
+  };
+
+  const renderBlock = (si: number, bi: number, b: HomeBlockInstance) => {
+    const content = blockContent(b.kind);
+    if (!editing && content === null) return null;
+    const spanCls = b.span === 3 ? "lg:col-span-3" : b.span === 2 ? "lg:col-span-2" : "";
+    const isFirst = si === 0 && bi === 0;
+    const lastSec = layout.length - 1;
+    const isLast = si === lastSec && bi === layout[lastSec].blocks.length - 1;
+    return (
+      <div key={b.kind} className={`relative ${spanCls}`}>
+        {editing && (
+          <div className="absolute -top-2 right-2 z-20 flex gap-1 rounded-full border border-primary/40 bg-slate-950/95 p-1 shadow-lg">
+            <EditBtn title="Monter" disabled={isFirst} onClick={() => moveBlock(si, bi, -1)}>
+              <ChevronUp className="h-3.5 w-3.5" />
+            </EditBtn>
+            <EditBtn title="Descendre" disabled={isLast} onClick={() => moveBlock(si, bi, 1)}>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </EditBtn>
+            <EditBtn
+              title="Retrecir"
+              disabled={b.span <= 1}
+              onClick={() => resizeBlock(si, bi, -1)}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </EditBtn>
+            <EditBtn title="Elargir" disabled={b.span >= 3} onClick={() => resizeBlock(si, bi, 1)}>
+              <Plus className="h-3.5 w-3.5" />
+            </EditBtn>
+            <EditBtn title="Retirer" danger onClick={() => removeBlock(si, bi)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </EditBtn>
+          </div>
+        )}
+        <div
+          className={
+            editing
+              ? "rounded-2xl border border-dashed border-primary/40 bg-primary/[0.04] p-1 pt-6"
+              : ""
+          }
+        >
+          {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <PageShell>
       {/* Hero Header avec Gradient Animé Premium */}
@@ -178,166 +483,87 @@ function Dashboard() {
       {/* Pastilles de la semaine (fait / prévu / repos) */}
       <WeekStripCard days={weekDays} workouts={state.workouts} />
 
-      {/* Fin de cycle (semaine 12) */}
-      <CycleEndCard profile={state.profile} />
+      {/* Barre de personalisation de l'accueil */}
+      <div className="px-5 mt-4 flex flex-wrap justify-end gap-2">
+        {editing && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full text-xs border-dashed"
+              onClick={addSection}
+            >
+              + Sous-section
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-full text-xs text-muted-foreground"
+              onClick={resetLayout}
+            >
+              Reinitialiser
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          variant={editing ? "default" : "outline"}
+          className={editing ? "btn-hero rounded-full text-xs" : "rounded-full text-xs"}
+          onClick={() => setEditing((e) => !e)}
+        >
+          {editing ? (
+            <Check className="h-3.5 w-3.5 mr-1" />
+          ) : (
+            <Pencil className="h-3.5 w-3.5 mr-1" />
+          )}
+          {editing ? "Terminer" : "Personnaliser"}
+        </Button>
+      </div>
 
-      {showTestBanner && (
-        <div className="px-5 mt-5">
-          <Link
-            to="/progression"
-            className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-primary hover:border-primary/40"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
-            <div className="h-10 w-10 grid place-items-center rounded-full btn-hero shrink-0 animate-float">
-              <Target className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black text-gradient">Semaine de test S{week}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Enregistre tes max reps & temps.
-              </p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </Link>
-        </div>
-      )}
-
-      {/* Bilan hebdo (dimanche / lundi, masquable) */}
-      <WeeklyRecapCard recap={recap} planned={daysGoal} nut={nut} />
-
-      {/* Grille desktop : [séance | nutrition] puis [règles | raccourcis] — colonnes inchangées sur mobile */}
-      <div className="masonry-lg masonry-xl-3">
-        {/* Today's session */}
-        <section className="px-5 mt-6">
-          <div className="flex items-center justify-between mb-2 px-1">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
-              Séance du jour
-            </p>
-            <SessionTypeBadge type={today.type} />
-          </div>
-          {/* Panel héros "Coral Glass" (inspi app running) */}
-          <Link
-            to="/seance"
-            className="panel-coral card-premium-hover block p-5 relative overflow-hidden group"
-          >
-            {/* Lueur de survol subtile */}
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-            <div className="flex items-start justify-between gap-3 relative z-10">
-              <div className="min-w-0">
-                <div className="text-4xl mb-3">{today.emoji}</div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {today.day}
-                </p>
-                <h2 className="text-xl font-black mt-1 group-hover:text-primary transition-colors">
-                  {today.title}
+      {/* Sections personnalisables de l'accueil */}
+      <div className="mt-2 space-y-5 pb-8">
+        {layout.map((sec, si) => (
+          <section key={sec.id}>
+            {editing ? (
+              <div className="px-5 mb-2 flex items-center gap-2">
+                <Input
+                  value={sec.title}
+                  onChange={(e) => renameSection(si, e.target.value)}
+                  placeholder="Nom de la sous-section (optionnel)"
+                  className="h-8 max-w-64 text-xs bg-input border-dashed"
+                />
+                <EditBtn title="Supprimer la sous-section" danger onClick={() => removeSection(si)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </EditBtn>
+              </div>
+            ) : (
+              sec.title.trim() !== "" && (
+                <h2 className="px-5 mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                  {sec.title}
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{today.summary}</p>
-                <div className="flex items-center gap-2 mt-3 text-xs font-semibold text-muted-foreground">
-                  <span className="bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
-                    ⏱️ ~{today.duration} min
-                  </span>
+              )
+            )}
+            <div className="grid grid-cols-1 gap-3 px-5 lg:grid-cols-3 lg:gap-6 lg:grid-flow-dense">
+              {sec.blocks.map((b, bi) => renderBlock(si, bi, b))}
+              {editing && unusedKinds.length > 0 && (
+                <div className="flex items-center">
+                  <Select value="" onValueChange={(v) => addBlock(si, v as HomeBlockKind)}>
+                    <SelectTrigger className="h-8 w-56 max-w-full text-xs bg-input border-dashed">
+                      <SelectValue placeholder="+ Ajouter un bloc ici..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unusedKinds.map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {HOME_BLOCKS[k].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-              <div className="grid place-items-center h-12 w-12 rounded-full btn-hero shrink-0 shadow-[0_4px_20px_rgba(255,107,74,0.55)] group-hover:scale-105 transition-transform duration-300">
-                <Play className="h-5 w-5 fill-current ml-0.5" />
-              </div>
+              )}
             </div>
-          </Link>
-        </section>
-
-        {/* Nutrition — cartes colorées par catégorie (inspi dashboard) */}
-        <section className="px-5 mt-6 grid grid-cols-2 lg:grid-cols-1 gap-3">
-          {/* Protéines · lime */}
-          <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
-            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
-              <Beef className="h-4 w-4 text-lime-400" /> Protéines
-            </div>
-            <p className="mt-3 text-2xl font-black tracking-tight text-lime-200">
-              {protein}
-              <span className="text-xs text-muted-foreground font-medium"> / {proteinTarget}g</span>
-            </p>
-            <div className="mt-2.5 h-2 rounded-full bg-white/5 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(183,240,76,0.5)]"
-                style={{ width: `${Math.min(100, (protein / proteinTarget) * 100)}%` }}
-              />
-            </div>
-          </div>
-          {/* Eau · cyan + bouteille qui se remplit */}
-          <div className="card-premium p-4 border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.12] to-transparent flex flex-col justify-between">
-            <div className="flex items-center gap-3">
-              <WaterBottle liters={water} target={waterTarget} />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
-                  <Droplet className="h-4 w-4 text-cyan-400" /> Eau
-                </div>
-                <p className="mt-1.5 text-2xl font-black tracking-tight text-cyan-100">
-                  {water.toFixed(1)}
-                  <span className="text-xs text-muted-foreground font-medium">
-                    {" "}
-                    / {waterTarget}L
-                  </span>
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 flex gap-1.5">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
-                onClick={() => actions.addWater(0.25)}
-              >
-                +25cl
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="flex-1 h-7 text-[10px] font-bold bg-white/5 hover:bg-cyan-400/20 hover:text-cyan-100 text-foreground border border-white/5 rounded-lg transition-colors"
-                onClick={() => actions.addWater(0.5)}
-              >
-                +50cl
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* Rules of gold */}
-        <section className="px-5 mt-6">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
-            Règles d'or
-          </p>
-          <div className="card-premium p-5 space-y-3 border border-white/[0.05]">
-            {RULES.map((r, idx) => (
-              <p
-                key={r}
-                className="text-sm flex items-start gap-2.5 text-slate-300 leading-relaxed"
-              >
-                <span className="text-primary font-black mt-0.5 text-base">0{idx + 1}</span>
-                <span>{r}</span>
-              </p>
-            ))}
-          </div>
-        </section>
-
-        {/* Quick links */}
-        <section className="px-5 mt-6 mb-8 space-y-2">
-          <QuickLink
-            to="/historique"
-            label="Historique des séances"
-            icon={<Trophy className="h-4 w-4 text-purple-400" />}
-          />
-          <QuickLink
-            to="/mesures"
-            label="Mesures & photos"
-            icon={<Target className="h-4 w-4 text-cyan-400" />}
-          />
-          <QuickLink
-            to="/progression"
-            label="Progression 3 mois"
-            icon={<Sparkles className="h-4 w-4 text-amber-400" />}
-          />
-        </section>
+          </section>
+        ))}
       </div>
     </PageShell>
   );
@@ -391,7 +617,7 @@ function CycleEndCard({ profile }: { profile: Profile }) {
   const { cycle, cycleWeek } = programCycle(profile);
   if (!profile.onboarded || cycleWeek !== 12) return null;
   return (
-    <div className="px-5 mt-5">
+    <div>
       <Link
         to="/onboarding"
         className="card-premium p-4 flex items-center gap-3 border-l-4 border-l-amber-400 hover:border-amber-400/40"
@@ -439,7 +665,7 @@ function WeeklyRecapCard({
     setDismissed(recap.windowKey);
   };
   return (
-    <div className="px-5 mt-5">
+    <div>
       <div className="card-premium p-4 border border-violet-400/25 bg-gradient-to-b from-violet-400/[0.08] to-transparent relative">
         <button
           onClick={close}
@@ -537,5 +763,44 @@ function QuickLink({ to, label, icon }: { to: string; label: string; icon: React
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
     </Link>
+  );
+}
+
+/** Petit bouton rond de la barre d'edition d'un bloc. */
+function EditBtn({
+  children,
+  onClick,
+  disabled,
+  danger,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`h-6 w-6 grid place-items-center rounded-md transition-colors disabled:opacity-30 ${
+        danger ? "hover:text-destructive hover:bg-destructive/10" : "hover:bg-white/10"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Carton d'information visible en mode edition pour un bloc conditionnel. */
+function PlaceholderBlock({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-white/15 p-4 text-[11px] text-muted-foreground">
+      {text}
+    </div>
   );
 }

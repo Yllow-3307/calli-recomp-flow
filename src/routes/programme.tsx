@@ -133,12 +133,20 @@ function ProgrammePage() {
               return (
                 <div
                   key={w}
-                  className={`aspect-square flex flex-col items-center justify-center rounded-xl text-xs font-black transition-all ${
+                  className={`aspect-square flex flex-col items-center justify-center rounded-xl text-xs font-black transition-all relative overflow-hidden ${
                     isGold
                       ? "btn-hero shadow-[0_4px_15px_rgba(139,92,246,0.3)] border border-primary/20 scale-[1.03]"
                       : "bg-white/[0.02] border border-white/5 text-muted-foreground hover:text-white hover:border-white/10"
                   }`}
                 >
+                  {isGold && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none select-none absolute inset-x-0 top-1/2 -translate-y-1/2 -rotate-12 text-center text-[10px] font-black tracking-[0.15em] text-white/15"
+                    >
+                      TEST
+                    </span>
+                  )}
                   <span className="text-[10px] font-bold opacity-60">Sem</span>
                   <span className="text-sm mt-0.5">{w}</span>
                 </div>

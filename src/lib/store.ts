@@ -41,6 +41,7 @@ export interface Profile {
   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
   notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
   username?: string; // nom d'affichage du compte (V7)
+  homeLayout?: unknown[]; // disposition personnalisée de l'accueil (V8, voir home-layout.ts)
 }
 
 export interface SetLog {
@@ -265,6 +266,9 @@ export function useAppActions() {
             notionConfig:
               (data.notion_config as Record<string, unknown> | null) ?? s.profile.notionConfig,
             username: data.username ?? s.profile.username,
+            homeLayout: Array.isArray(data.home_layout)
+              ? (data.home_layout as unknown[])
+              : s.profile.homeLayout,
           },
         }));
       }
@@ -319,6 +323,9 @@ export function useAppActions() {
             (profileData.notion_config as Record<string, unknown> | null) ??
             currentProfile.notionConfig,
           username: profileData.username ?? currentProfile.username,
+          homeLayout: Array.isArray(profileData.home_layout)
+            ? (profileData.home_layout as unknown[])
+            : currentProfile.homeLayout,
         };
       } else {
         const mappedProfile = {
@@ -339,6 +346,7 @@ export function useAppActions() {
           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
           notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
           username: currentProfile.username ?? null,
+          home_layout: (currentProfile.homeLayout ?? []) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -900,6 +908,7 @@ export function useAppActions() {
               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
               notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
               username: profileToSync.username ?? null,
+              home_layout: (profileToSync.homeLayout ?? []) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase
@@ -963,6 +972,36 @@ export function useAppActions() {
         } catch (err) {
           console.error("Erreur d'enregistrement de la séance dans Supabase :", err);
           syncFailureToast("Séance");
+        }
+      }, 0);
+    }, []),
+    removeWorkout: useCallback((id: string) => {
+      // Local d'abord (sinon la synchro le ferait « ressusciter » depuis l'appareil)
+      setState((s) => ({ ...s, workouts: s.workouts.filter((x) => x.id !== id) }));
+
+      setTimeout(async () => {
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!session?.user) return;
+          if (isUUID(id)) {
+            // Séries associées (si la RLS refuse, la suppression de la séance peut les cascader)
+            const { error: logsErr } = await supabase
+              .from("exercise_logs")
+              .delete()
+              .eq("session_id", id);
+            if (logsErr) console.warn("Suppression exercise_logs (RLS ?) :", logsErr.message);
+            const { error } = await supabase
+              .from("workout_sessions")
+              .delete()
+              .eq("id", id)
+              .eq("user_id", session.user.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error("Erreur de suppression de la séance dans Supabase :", err);
+          toast.error("Erreur de synchronisation réseau pour la suppression de la séance.");
         }
       }, 0);
     }, []),

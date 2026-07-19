@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { GOALS, goalDefOf } from "@/lib/plan";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ChevronRight,
@@ -114,11 +115,21 @@ function ParamsPage() {
                 />
               </Row>
               <Row label="Objectif">
-                <Input
-                  value={state.profile.goal}
-                  onChange={(e) => setProfile({ goal: e.target.value })}
-                  className="bg-input flex-1"
-                />
+                <Select
+                  value={goalDefOf(state.profile.goal).id}
+                  onValueChange={(v) => setProfile({ goal: v })}
+                >
+                  <SelectTrigger className="bg-input w-44 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GOALS.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.emoji} {g.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Row>
             </div>
 
@@ -239,7 +250,7 @@ function ParamsPage() {
               </Link>
               <Link
                 to="/historique"
-                className="flex items-center justify-between px-2 py-2.5 rounded-lg text-sm font-semibold text-primary hover:bg-white/5"
+                className="flex items-center justify-between px-2 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5"
               >
                 Consulter l'historique des séances
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -344,7 +355,10 @@ function AccountCard() {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs text-muted-foreground">Compte connecté</p>
-          <p className="text-sm font-bold truncate">{userEmail ?? "…"}</p>
+          <p className="text-sm font-bold truncate">{state.profile.username || userEmail || "…"}</p>
+          {state.profile.username && userEmail && (
+            <p className="text-[11px] text-muted-foreground truncate">{userEmail}</p>
+          )}
         </div>
         <Button
           variant="ghost"

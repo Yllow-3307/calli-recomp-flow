@@ -14,7 +14,9 @@ import {
   Dumbbell,
   Timer,
   Heart,
+  Trash2,
 } from "lucide-react";
+import { useAppActions } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/historique")({
@@ -61,6 +63,13 @@ function HistoriquePage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const actions = useAppActions();
+
+  const deleteWorkout = (id: string) => {
+    if (!confirm("Supprimer définitivement cette séance ?")) return;
+    actions.removeWorkout(id); // local + Supabase (évite la « résurrection » à la synchro)
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
 
   useEffect(() => {
     async function fetchHistory() {
@@ -345,15 +354,26 @@ function HistoriquePage() {
                         )}
                       </div>
 
-                      {/* Detail Link for Workouts */}
+                      {/* Suppression + détail (séances uniquement) */}
                       {isWorkout && (
-                        <Link
-                          to="/historique/$id"
-                          params={{ id: item.id }}
-                          className="shrink-0 h-9 w-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:bg-primary/10 group-hover:border-primary/20 transition-all self-center shadow"
-                        >
-                          <ChevronRight className="h-5 w-5" />
-                        </Link>
+                        <div className="flex flex-col items-center gap-2 self-center shrink-0">
+                          <button
+                            type="button"
+                            title="Supprimer cette séance"
+                            aria-label="Supprimer cette séance"
+                            onClick={() => deleteWorkout(item.id)}
+                            className="h-9 w-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-all shadow"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <Link
+                            to="/historique/$id"
+                            params={{ id: item.id }}
+                            className="h-9 w-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:bg-primary/10 group-hover:border-primary/20 transition-all shadow"
+                          >
+                            <ChevronRight className="h-5 w-5" />
+                          </Link>
+                        </div>
                       )}
                     </div>
                   </div>
