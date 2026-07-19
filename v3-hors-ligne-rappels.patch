@@ -1,0 +1,511 @@
+diff --git a/public/sw.js b/public/sw.js
+index d787bc9..a1df81b 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -3,7 +3,7 @@
+  * cache d'abord pour les assets statiques hashés par Vite.
+  * Les appels API (Supabase, auth) ne sont JAMAIS interceptés ni mis en cache.
+  */
+-const VERSION = "v1";
++const VERSION = "v2";
+ const CACHE_NAME = `calli-recomp-${VERSION}`;
+ const OFFLINE_URL = "/";
+ const PRECACHE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+diff --git a/src/components/OfflineBanner.tsx b/src/components/OfflineBanner.tsx
+new file mode 100644
+index 0000000..b5c6487
+--- /dev/null
++++ b/src/components/OfflineBanner.tsx
+@@ -0,0 +1,59 @@
++import { useEffect, useState } from "react";
++import { Wifi, WifiOff } from "lucide-react";
++
++/**
++ * Bandeau réseau discret, fixé en haut :
++ *  - hors-ligne → ambre « tout est gardé sur l'appareil » (les données restent
++ *    en localStorage et seront repoussées à la reconnexion par la synchro)
++ *  - retour réseau → vert « synchronisation » pendant 5 s
++ */
++export function OfflineBanner() {
++  const [online, setOnline] = useState(() =>
++    typeof navigator === "undefined" ? true : navigator.onLine,
++  );
++  const [justBack, setJustBack] = useState(false);
++
++  useEffect(() => {
++    const on = () => {
++      setOnline(true);
++      setJustBack(true);
++    };
++    const off = () => {
++      setOnline(false);
++      setJustBack(false);
++    };
++    window.addEventListener("online", on);
++    window.addEventListener("offline", off);
++    return () => {
++      window.removeEventListener("online", on);
++      window.removeEventListener("offline", off);
++    };
++  }, []);
++
++  useEffect(() => {
++    if (!justBack) return;
++    const t = setTimeout(() => setJustBack(false), 5000);
++    return () => clearTimeout(t);
++  }, [justBack]);
++
++  if (online && !justBack) return null;
++
++  return (
++    <div
++      className={`fixed top-0 inset-x-0 z-[60] flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-bold text-center transition-colors ${
++        online ? "bg-emerald-500/90 text-white" : "bg-amber-500/95 text-slate-950"
++      }`}
++    >
++      {online ? (
++        <>
++          <Wifi className="h-3.5 w-3.5 shrink-0" /> Connexion retrouvée — synchronisation…
++        </>
++      ) : (
++        <>
++          <WifiOff className="h-3.5 w-3.5 shrink-0" /> Hors ligne — tout est gardé sur l'appareil,
++          synchro auto au retour du réseau
++        </>
++      )}
++    </div>
++  );
++}
+diff --git a/src/lib/reminders.ts b/src/lib/reminders.ts
+new file mode 100644
+index 0000000..6cb62e5
+--- /dev/null
++++ b/src/lib/reminders.ts
+@@ -0,0 +1,131 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Rappels locaux — 100% gratuits, aucun serveur.
++// Réglages stockés sur l'appareil (localStorage). Notifications natives si le
++// navigateur l'autorise (PWA installée recommandée sur iPhone), sinon toast in-app.
++// NB : les vraies notifications push (quand l'app est fermée en permanence)
++// nécessitent un petit serveur/cron — option documentée pour plus tard.
++// ─────────────────────────────────────────────────────────────────────────────
++import { toast } from "sonner";
++
++export interface ReminderSettings {
++  workout: boolean;
++  workoutTime: string; // "HH:MM"
++  hydration: boolean;
++}
++
++const KEY = "calli-reminders-v1";
++const FIRED_KEY = "calli-reminders-fired";
++
++const DEFAULTS: ReminderSettings = { workout: false, workoutTime: "18:00", hydration: false };
++
++export function loadReminderSettings(): ReminderSettings {
++  try {
++    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) || "{}") as object) };
++  } catch {
++    return DEFAULTS;
++  }
++}
++
++export function saveReminderSettings(s: ReminderSettings) {
++  localStorage.setItem(KEY, JSON.stringify(s));
++}
++
++export function notificationsSupported(): boolean {
++  return typeof window !== "undefined" && "Notification" in window;
++}
++
++export function notificationPermission(): NotificationPermission | "unsupported" {
++  return notificationsSupported() ? Notification.permission : "unsupported";
++}
++
++export async function requestNotificationPermission(): Promise<boolean> {
++  if (!notificationsSupported()) return false;
++  try {
++    return (await Notification.requestPermission()) === "granted";
++  } catch {
++    return false;
++  }
++}
++
++// Une seule notification par type et par jour
++type FiredMap = Record<string, { workout?: boolean; hydration?: boolean }>;
++
++function loadFired(): FiredMap {
++  try {
++    return JSON.parse(localStorage.getItem(FIRED_KEY) || "{}") as FiredMap;
++  } catch {
++    return {};
++  }
++}
++
++function markFired(kind: "workout" | "hydration", dayKey: string) {
++  const fired = loadFired();
++  fired[dayKey] = { ...fired[dayKey], [kind]: true };
++  // Ne garder que la semaine courante pour ne pas gonfler le stockage
++  const cutoff = Date.now() - 7 * 864e5;
++  for (const k of Object.keys(fired)) if (new Date(k).getTime() < cutoff) delete fired[k];
++  localStorage.setItem(FIRED_KEY, JSON.stringify(fired));
++}
++
++async function notify(title: string, body: string) {
++  if (notificationsSupported() && Notification.permission === "granted") {
++    try {
++      const reg = await navigator.serviceWorker?.getRegistration();
++      if (reg) {
++        await reg.showNotification(title, { body, icon: "/icon-192.png" });
++        return;
++      }
++      new Notification(title, { body, icon: "/icon-192.png" });
++      return;
++    } catch {
++      /* repli toast ci-dessous */
++    }
++  }
++  toast.info(`${title} ${body}`, { duration: 8000 });
++}
++
++export interface ReminderContext {
++  trainedToday: boolean;
++  waterNow: number;
++  waterTarget: number;
++  sessionTitle: string;
++}
++
++/**
++ * Boucle de rappels (toutes les 60 s + un tick immédiat).
++ * Le check "maintenant >= heure choisie" sert aussi de rattrapage : ouvrir
++ * l'app après l'heure déclenche quand même le rappel (une seule fois/jour).
++ */
++export function startReminderLoop(getContext: () => ReminderContext): () => void {
++  const tick = () => {
++    const s = loadReminderSettings();
++    if (!s.workout && !s.hydration) return;
++    const now = new Date();
++    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
++    const dayKey = now.toISOString().slice(0, 10);
++    const fired = loadFired();
++    const ctx = getContext();
++
++    if (s.workout && hhmm >= s.workoutTime && !ctx.trainedToday && !fired[dayKey]?.workout) {
++      markFired("workout", dayKey);
++      notify("💪 Séance du jour", `« ${ctx.sessionTitle} » t'attend — tu la fais quand ?`);
++    }
++    if (
++      s.hydration &&
++      now.getHours() >= 15 &&
++      ctx.waterTarget > 0 &&
++      ctx.waterNow < ctx.waterTarget * 0.5 &&
++      !fired[dayKey]?.hydration
++    ) {
++      markFired("hydration", dayKey);
++      notify(
++        "🥤 Point hydratation",
++        `Tu en es à ${ctx.waterNow.toFixed(1)} L / ${ctx.waterTarget} L — un grand verre ?`,
++      );
++    }
++  };
++
++  tick();
++  const id = setInterval(tick, 60_000);
++  return () => clearInterval(id);
++}
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index c92f9d5..4e403fd 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -3,6 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
+ import { type Database, type Json } from "@/integrations/supabase/types";
+ import type { Capacities, GeneratedPlan } from "./plan";
+ import { toast } from "sonner";
++
++/** Toast cohérent quand une écriture Supabase échoue (hors-ligne = rassurant, sinon = erreur). */
++function syncFailureToast(what: string) {
++  if (typeof navigator !== "undefined" && !navigator.onLine) {
++    toast.info(`💾 ${what} : gardé sur l'appareil — synchro auto au retour du réseau 📶`);
++  } else {
++    toast.error(`${what} : enregistré localement. La synchronisation réseau a échoué.`);
++  }
++}
+ import { SKILLS_GUIDE, type SkillGuide } from "./program";
+ 
+ export interface Profile {
+@@ -922,7 +931,7 @@ export function useAppActions() {
+           if (logsErr) throw logsErr;
+         } catch (err) {
+           console.error("Erreur d'enregistrement de la séance dans Supabase :", err);
+-          toast.error("Séance enregistrée localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Séance");
+         }
+       }, 0);
+     }, []),
+@@ -953,7 +962,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement du cardio dans Supabase :", err);
+-          toast.error("Cardio enregistré localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Cardio");
+         }
+       }, 0);
+     }, []),
+@@ -984,7 +993,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement du repas dans Supabase :", err);
+-          toast.error("Repas enregistré localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Repas");
+         }
+       }, 0);
+     }, []),
+@@ -1044,7 +1053,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement des mesures dans Supabase :", err);
+-          toast.error("Mesures enregistrées localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Mesures");
+         }
+       }, 0);
+     }, []),
+@@ -1113,9 +1122,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement du test de progression dans Supabase :", err);
+-          toast.error(
+-            "Test de progression enregistré localement. La synchronisation réseau a échoué.",
+-          );
++          syncFailureToast("Test de progression");
+         }
+       }, 0);
+     }, []),
+@@ -1146,7 +1153,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement de l'eau dans Supabase :", err);
+-          toast.error("Hydratation enregistrée localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Hydratation");
+         }
+       }, 0);
+     }, []),
+@@ -1173,7 +1180,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement de l'eau dans Supabase :", err);
+-          toast.error("Hydratation enregistrée localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Hydratation");
+         }
+       }, 0);
+     }, []),
+@@ -1214,7 +1221,7 @@ export function useAppActions() {
+           if (error) throw error;
+         } catch (err) {
+           console.error("Erreur d'enregistrement de la note de skill dans Supabase :", err);
+-          toast.error("Note enregistrée localement. La synchronisation réseau a échoué.");
++          syncFailureToast("Note");
+         }
+       }, 0);
+     }, []),
+@@ -1256,7 +1263,7 @@ export function useAppActions() {
+             if (error) throw error;
+           } catch (err) {
+             console.error("Erreur d'enregistrement du statut de skill dans Supabase :", err);
+-            toast.error("Statut enregistré localement. La synchronisation réseau a échoué.");
++            syncFailureToast("Statut");
+           }
+         }, 0);
+       },
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 0e20c55..fc23252 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -111,14 +111,18 @@ function RootShell({ children }: { children: ReactNode }) {
+ 
+ import { supabase } from "@/integrations/supabase/client";
+ import { useLocation, useNavigate } from "@tanstack/react-router";
+-import { useAppActions, useAppState } from "@/lib/store";
++import { useAppActions, useAppState, todayKey } from "@/lib/store";
++import { nutritionTargets, planDays } from "@/lib/plan";
++import { getTodayProgram } from "@/lib/program";
++import { startReminderLoop } from "@/lib/reminders";
++import { OfflineBanner } from "@/components/OfflineBanner";
+ 
+ function RootComponent() {
+   const { queryClient } = Route.useRouteContext();
+   const location = useLocation();
+   const navigate = useNavigate();
+   const { syncAllDataWithSupabase } = useAppActions();
+-  const { profile } = useAppState();
++  const { profile, workouts, water } = useAppState();
+   const onboarded = profile.onboarded;
+ 
+   // Enregistre le Service Worker (PWA) — production uniquement
+@@ -152,6 +156,28 @@ function RootComponent() {
+     };
+   }, [syncAllDataWithSupabase]);
+ 
++  // Rattrapage automatique dès que le réseau revient : les écritures faites
++  // hors-ligne (séances, repas, eau…) sont repoussées vers Supabase.
++  useEffect(() => {
++    const onOnline = () => {
++      supabase.auth.getSession().then(({ data: { session } }) => {
++        if (session) syncAllDataWithSupabase();
++      });
++    };
++    window.addEventListener("online", onOnline);
++    return () => window.removeEventListener("online", onOnline);
++  }, [syncAllDataWithSupabase]);
++
++  // Rappels locaux (séance + hydratation) — voir src/lib/reminders.ts
++  const trainedToday = workouts.some((w) => w.date.slice(0, 10) === todayKey());
++  const waterNow = water[todayKey()] || 0;
++  const waterTarget = nutritionTargets(profile).waterL;
++  const sessionTitle = getTodayProgram(false, planDays(profile)).title;
++  useEffect(
++    () => startReminderLoop(() => ({ trainedToday, waterNow, waterTarget, sessionTitle })),
++    [trainedToday, waterNow, waterTarget, sessionTitle],
++  );
++
+   useEffect(() => {
+     // Vérification de route à chaque changement de page
+     supabase.auth.getSession().then(({ data: { session } }) => {
+@@ -188,6 +214,7 @@ function RootComponent() {
+   return (
+     <QueryClientProvider client={queryClient}>
+       <div className="relative">
++        <OfflineBanner />
+         {/* key = transition de page douce à chaque navigation */}
+         <div key={location.pathname} className="page-enter">
+           <Outlet />
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index 2e233d7..08b05c3 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -7,7 +7,16 @@ import { Input } from "@/components/ui/input";
+ import { Link } from "@tanstack/react-router";
+ import { toast } from "sonner";
+ import { supabase } from "@/integrations/supabase/client";
+-import { ChevronRight, LogOut, User } from "lucide-react";
++import { ChevronRight, LogOut, User, Bell, BellRing } from "lucide-react";
++import { Switch } from "@/components/ui/switch";
++import {
++  loadReminderSettings,
++  saveReminderSettings,
++  notificationPermission,
++  requestNotificationPermission,
++  notificationsSupported,
++  type ReminderSettings,
++} from "@/lib/reminders";
+ 
+ export const Route = createFileRoute("/parametres")({
+   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
+@@ -154,6 +163,8 @@ function ParamsPage() {
+           <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+         </Link>
+ 
++        <RemindersCard />
++
+         <div className="card-premium p-4 space-y-2">
+           <h3 className="font-bold">Équipement</h3>
+           {["Barre traction", "Anneaux", "Haltères", "Sangle TRX", "Rameur", "Piscine", "Vélo"].map(
+@@ -227,3 +238,99 @@ function Row({ label, children }: { label: string; children: React.ReactNode })
+     </div>
+   );
+ }
++
++/** Réglages des rappels locaux (par appareil, zéro serveur). Voir src/lib/reminders.ts */
++function RemindersCard() {
++  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminderSettings());
++  const [perm, setPerm] = useState(() => notificationPermission());
++
++  const update = (patch: Partial<ReminderSettings>) => {
++    const next = { ...settings, ...patch };
++    setSettings(next);
++    saveReminderSettings(next);
++  };
++
++  const askPermission = async () => {
++    const granted = await requestNotificationPermission();
++    setPerm(notificationPermission());
++    if (granted) toast.success("Notifications activées 🔔");
++    else toast.error("Notifications refusées — les rappels s'afficheront dans l'app.");
++  };
++
++  return (
++    <div className="card-premium p-4 space-y-3">
++      <div className="flex items-center gap-2">
++        <Bell className="h-4 w-4 text-primary" />
++        <h3 className="font-bold text-sm">Rappels</h3>
++      </div>
++
++      {/* Rappel séance */}
++      <div className="flex items-center justify-between gap-3">
++        <div className="min-w-0">
++          <p className="text-sm font-semibold">Séance du jour</p>
++          <p className="text-[11px] text-muted-foreground">Si pas encore entraîné à l'heure dite</p>
++        </div>
++        <div className="flex items-center gap-2 shrink-0">
++          <Input
++            type="time"
++            value={settings.workoutTime}
++            onChange={(e) => update({ workoutTime: e.target.value || "18:00" })}
++            className="w-[5.2rem] h-8 bg-input text-xs px-2"
++            aria-label="Heure du rappel"
++          />
++          <Switch
++            checked={settings.workout}
++            onCheckedChange={(v) => update({ workout: !!v })}
++            aria-label="Activer le rappel de séance"
++          />
++        </div>
++      </div>
++
++      {/* Rappel hydratation */}
++      <div className="flex items-center justify-between gap-3">
++        <div className="min-w-0">
++          <p className="text-sm font-semibold">🥤 Hydratation</p>
++          <p className="text-[11px] text-muted-foreground">
++            À 15h si tu es en dessous de la moitié de ta cible d'eau
++          </p>
++        </div>
++        <Switch
++          checked={settings.hydration}
++          onCheckedChange={(v) => update({ hydration: !!v })}
++          aria-label="Activer le rappel d'hydratation"
++        />
++      </div>
++
++      {/* Permission notifications */}
++      <div className="border-t border-white/5 pt-3">
++        {!notificationsSupported() ? (
++          <p className="text-[11px] text-muted-foreground">
++            ⚠️ Ce navigateur ne gère pas les notifications — les rappels s'afficheront dans l'app.
++          </p>
++        ) : perm === "granted" ? (
++          <p className="text-[11px] text-emerald-300 flex items-center gap-1.5">
++            <BellRing className="h-3.5 w-3.5" /> Notifications natives activées sur cet appareil.
++          </p>
++        ) : perm === "denied" ? (
++          <p className="text-[11px] text-amber-300">
++            ⚠️ Notifications bloquées par le navigateur (réglages du site). Les rappels
++            s'afficheront dans l'app.
++          </p>
++        ) : (
++          <Button
++            size="sm"
++            variant="secondary"
++            className="h-8 text-xs bg-white/5 border border-white/10"
++            onClick={askPermission}
++          >
++            Activer les notifications natives
++          </Button>
++        )}
++        <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
++          100% gratuit, aucun serveur : fonctionne quand l'app est ouverte ou installée. Sur iPhone
++          → installe l'app (Partager → « Sur l'écran d'accueil ») pour recevoir les notifs.
++        </p>
++      </div>
++    </div>
++  );
++}

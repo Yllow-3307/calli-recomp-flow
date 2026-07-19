@@ -3,6 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { type Database, type Json } from "@/integrations/supabase/types";
 import type { Capacities, GeneratedPlan } from "./plan";
 import { toast } from "sonner";
+
+/** Toast cohérent quand une écriture Supabase échoue (hors-ligne = rassurant, sinon = erreur). */
+function syncFailureToast(what: string) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    toast.info(`💾 ${what} : gardé sur l'appareil — synchro auto au retour du réseau 📶`);
+  } else {
+    toast.error(`${what} : enregistré localement. La synchronisation réseau a échoué.`);
+  }
+}
 import { SKILLS_GUIDE, type SkillGuide } from "./program";
 
 export interface Profile {
@@ -922,7 +931,7 @@ export function useAppActions() {
           if (logsErr) throw logsErr;
         } catch (err) {
           console.error("Erreur d'enregistrement de la séance dans Supabase :", err);
-          toast.error("Séance enregistrée localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Séance");
         }
       }, 0);
     }, []),
@@ -953,7 +962,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement du cardio dans Supabase :", err);
-          toast.error("Cardio enregistré localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Cardio");
         }
       }, 0);
     }, []),
@@ -984,7 +993,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement du repas dans Supabase :", err);
-          toast.error("Repas enregistré localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Repas");
         }
       }, 0);
     }, []),
@@ -1044,7 +1053,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement des mesures dans Supabase :", err);
-          toast.error("Mesures enregistrées localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Mesures");
         }
       }, 0);
     }, []),
@@ -1113,9 +1122,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement du test de progression dans Supabase :", err);
-          toast.error(
-            "Test de progression enregistré localement. La synchronisation réseau a échoué.",
-          );
+          syncFailureToast("Test de progression");
         }
       }, 0);
     }, []),
@@ -1146,7 +1153,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement de l'eau dans Supabase :", err);
-          toast.error("Hydratation enregistrée localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Hydratation");
         }
       }, 0);
     }, []),
@@ -1173,7 +1180,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement de l'eau dans Supabase :", err);
-          toast.error("Hydratation enregistrée localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Hydratation");
         }
       }, 0);
     }, []),
@@ -1214,7 +1221,7 @@ export function useAppActions() {
           if (error) throw error;
         } catch (err) {
           console.error("Erreur d'enregistrement de la note de skill dans Supabase :", err);
-          toast.error("Note enregistrée localement. La synchronisation réseau a échoué.");
+          syncFailureToast("Note");
         }
       }, 0);
     }, []),
@@ -1256,7 +1263,7 @@ export function useAppActions() {
             if (error) throw error;
           } catch (err) {
             console.error("Erreur d'enregistrement du statut de skill dans Supabase :", err);
-            toast.error("Statut enregistré localement. La synchronisation réseau a échoué.");
+            syncFailureToast("Statut");
           }
         }, 0);
       },

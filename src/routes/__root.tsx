@@ -111,14 +111,18 @@ function RootShell({ children }: { children: ReactNode }) {
 
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useAppActions, useAppState } from "@/lib/store";
+import { useAppActions, useAppState, todayKey } from "@/lib/store";
+import { nutritionTargets, planDays } from "@/lib/plan";
+import { getTodayProgram } from "@/lib/program";
+import { startReminderLoop } from "@/lib/reminders";
+import { OfflineBanner } from "@/components/OfflineBanner";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const location = useLocation();
   const navigate = useNavigate();
   const { syncAllDataWithSupabase } = useAppActions();
-  const { profile } = useAppState();
+  const { profile, workouts, water } = useAppState();
   const onboarded = profile.onboarded;
 
   // Enregistre le Service Worker (PWA) — production uniquement
@@ -151,6 +155,28 @@ function RootComponent() {
       subscription.unsubscribe();
     };
   }, [syncAllDataWithSupabase]);
+
+  // Rattrapage automatique dès que le réseau revient : les écritures faites
+  // hors-ligne (séances, repas, eau…) sont repoussées vers Supabase.
+  useEffect(() => {
+    const onOnline = () => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) syncAllDataWithSupabase();
+      });
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [syncAllDataWithSupabase]);
+
+  // Rappels locaux (séance + hydratation) — voir src/lib/reminders.ts
+  const trainedToday = workouts.some((w) => w.date.slice(0, 10) === todayKey());
+  const waterNow = water[todayKey()] || 0;
+  const waterTarget = nutritionTargets(profile).waterL;
+  const sessionTitle = getTodayProgram(false, planDays(profile)).title;
+  useEffect(
+    () => startReminderLoop(() => ({ trainedToday, waterNow, waterTarget, sessionTitle })),
+    [trainedToday, waterNow, waterTarget, sessionTitle],
+  );
 
   useEffect(() => {
     // Vérification de route à chaque changement de page
@@ -188,6 +214,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="relative">
+        <OfflineBanner />
         {/* key = transition de page douce à chaque navigation */}
         <div key={location.pathname} className="page-enter">
           <Outlet />

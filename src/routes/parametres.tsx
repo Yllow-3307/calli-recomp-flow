@@ -7,7 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ChevronRight, LogOut, User } from "lucide-react";
+import { ChevronRight, LogOut, User, Bell, BellRing } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  loadReminderSettings,
+  saveReminderSettings,
+  notificationPermission,
+  requestNotificationPermission,
+  notificationsSupported,
+  type ReminderSettings,
+} from "@/lib/reminders";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
@@ -154,6 +163,8 @@ function ParamsPage() {
           <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
         </Link>
 
+        <RemindersCard />
+
         <div className="card-premium p-4 space-y-2">
           <h3 className="font-bold">Équipement</h3>
           {["Barre traction", "Anneaux", "Haltères", "Sangle TRX", "Rameur", "Piscine", "Vélo"].map(
@@ -224,6 +235,102 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="flex items-center justify-between gap-3">
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
+    </div>
+  );
+}
+
+/** Réglages des rappels locaux (par appareil, zéro serveur). Voir src/lib/reminders.ts */
+function RemindersCard() {
+  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminderSettings());
+  const [perm, setPerm] = useState(() => notificationPermission());
+
+  const update = (patch: Partial<ReminderSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    saveReminderSettings(next);
+  };
+
+  const askPermission = async () => {
+    const granted = await requestNotificationPermission();
+    setPerm(notificationPermission());
+    if (granted) toast.success("Notifications activées 🔔");
+    else toast.error("Notifications refusées — les rappels s'afficheront dans l'app.");
+  };
+
+  return (
+    <div className="card-premium p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Bell className="h-4 w-4 text-primary" />
+        <h3 className="font-bold text-sm">Rappels</h3>
+      </div>
+
+      {/* Rappel séance */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Séance du jour</p>
+          <p className="text-[11px] text-muted-foreground">Si pas encore entraîné à l'heure dite</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Input
+            type="time"
+            value={settings.workoutTime}
+            onChange={(e) => update({ workoutTime: e.target.value || "18:00" })}
+            className="w-[5.2rem] h-8 bg-input text-xs px-2"
+            aria-label="Heure du rappel"
+          />
+          <Switch
+            checked={settings.workout}
+            onCheckedChange={(v) => update({ workout: !!v })}
+            aria-label="Activer le rappel de séance"
+          />
+        </div>
+      </div>
+
+      {/* Rappel hydratation */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">🥤 Hydratation</p>
+          <p className="text-[11px] text-muted-foreground">
+            À 15h si tu es en dessous de la moitié de ta cible d'eau
+          </p>
+        </div>
+        <Switch
+          checked={settings.hydration}
+          onCheckedChange={(v) => update({ hydration: !!v })}
+          aria-label="Activer le rappel d'hydratation"
+        />
+      </div>
+
+      {/* Permission notifications */}
+      <div className="border-t border-white/5 pt-3">
+        {!notificationsSupported() ? (
+          <p className="text-[11px] text-muted-foreground">
+            ⚠️ Ce navigateur ne gère pas les notifications — les rappels s'afficheront dans l'app.
+          </p>
+        ) : perm === "granted" ? (
+          <p className="text-[11px] text-emerald-300 flex items-center gap-1.5">
+            <BellRing className="h-3.5 w-3.5" /> Notifications natives activées sur cet appareil.
+          </p>
+        ) : perm === "denied" ? (
+          <p className="text-[11px] text-amber-300">
+            ⚠️ Notifications bloquées par le navigateur (réglages du site). Les rappels
+            s'afficheront dans l'app.
+          </p>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-8 text-xs bg-white/5 border border-white/10"
+            onClick={askPermission}
+          >
+            Activer les notifications natives
+          </Button>
+        )}
+        <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+          100% gratuit, aucun serveur : fonctionne quand l'app est ouverte ou installée. Sur iPhone
+          → installe l'app (Partager → « Sur l'écran d'accueil ») pour recevoir les notifs.
+        </p>
+      </div>
     </div>
   );
 }
