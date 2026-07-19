@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { useAppState, useAppActions, generateUUID } from "@/lib/store";
@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Sun,
   Moon,
+  BellPlus,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -74,6 +75,7 @@ import {
   notificationsSupported,
   type ReminderSettings,
 } from "@/lib/reminders";
+import { isPushSupported as isPushSupportedBrowser, getExistingSubscription, subscribeToPush, unsubscribeFromPush, getVapidPublicKey } from "@/lib/push-notifications";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
@@ -263,6 +265,14 @@ function ParamsPage() {
           <SectionTitle>🌗 Thème</SectionTitle>
           <div className="mt-1.5">
             <ThemeCard />
+          </div>
+        </section>
+
+        {/* 🔔 Notifications push */}
+        <section>
+          <SectionTitle>🔔 Notifications push</SectionTitle>
+          <div className="mt-1.5">
+            <PushCard />
           </div>
         </section>
 
@@ -1353,6 +1363,106 @@ function NotionSyncCard() {
         🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
         accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
         fait que contourner la règle CORS de Notion.
+      </p>
+    </div>
+  );
+}
+
+/** Carte de configuration des notifications push (web-push). */
+function PushCard() {
+  const [supported, setSupported] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const vapidKey = getVapidPublicKey();
+
+  useEffect(() => {
+    isPushSupportedBrowser().then(async (ok) => {
+      setSupported(ok);
+      if (ok) {
+        const sub = await getExistingSubscription();
+        setSubscribed(!!sub);
+      }
+    });
+  }, []);
+
+  const handleSubscribe = async () => {
+    setBusy(true);
+    const res = await subscribeToPush();
+    if (res.ok) {
+      setSubscribed(true);
+      toast.success("Notifications push activées 🔔");
+    } else {
+      toast.error(res.error || "Impossible de s'abonner.");
+    }
+    setBusy(false);
+  };
+
+  const handleUnsubscribe = async () => {
+    setBusy(true);
+    const res = await unsubscribeFromPush();
+    if (res.ok) {
+      setSubscribed(false);
+      toast.success("Notifications push désactivées.");
+    } else {
+      toast.error(res.error || "Erreur de désabonnement.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="card-premium p-4 space-y-3 border border-blue-400/20">
+      <div className="flex items-center gap-2">
+        <BellPlus className="h-4 w-4 text-blue-400" />
+        <h3 className="font-bold text-sm">Rappel push quotidien</h3>
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Reçois une notification push chaque jour si tu n'as pas encore fait ta séance. 
+        100% gratuit, fonctionne même quand l'app est fermée (PWA installée).
+      </p>
+
+      {!supported ? (
+        <p className="text-[11px] text-amber-300">
+          ⚠️ Ce navigateur ne supporte pas les notifications push. 
+          Installe l'app (menu ⋮ → Installer) ou utilise Chrome/Edge sur Android.
+        </p>
+      ) : !vapidKey ? (
+        <p className="text-[11px] text-amber-300">
+          ⚙️ La clé VAPID publique n'est pas configurée — demande au développeur d'ajouter
+          <code className="bg-white/5 px-1 rounded"> VITE_VAPID_PUBLIC_KEY </code>
+          dans les variables d'environnement Vercel.
+        </p>
+      ) : (
+        <Button
+          size="sm"
+          onClick={subscribed ? handleUnsubscribe : handleSubscribe}
+          disabled={busy}
+          className={`w-full h-9 text-xs font-bold ${
+            subscribed
+              ? "bg-destructive/10 border border-destructive/30 text-destructive hover:bg-destructive/20"
+              : "btn-hero"
+          }`}
+        >
+          {busy ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {subscribed ? "Désabonnement…" : "Abonnement…"}
+            </span>
+          ) : subscribed ? (
+            "🔕 Désactiver les notifications push"
+          ) : (
+            "🔔 Activer les notifications push"
+          )}
+        </Button>
+      )}
+
+      {subscribed && (
+        <p className="text-[10px] text-emerald-300 flex items-center gap-1">
+          <BellRing className="h-3 w-3" /> Notifications push activées sur cet appareil.
+        </p>
+      )}
+
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        Le rappel est envoyé une fois par jour (Vercel cron). Pas de spam, pas de data collectée.
+        Sur iOS, installe l'app via Partager → « Sur l'écran d'accueil ».
       </p>
     </div>
   );

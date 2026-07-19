@@ -45,9 +45,19 @@ function NutritionPage() {
   const carbs = meals.reduce((a, m) => a + m.carbs, 0);
   const fat = meals.reduce((a, m) => a + m.fat, 0);
 
-  const addQuick = (tpl: (typeof MEAL_TEMPLATES)[number]) => {
-    actions.addMeal({ id: `m-${Date.now()}`, date: new Date().toISOString(), ...tpl });
-    toast.success(`${tpl.name} ajouté`);
+  // V11.0 : quick-add avec portion réglable
+  const [portion, setPortion] = useState<Record<string, number>>({});
+  const addQuick = (tpl: (typeof MEAL_TEMPLATES)[number], factor?: number) => {
+    const f = factor ?? portion[tpl.name] ?? 1;
+    const meal = {
+      name: f !== 1 ? `${tpl.name} ×${f}` : tpl.name,
+      kcal: Math.round(tpl.kcal * f),
+      protein: Math.round(tpl.protein * f * 10) / 10,
+      carbs: Math.round(tpl.carbs * f * 10) / 10,
+      fat: Math.round(tpl.fat * f * 10) / 10,
+    };
+    actions.addMeal({ id: `m-${Date.now()}`, date: new Date().toISOString(), ...meal });
+    toast.success(`${meal.name} ajouté`);
   };
 
   // ── Repas favoris ──
@@ -231,23 +241,49 @@ function NutritionPage() {
             Repas type du programme
           </p>
           <div className="space-y-2">
-            {MEAL_TEMPLATES.map((m) => (
-              <button
-                key={m.name}
-                onClick={() => addQuick(m)}
-                className="card-premium p-3 w-full flex items-center gap-3 text-left"
-              >
-                <div className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0">
-                  <Plus className="h-4 w-4" />
+            {MEAL_TEMPLATES.map((m) => {
+              const p = portion[m.name] ?? 1;
+              const calced = {
+                kcal: Math.round(m.kcal * p),
+                protein: Math.round(m.protein * p * 10) / 10,
+                carbs: Math.round(m.carbs * p * 10) / 10,
+                fat: Math.round(m.fat * p * 10) / 10,
+              };
+              return (
+                <div key={m.name} className="card-premium p-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => addQuick(m, p)}
+                      className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0 active:scale-90 transition-transform"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">{p !== 1 ? `${m.name} ×${p}` : m.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {calced.kcal} kcal · P {calced.protein}g · G {calced.carbs}g · L {calced.fat}g
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {[0.5, 1, 1.5, 2].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setPortion((prev) => ({ ...prev, [m.name]: prev[m.name] === f ? 1 : f }))}
+                        className={`flex-1 h-7 rounded-lg text-[10px] font-bold border transition-all ${
+                          p === f
+                            ? "bg-primary/15 border-primary/40 text-primary"
+                            : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        ×{f}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{m.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {m.kcal} kcal · P {m.protein}g · G {m.carbs}g · L {m.fat}g
-                  </p>
-                </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </section>
 

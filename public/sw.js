@@ -2,8 +2,9 @@
  * Stratégie : réseau d'abord pour les pages (repli cache hors-ligne),
  * cache d'abord pour les assets statiques hashés par Vite.
  * Les appels API (Supabase, auth) ne sont JAMAIS interceptés ni mis en cache.
+ * V11.0 : ajout du listener push pour les notifications.
  */
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE_NAME = `calli-recomp-${VERSION}`;
 const OFFLINE_URL = "/";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
@@ -28,16 +29,58 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// ── Gestion des notifications push (V11.0) ───────────────────────────
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  try {
+    const data = event.data.json();
+    const options = {
+      body: data.body || "Rappel Calli Recomp",
+      icon: data.icon || "/icon-192.png",
+      badge: data.badge || "/favicon-32.png",
+      tag: data.tag || "calli-reminder",
+      data: data.data || { url: "/" },
+      vibrate: [200, 100, 200],
+    };
+    event.waitUntil(
+      self.registration.showNotification(data.title || "Calli Recomp", options),
+    );
+  } catch {
+    // Fallback : message texte simple
+    event.waitUntil(
+      self.registration.showNotification("Calli Recomp", {
+        body: event.data.text(),
+        icon: "/icon-192.png",
+        tag: "calli-reminder",
+      }),
+    );
+  }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.focus();
+          client.postMessage({ type: "navigate", url });
+          return;
+        }
+      }
+      if (clients.openWindow) clients.openWindow(url);
+    }),
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-
-  // On ne touche qu'aux requêtes same-origin : les API (Supabase…) passent directement.
   if (url.origin !== self.location.origin) return;
 
-  // Navigations (pages HTML) : réseau d'abord, repli sur le cache si hors-ligne
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -54,7 +97,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Assets statiques (JS/CSS hashés, images, polices) : cache d'abord
   if (
     url.pathname.startsWith("/assets/") ||
     /\.(?:png|jpg|jpeg|svg|gif|webp|woff2?|ico|webmanifest)$/.test(url.pathname)

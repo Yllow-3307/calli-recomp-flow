@@ -34,6 +34,7 @@ import {
   Award,
   ArrowLeftRight,
   Tags,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SESSION_TAGS, encodeSessionTags } from "@/lib/session-tags";
@@ -74,9 +75,9 @@ function SeancePage() {
   const [globalNotes, setGlobalNotes] = useState("");
   const [restEx, setRestEx] = useState<Exercise | null>(null);
   const [summary, setSummary] = useState<WorkoutLog | null>(null);
-  // V11 : tags & humeur
+  // V11.0 : tags & humeur multi-sélection
   const [pickedTags, setPickedTags] = useState<string[]>([]);
-  const [showTags, setShowTags] = useState(false);
+  const [showTagPopup, setShowTagPopup] = useState(false);
 
   // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
   const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
@@ -158,9 +159,9 @@ function SeancePage() {
     if (!sets[ex.id][idx].done && ex.rest > 0) setRestEx(ex);
   };
 
-  const finish = () => {
-    // Encoder les tags dans la note si présents
-    const finalNotes = pickedTags.length ? encodeSessionTags(pickedTags, globalNotes) : globalNotes;
+  const doFinish = (forceTags?: string[]) => {
+    const finalTags = forceTags ?? pickedTags;
+    const finalNotes = finalTags.length ? encodeSessionTags(finalTags, globalNotes) : globalNotes;
     const exercises: ExerciseLog[] = allExercises.map((e) => ({
       exId: e.id,
       name: nameOf(e),
@@ -217,6 +218,7 @@ function SeancePage() {
       });
     setSummary(log);
   };
+  const finish = () => setShowTagPopup(true);
 
   if (summary)
     return (
@@ -361,28 +363,24 @@ function SeancePage() {
         </label>
       </section>
 
-      {/* Tags & humeur (V11) */}
-      <section className="px-5 mt-5">
-        <div className="card-premium p-4 border border-white/[0.04]">
-          <button
-            type="button"
-            onClick={() => setShowTags((v) => !v)}
-            className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Tags className="h-4 w-4 text-primary" />
-            {showTags ? "Masquer les tags" : "Ajouter un tag à ma séance"}
-            {pickedTags.length > 0 && (
-              <span className="ml-auto flex gap-1">
-                {pickedTags.map((t) => (
-                  <span key={t} className="text-sm">
-                    {t}
-                  </span>
-                ))}
-              </span>
-            )}
-          </button>
-          {showTags && (
-            <div className="mt-3 flex flex-wrap gap-2">
+      {/* Tags & humeur : popup avant validation */}
+      {showTagPopup && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-xl grid place-items-center px-6">
+          <div className="card-premium p-6 max-w-sm w-full space-y-4 relative">
+            <div className="absolute -top-2 -right-2">
+              <button
+                type="button"
+                onClick={() => setShowTagPopup(false)}
+                className="h-8 w-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="text-center">
+              <h3 className="font-bold text-lg">Comment s'est passée ta séance ?</h3>
+              <p className="text-xs text-muted-foreground mt-1">Sélectionne les tags qui correspondent (optionnel)</p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center">
               {SESSION_TAGS.map((tag) => {
                 const on = pickedTags.includes(tag.emoji);
                 return (
@@ -394,9 +392,9 @@ function SeancePage() {
                         on ? prev.filter((t) => t !== tag.emoji) : [...prev, tag.emoji],
                       )
                     }
-                    className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    className={`px-4 py-2.5 rounded-xl border text-sm font-bold transition-all ${
                       on
-                        ? "bg-primary/15 border-primary/40 text-foreground"
+                        ? "bg-primary/20 border-primary/50 text-foreground shadow-[0_0_15px_rgba(255,107,74,0.2)]"
                         : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -405,9 +403,20 @@ function SeancePage() {
                 );
               })}
             </div>
-          )}
+            {pickedTags.length > 0 && (
+              <p className="text-center text-xs text-muted-foreground">
+                Sélectionnés : {pickedTags.join(" ")}
+              </p>
+            )}
+            <Button
+              onClick={() => doFinish(pickedTags)}
+              className="w-full h-11 btn-hero text-sm font-bold"
+            >
+              {pickedTags.length > 0 ? `✅ Valider (${pickedTags.length} tag${pickedTags.length > 1 ? "s" : ""})` : "⏭️ Valider sans tag"}
+            </Button>
+          </div>
         </div>
-      </section>
+      )}
 
       <div className="px-5 mt-6 mb-8">
         <Button
