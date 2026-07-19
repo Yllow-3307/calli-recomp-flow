@@ -641,3 +641,49 @@ export function guessProperty(
   // Sans hint : ne pré-remplir une date que si une seule colonne date existe.
   return field.kind === "date" && cands.length === 1 ? cands[0].name : null;
 }
+
+// ── Détection automatique du jeu de données (V7) ─────────────────────────────
+// Plus besoin de choisir une « template » : on devine le type de la base grâce
+// aux noms de ses colonnes (hints des champs) et à son nom (bonus titre).
+
+/** Bonus quand le NOM de la base contient un mot-clé (ex. « Suivi hebdo »). */
+const TITLE_HINTS: Partial<Record<NotionDatasetKind, string[]>> = {
+  hebdo: ["hebdo", "semaine", "weekly"],
+  mensuel: ["mensuel", "mois", "month"],
+  macros: ["macro", "kcal", "calorie", "nutrition", "bouffe"],
+  tests: ["test", "skill"],
+  mesures: ["mesure", "poids", "mensuration"],
+  seances: ["seance", "sport", "training", "workout", "muscu"],
+};
+
+export function detectDataset(
+  props: { name: string; type: string }[],
+  baseTitle: string,
+): { dataset: NotionDatasetKind; score: number; confident: boolean } {
+  const cols = props.map((p) => norm(p.name));
+  const title = norm(baseTitle);
+  let best: NotionDatasetKind = "seances";
+  let bestScore = -1;
+
+  for (const kind of DATASET_ORDER) {
+    let score = 0;
+    // +1 par mot-clé distinct trouvé dans une colonne de la base
+    const hitHints = new Set<string>();
+    for (const f of NOTION_DATASETS[kind].fields)
+      for (const h of f.hints ?? []) {
+        if (hitHints.has(h)) continue;
+        if (cols.some((c) => c.includes(norm(h)))) {
+          hitHints.add(h);
+          score++;
+        }
+      }
+    // +2 si le nom de la base contient un indice
+    if ((TITLE_HINTS[kind] ?? []).some((h) => title.includes(norm(h)))) score += 2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = kind;
+    }
+  }
+  return { dataset: best, score: bestScore, confident: bestScore >= 3 };
+}

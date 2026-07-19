@@ -18,6 +18,9 @@ import {
   RefreshCw,
   Loader2,
   Trash2,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -43,11 +46,11 @@ import {
 import {
   buildNotionRows,
   guessProperty,
+  detectDataset,
   COMPAT,
   NOTION_DATASETS,
   DATASET_ORDER,
   type NotionDatasetKind,
-  type FieldDef,
 } from "@/lib/notion-datasets";
 import {
   Select,
@@ -73,14 +76,227 @@ export const Route = createFileRoute("/parametres")({
 function ParamsPage() {
   const state = useAppState();
   const { setProfile } = useAppActions();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  return (
+    <PageShell>
+      <TopBar title="Paramètres" subtitle="Compte, profil, données" />
+
+      <div className="px-5 space-y-5">
+        {/* 👤 Compte */}
+        <section>
+          <SectionTitle>👤 Compte</SectionTitle>
+          <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
+            <AccountCard />
+            <RemindersCard />
+          </div>
+        </section>
+
+        {/* 🏋️ Profil */}
+        <section>
+          <SectionTitle>🏋️ Profil</SectionTitle>
+          <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
+            <div className="card-premium p-4 space-y-3">
+              <h3 className="font-bold">Profil</h3>
+              <Row label="Poids (kg)">
+                <Input
+                  type="number"
+                  value={state.profile.weight}
+                  onChange={(e) => setProfile({ weight: parseFloat(e.target.value) || 0 })}
+                  className="bg-input w-24"
+                />
+              </Row>
+              <Row label="Taille (cm)">
+                <Input
+                  type="number"
+                  value={state.profile.height}
+                  onChange={(e) => setProfile({ height: parseFloat(e.target.value) || 0 })}
+                  className="bg-input w-24"
+                />
+              </Row>
+              <Row label="Objectif">
+                <Input
+                  value={state.profile.goal}
+                  onChange={(e) => setProfile({ goal: e.target.value })}
+                  className="bg-input flex-1"
+                />
+              </Row>
+            </div>
+
+            <div className="card-premium p-4 space-y-3">
+              <h3 className="font-bold">Fréquence</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {[5, 6].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setProfile({ daysPerWeek: n as 5 | 6 })}
+                    className={`h-14 rounded-xl border font-bold transition ${
+                      state.profile.daysPerWeek === n
+                        ? "btn-hero border-transparent"
+                        : "bg-card border-border text-muted-foreground"
+                    }`}
+                  >
+                    {n} jours / semaine
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les
+                Notes du programme.
+              </p>
+            </div>
+
+            <div className="card-premium p-4 space-y-3">
+              <h3 className="font-bold">Niveau</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => setProfile({ level: lvl })}
+                    className={`h-12 rounded-xl border text-sm font-semibold transition capitalize ${
+                      state.profile.level === lvl
+                        ? "btn-hero border-transparent"
+                        : "bg-card border-border text-muted-foreground"
+                    }`}
+                  >
+                    {lvl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card-premium p-4 space-y-2">
+              <h3 className="font-bold">Équipement</h3>
+              {[
+                "Barre traction",
+                "Anneaux",
+                "Haltères",
+                "Sangle TRX",
+                "Rameur",
+                "Piscine",
+                "Vélo",
+              ].map((eq) => {
+                const on = state.profile.equipment.includes(eq);
+                return (
+                  <button
+                    key={eq}
+                    onClick={() => {
+                      const next = on
+                        ? state.profile.equipment.filter((x) => x !== eq)
+                        : [...state.profile.equipment, eq];
+                      setProfile({ equipment: next });
+                    }}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium border ${
+                      on
+                        ? "bg-primary/10 border-primary text-foreground"
+                        : "bg-transparent border-border text-muted-foreground"
+                    }`}
+                  >
+                    {on ? "✓ " : ""}
+                    {eq}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Link
+              to="/onboarding"
+              className="card-premium card-premium-hover flex items-center justify-between p-4 border border-primary/25 group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🔄</span>
+                <div>
+                  <p className="font-bold text-sm">Générer un nouveau plan</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Objectif + capacités → plan recalculé (ton cycle n'est pas remis à zéro)
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            </Link>
+          </div>
+        </section>
+
+        {/* 📓 Notion & données */}
+        <section>
+          <SectionTitle>📓 Notion & données</SectionTitle>
+          <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
+            <ExportDataCard />
+            <NotionSyncCard />
+          </div>
+        </section>
+
+        {/* 🔗 Raccourcis & divers */}
+        <section>
+          <SectionTitle>🔗 Raccourcis & divers</SectionTitle>
+          <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
+            <div className="card-premium p-2 space-y-1">
+              <Link
+                to="/skills"
+                className="flex items-center justify-between px-2 py-2.5 rounded-lg text-sm font-semibold text-secondary hover:bg-white/5"
+              >
+                Suivre mes Skills Sportifs
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link
+                to="/historique"
+                className="flex items-center justify-between px-2 py-2.5 rounded-lg text-sm font-semibold text-primary hover:bg-white/5"
+              >
+                Consulter l'historique des séances
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link
+                to="/mesures"
+                className="flex items-center justify-between px-2 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5"
+              >
+                Enregistrer mesures & photos
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </div>
+
+            <div className="card-premium p-4 space-y-3 border border-destructive/25">
+              <h3 className="font-bold text-destructive">Zone danger</h3>
+              <Button
+                variant="secondary"
+                className="w-full text-destructive border border-destructive/30 bg-destructive/10 hover:bg-destructive/20"
+                onClick={() => {
+                  localStorage.removeItem("calli-recomp-v1");
+                  toast.success("Données réinitialisées. Recharge la page.");
+                }}
+              >
+                Réinitialiser toutes les données
+              </Button>
+            </div>
+          </div>
+          <p className="text-center text-xs text-muted-foreground pt-4">
+            v1.0 — Calli Recomp Tracker
+          </p>
+        </section>
+      </div>
+    </PageShell>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1 pb-0.5">
+      {children}
+    </h2>
+  );
+}
+
+/** Section Compte : email, nom d'utilisateur, mot de passe, déconnexion. */
+function AccountCard() {
+  const state = useAppState();
+  const { setProfile } = useAppActions();
   const navigate = useNavigate();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.email) {
-        setUserEmail(session.user.email);
-      }
+      if (session?.user?.email) setUserEmail(session.user.email);
     });
   }, []);
 
@@ -97,187 +313,96 @@ function ParamsPage() {
     }
   };
 
+  const handlePassword = async () => {
+    if (pw1.length < 6) {
+      toast.error("Mot de passe trop court (6 caractères minimum).");
+      return;
+    }
+    if (pw1 !== pw2) {
+      toast.error("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw1 });
+      if (error) throw error;
+      toast.success("Mot de passe mis à jour ✅");
+      setPw1("");
+      setPw2("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de changer le mot de passe.");
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   return (
-    <PageShell>
-      <TopBar title="Paramètres" subtitle="Profil, objectifs, équipement" />
-
-      <div className="px-5 space-y-3 lg:space-y-0 masonry-lg">
-        {userEmail && (
-          <div className="card-premium p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
-                <User className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">Compte connecté</p>
-                <p className="text-sm font-bold truncate">{userEmail}</p>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSignOut}
-              className="text-muted-foreground hover:text-destructive shrink-0"
-              title="Se déconnecter"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        <div className="card-premium p-4 space-y-3">
-          <h3 className="font-bold">Profil</h3>
-          <Row label="Poids (kg)">
-            <Input
-              type="number"
-              value={state.profile.weight}
-              onChange={(e) => setProfile({ weight: parseFloat(e.target.value) || 0 })}
-              className="bg-input w-24"
-            />
-          </Row>
-          <Row label="Taille (cm)">
-            <Input
-              type="number"
-              value={state.profile.height}
-              onChange={(e) => setProfile({ height: parseFloat(e.target.value) || 0 })}
-              className="bg-input w-24"
-            />
-          </Row>
-          <Row label="Objectif">
-            <Input
-              value={state.profile.goal}
-              onChange={(e) => setProfile({ goal: e.target.value })}
-              className="bg-input flex-1"
-            />
-          </Row>
+    <div className="card-premium p-4 space-y-3 border border-primary/25">
+      <div className="flex items-center gap-2.5">
+        <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shrink-0">
+          <User className="h-4 w-4" />
         </div>
-
-        <div className="card-premium p-4 space-y-3">
-          <h3 className="font-bold">Fréquence</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {[5, 6].map((n) => (
-              <button
-                key={n}
-                onClick={() => setProfile({ daysPerWeek: n as 5 | 6 })}
-                className={`h-14 rounded-xl border font-bold transition ${
-                  state.profile.daysPerWeek === n
-                    ? "btn-hero border-transparent"
-                    : "bg-card border-border text-muted-foreground"
-                }`}
-              >
-                {n} jours / semaine
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les Notes
-            du programme.
-          </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Compte connecté</p>
+          <p className="text-sm font-bold truncate">{userEmail ?? "…"}</p>
         </div>
-
-        <div className="card-premium p-4 space-y-3">
-          <h3 className="font-bold">Niveau</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => setProfile({ level: lvl })}
-                className={`h-12 rounded-xl border text-sm font-semibold transition capitalize ${
-                  state.profile.level === lvl
-                    ? "btn-hero border-transparent"
-                    : "bg-card border-border text-muted-foreground"
-                }`}
-              >
-                {lvl}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Link
-          to="/onboarding"
-          className="card-premium card-premium-hover flex items-center justify-between p-4 border border-primary/25 group"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🔄</span>
-            <div>
-              <p className="font-bold text-sm">Générer un nouveau plan</p>
-              <p className="text-[11px] text-muted-foreground">
-                Objectif + capacités → plan recalculé (ton cycle n'est pas remis à zéro)
-              </p>
-            </div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-        </Link>
-
-        <RemindersCard />
-
-        <ExportDataCard />
-
-        <NotionSyncCard />
-
-        <div className="card-premium p-4 space-y-2">
-          <h3 className="font-bold">Équipement</h3>
-          {["Barre traction", "Anneaux", "Haltères", "Sangle TRX", "Rameur", "Piscine", "Vélo"].map(
-            (eq) => {
-              const on = state.profile.equipment.includes(eq);
-              return (
-                <button
-                  key={eq}
-                  onClick={() => {
-                    const next = on
-                      ? state.profile.equipment.filter((x) => x !== eq)
-                      : [...state.profile.equipment, eq];
-                    setProfile({ equipment: next });
-                  }}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium border ${
-                    on
-                      ? "bg-primary/10 border-primary text-foreground"
-                      : "bg-transparent border-border text-muted-foreground"
-                  }`}
-                >
-                  {on ? "✓ " : ""}
-                  {eq}
-                </button>
-              );
-            },
-          )}
-        </div>
-
-        <Link
-          to="/skills"
-          className="card-premium p-4 block text-center font-semibold text-secondary"
-        >
-          Suivre mes Skills Sportifs →
-        </Link>
-
-        <Link
-          to="/historique"
-          className="card-premium p-4 block text-center font-semibold text-primary"
-        >
-          Consulter l'historique des séances →
-        </Link>
-
-        <Link to="/mesures" className="card-premium p-4 block text-center font-semibold">
-          Enregistrer mesures & photos →
-        </Link>
-
         <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => {
-            localStorage.removeItem("calli-recomp-v1");
-            toast.success("Données réinitialisées. Recharge la page.");
-          }}
+          variant="ghost"
+          size="icon"
+          onClick={handleSignOut}
+          className="text-muted-foreground hover:text-destructive shrink-0"
+          title="Se déconnecter"
         >
-          Réinitialiser toutes les données
+          <LogOut className="h-4 w-4" />
         </Button>
-
-        <p className="text-center text-xs text-muted-foreground pt-4">
-          v1.0 — Calli Recomp Tracker
-        </p>
       </div>
-    </PageShell>
+
+      <Row label="Nom d'utilisateur">
+        <Input
+          value={state.profile.username ?? ""}
+          onChange={(e) => setProfile({ username: e.target.value })}
+          placeholder="Ex. Louis"
+          className="bg-input w-36"
+          maxLength={30}
+        />
+      </Row>
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        Affiché dans la barre latérale (desktop) à la place de l'email.
+      </p>
+
+      <div className="border-t border-white/5 pt-3 space-y-2">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <KeyRound className="h-3.5 w-3.5 text-primary" /> Changer de mot de passe
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="password"
+            value={pw1}
+            onChange={(e) => setPw1(e.target.value)}
+            placeholder="Nouveau (6 min.)"
+            className="bg-input h-9 text-xs"
+            autoComplete="new-password"
+          />
+          <Input
+            type="password"
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            placeholder="Confirmation"
+            className="bg-input h-9 text-xs"
+            autoComplete="new-password"
+          />
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="w-full border border-white/10 bg-white/5"
+          disabled={!pw1 || !pw2 || pwBusy}
+          onClick={handlePassword}
+        >
+          {pwBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Mettre à jour le mot de passe"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -576,6 +701,7 @@ function NotionSyncCard() {
   const [settings, setSettings] = useState<NotionSettings>(() => loadNotionSettings());
   const [schemas, setSchemas] = useState<Record<string, NotionSchema>>({});
   const [analyzing, setAnalyzing] = useState<string | null>(null);
+  const [showSecret, setShowSecret] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [report, setReport] = useState<string[] | null>(null);
@@ -657,17 +783,26 @@ function NotionSyncCard() {
         return;
       }
       setSchemas((s) => ({ ...s, [base.id]: res.schema! }));
-      const { mapping, filled } = prefillMapping(res.schema, base.dataset, base.mapping ?? {});
-      updateBase(base.id, { mapping, knownName: res.schema.title });
-      toast.success(
-        `« ${res.schema.title} » : ${res.schema.props.length} colonnes · ${filled} correspondance(s) pré-remplie(s) ✅`,
-      );
+      // V7 : le type de données est DÉTECTÉ automatiquement (colonnes + nom de la base)
+      const det = detectDataset(res.schema.props, res.schema.title);
+      const detDef = NOTION_DATASETS[det.dataset];
+      const { mapping, filled } = prefillMapping(res.schema, det.dataset, base.mapping ?? {});
+      updateBase(base.id, { dataset: det.dataset, mapping, knownName: res.schema.title });
+      if (det.confident) {
+        toast.success(
+          `« ${res.schema.title} » → ${detDef.emoji} ${detDef.label} (détecté auto) · ${filled} correspondance(s) pré-remplie(s) ✅`,
+        );
+      } else {
+        toast.warning(
+          `Type détecté (incertain) : ${detDef.emoji} ${detDef.label} — vérifie les correspondances ci-dessous.`,
+        );
+      }
     } finally {
       setAnalyzing(null);
     }
   };
 
-  /** Changement de jeu de données : correspondances recalculées (les champs diffèrent). */
+  /** Changement manuel du jeu de données — uniquement utile en mode « base auto ». */
   const changeDataset = (base: LinkedBase, dataset: NotionDatasetKind) => {
     const schema = schemas[base.id];
     const mapping = schema ? prefillMapping(schema, dataset, {}).mapping : {};
@@ -753,14 +888,27 @@ function NotionSyncCard() {
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
             Clé d'intégration
           </label>
-          <Input
-            type="password"
-            value={settings.secret}
-            onChange={(e) => update({ secret: e.target.value.trim() })}
-            placeholder="ntn_…"
-            className="bg-input mt-1"
-            autoComplete="off"
-          />
+          <div className="flex gap-1.5 mt-1">
+            <Input
+              type={showSecret ? "text" : "password"}
+              value={settings.secret}
+              onChange={(e) => update({ secret: e.target.value.trim() })}
+              placeholder="ntn_…"
+              className="bg-input flex-1"
+              autoComplete="off"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSecret((v) => !v)}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              title={showSecret ? "Cacher la clé" : "Afficher la clé"}
+              aria-label={showSecret ? "Cacher la clé" : "Afficher la clé"}
+            >
+              {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
         <div>
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
@@ -822,7 +970,7 @@ function NotionSyncCard() {
                 <p className="text-sm font-semibold truncate">
                   🗂️ {shownName ? `« ${shownName} »` : "Nouvelle base"}
                   <span className="ml-2 text-[10px] font-normal text-muted-foreground">
-                    {def.emoji} {def.label} · {rows[base.dataset].length} ligne(s) · 14 j
+                    {def.emoji} {def.label} · 🤖 détecté auto · {rows[base.dataset].length} ligne(s)
                   </span>
                 </p>
                 <Button
@@ -836,7 +984,23 @@ function NotionSyncCard() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <Select
+                value={base.mode}
+                onValueChange={(v) => updateBase(base.id, { mode: v as LinkedBase["mode"] })}
+              >
+                <SelectTrigger className="h-8 text-xs bg-input">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
+                  <SelectItem value="auto">✨ Base auto (créée par l'app)</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Jeu de données : choix manuel UNIQUEMENT pour une base auto
+                  (l'app crée la structure, il faut savoir laquelle). Pour une base
+                  existante, le type est détecté automatiquement à l'analyse. */}
+              {base.mode === "auto" && (
                 <Select
                   value={base.dataset}
                   onValueChange={(v) => changeDataset(base, v as NotionDatasetKind)}
@@ -852,19 +1016,7 @@ function NotionSyncCard() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
-                  value={base.mode}
-                  onValueChange={(v) => updateBase(base.id, { mode: v as LinkedBase["mode"] })}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
-                    <SelectItem value="auto">✨ Base auto (créée par l'app)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              )}
 
               {base.mode === "existing" && (
                 <div className="space-y-2">

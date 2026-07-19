@@ -40,6 +40,7 @@ export interface Profile {
   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
   notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
+  username?: string; // nom d'affichage du compte (V7)
 }
 
 export interface SetLog {
@@ -263,6 +264,7 @@ export function useAppActions() {
               : s.profile.favoriteMeals,
             notionConfig:
               (data.notion_config as Record<string, unknown> | null) ?? s.profile.notionConfig,
+            username: data.username ?? s.profile.username,
           },
         }));
       }
@@ -316,6 +318,7 @@ export function useAppActions() {
           notionConfig:
             (profileData.notion_config as Record<string, unknown> | null) ??
             currentProfile.notionConfig,
+          username: profileData.username ?? currentProfile.username,
         };
       } else {
         const mappedProfile = {
@@ -335,6 +338,7 @@ export function useAppActions() {
           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
           notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
+          username: currentProfile.username ?? null,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -895,6 +899,7 @@ export function useAppActions() {
               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
               notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
+              username: profileToSync.username ?? null,
               updated_at: new Date().toISOString(),
             };
             supabase

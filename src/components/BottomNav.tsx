@@ -251,7 +251,7 @@ export function DesktopNav() {
             className="hidden xl:block text-[10px] text-muted-foreground truncate px-1"
             title={email}
           >
-            {email}
+            {state.profile.username ? `👤 ${state.profile.username} · ${email}` : email}
           </p>
         )}
       </div>
