@@ -5,12 +5,22 @@ import { useAppState, useAppActions, fileToCompressedBase64, type BodyMetric } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Camera, Trash2, Lock, AlertCircle, Loader2, Images, FolderOpen } from "lucide-react";
+import {
+  Camera,
+  Trash2,
+  Lock,
+  AlertCircle,
+  Loader2,
+  Images,
+  FolderOpen,
+  TrendingUp,
+} from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { SecureImage } from "@/components/SecureImage";
 import { supabase } from "@/integrations/supabase/client";
 import { base64ToFile } from "@/lib/photo-utils";
+import { WeightChart } from "@/components/WeightChart";
 
 export const Route = createFileRoute("/mesures")({
   head: () => ({ meta: [{ title: "Mesures — Calli Recomp" }] }),
@@ -215,6 +225,16 @@ function MesuresPage() {
             </div>
           </section>
         )}
+
+        {/* Graphique poids */}
+        <section className="px-5 mt-5 lg:mt-0">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" /> Évolution du poids
+          </p>
+          <div className="card-premium p-4 border border-white/[0.04]">
+            <WeightChart metrics={state.metrics} />
+          </div>
+        </section>
 
         <section className="px-5 mt-5 lg:mt-0">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Timeline</p>

@@ -97,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr">
+    <html lang="fr" data-theme="dark">
       <head>
         <HeadContent />
       </head>
@@ -124,6 +124,18 @@ function RootComponent() {
   const { syncAllDataWithSupabase } = useAppActions();
   const { profile, workouts, water } = useAppState();
   const onboarded = profile.onboarded;
+
+  // V11 : initialisation du thème (clair/sombre)
+  useEffect(() => {
+    const saved = localStorage.getItem("calli-theme");
+    if (saved === "light" || saved === "dark") {
+      document.documentElement.setAttribute("data-theme", saved);
+    } else {
+      // Système : détection automatique
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
+    }
+  }, []);
 
   // Enregistre le Service Worker (PWA) — production uniquement
   useEffect(() => {

@@ -35,7 +35,11 @@
 
 :root {
   --radius: 0.95rem;
+}
 
+/* Thème sombre (défaut) */
+:root,
+[data-theme="dark"] {
   /* Palette "Coral Glass" — Corail (#FF6B4A) → Rose (#FF4D8D), Cyan (#06B6D4), Graphite */
   --background: #05070f;
   --foreground: #f8fafc;
@@ -64,6 +68,37 @@
   --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
   --shadow-glow: 0 8px 30px -6px rgba(255, 107, 74, 0.45);
   --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+}
+
+/* Thème clair */
+[data-theme="light"] {
+  --background: #f4f6fa;
+  --foreground: #0f172a;
+  --card: rgba(255, 255, 255, 0.7);
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #ff6b4a;
+  --primary-foreground: #ffffff;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #0891b2;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.03);
+  --ring: #ff6b4a;
+  --success: #059669;
+  --warning: #d97706;
+
+  --gradient-primary: linear-gradient(135deg, #ff6b4a, #ff4d8d);
+  --gradient-accent: linear-gradient(135deg, #0891b2, #3b82f6);
+  --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4));
+  --shadow-glow: 0 8px 30px -6px rgba(255, 107, 74, 0.4);
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
 }
 
 @layer base {

@@ -67,6 +67,7 @@ import {
   type HomeSection,
 } from "@/lib/home-layout";
 import { WaterBottle } from "@/components/WaterBottle";
+import { WeightChart } from "@/components/WeightChart";
 
 export const Route = createFileRoute("/")({
   head: () => ({

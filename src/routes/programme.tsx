@@ -1,9 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { planDays, nutritionTargets, TIER_INFO, goalDefOf } from "@/lib/plan";
 import { useAppState, programCycle } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { SessionTypeBadge } from "@/routes/index";
+import { exportProgramPDF } from "@/lib/exporter";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/programme")({
   head: () => ({ meta: [{ title: "Programme semaine — Calli Recomp" }] }),
@@ -12,12 +16,21 @@ export const Route = createFileRoute("/programme")({
 
 function ProgrammePage() {
   const state = useAppState();
+  const [pdfBusy, setPdfBusy] = useState(false);
   const skipRunning = state.profile.daysPerWeek === 5;
   const { cycle, cycleWeek } = programCycle(state.profile);
   const days = planDays(state.profile);
   const isCustomPlan = !!state.profile.plan;
   const nut = nutritionTargets(state.profile);
   const tierLabel = state.profile.plan ? TIER_INFO[state.profile.plan.tier].label : "Standard";
+
+  const handlePDF = async () => {
+    setPdfBusy(true);
+    const ok = await exportProgramPDF();
+    setPdfBusy(false);
+    if (ok) toast.success("PDF téléchargé ✅");
+    else toast.error("Erreur de génération du PDF.");
+  };
 
   return (
     <PageShell>
@@ -26,18 +39,33 @@ function ProgrammePage() {
         subtitle={`${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, semaine ${cycleWeek}/12`}
       />
 
-      <div className="px-5 mb-3 flex justify-end print:hidden">
+      <div className="px-5 mb-3 flex justify-end gap-2 print:hidden">
         <Button
           size="sm"
           variant="secondary"
           className="bg-white/5 border border-white/10 text-xs"
           onClick={() => window.print()}
         >
-          🖨️ Exporter ma semaine (PDF)
+          🖨️ Imprimer
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="bg-white/5 border border-white/10 text-xs"
+          disabled={pdfBusy}
+          onClick={handlePDF}
+        >
+          {pdfBusy ? (
+            <span className="flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> PDF…
+            </span>
+          ) : (
+            "📄 PDF enrichi"
+          )}
         </Button>
       </div>
 
-      <div className="px-5 space-y-3 lg:space-y-0 masonry-lg">
+      <div id="program-pdf-content" className="px-5 space-y-3 lg:space-y-0 masonry-lg">
         {days.map((d) => {
           const skipped = skipRunning && d.key === "fri";
           return (

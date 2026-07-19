@@ -195,3 +195,50 @@ export function exportFilename(key: DatasetKey, ext: string): string {
   const start = new Date(cutoff()).toISOString().slice(0, 10);
   return `calli-${key}_${start}_au_${end}.${ext}`;
 }
+
+// ── Export PDF (html2canvas + jsPDF) ────────────────────────────────────────
+
+export async function exportProgramPDF(): Promise<boolean> {
+  try {
+    const { default: html2canvas } = await import("html2canvas");
+    const { default: jsPDF } = await import("jspdf");
+
+    const el = document.getElementById("program-pdf-content");
+    if (!el) return false;
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      backgroundColor: "#05070f",
+      logging: false,
+      useCORS: true,
+    });
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+
+    const imgW = pageW - 20;
+    const imgH = (canvas.height * imgW) / canvas.width;
+
+    let heightLeft = imgH;
+    let position = 10;
+
+    pdf.addImage(imgData, "JPEG", 10, position, imgW, imgH);
+    heightLeft -= pageH - 20;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgH + 10;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 10, position, imgW, imgH);
+      heightLeft -= pageH - 20;
+    }
+
+    const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
+    pdf.save(filename);
+    return true;
+  } catch (err) {
+    console.error("Erreur export PDF:", err);
+    return false;
+  }
+}

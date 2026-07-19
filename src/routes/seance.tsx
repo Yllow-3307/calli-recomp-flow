@@ -33,8 +33,10 @@ import {
   Activity,
   Award,
   ArrowLeftRight,
+  Tags,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SESSION_TAGS, encodeSessionTags } from "@/lib/session-tags";
 
 export const Route = createFileRoute("/seance")({
   head: () => ({ meta: [{ title: "Séance du jour — Calli Recomp" }] }),
@@ -72,6 +74,9 @@ function SeancePage() {
   const [globalNotes, setGlobalNotes] = useState("");
   const [restEx, setRestEx] = useState<Exercise | null>(null);
   const [summary, setSummary] = useState<WorkoutLog | null>(null);
+  // V11 : tags & humeur
+  const [pickedTags, setPickedTags] = useState<string[]>([]);
+  const [showTags, setShowTags] = useState(false);
 
   // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
   const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
@@ -154,6 +159,8 @@ function SeancePage() {
   };
 
   const finish = () => {
+    // Encoder les tags dans la note si présents
+    const finalNotes = pickedTags.length ? encodeSessionTags(pickedTags, globalNotes) : globalNotes;
     const exercises: ExerciseLog[] = allExercises.map((e) => ({
       exId: e.id,
       name: nameOf(e),
@@ -189,7 +196,7 @@ function SeancePage() {
       duration: Math.round((Date.now() - startTime) / 60000),
       rpe: avgRpe,
       filmed,
-      notes: globalNotes,
+      notes: finalNotes,
       exercises,
       totalVolume,
       successCount,
@@ -352,6 +359,54 @@ function SeancePage() {
             Je me suis filmé sur les mouvements clés
           </span>
         </label>
+      </section>
+
+      {/* Tags & humeur (V11) */}
+      <section className="px-5 mt-5">
+        <div className="card-premium p-4 border border-white/[0.04]">
+          <button
+            type="button"
+            onClick={() => setShowTags((v) => !v)}
+            className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Tags className="h-4 w-4 text-primary" />
+            {showTags ? "Masquer les tags" : "Ajouter un tag à ma séance"}
+            {pickedTags.length > 0 && (
+              <span className="ml-auto flex gap-1">
+                {pickedTags.map((t) => (
+                  <span key={t} className="text-sm">
+                    {t}
+                  </span>
+                ))}
+              </span>
+            )}
+          </button>
+          {showTags && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {SESSION_TAGS.map((tag) => {
+                const on = pickedTags.includes(tag.emoji);
+                return (
+                  <button
+                    key={tag.emoji}
+                    type="button"
+                    onClick={() =>
+                      setPickedTags((prev) =>
+                        on ? prev.filter((t) => t !== tag.emoji) : [...prev, tag.emoji],
+                      )
+                    }
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                      on
+                        ? "bg-primary/15 border-primary/40 text-foreground"
+                        : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tag.emoji} {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       <div className="px-5 mt-6 mb-8">

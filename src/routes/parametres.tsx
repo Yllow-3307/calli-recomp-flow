@@ -26,6 +26,8 @@ import {
   Check,
   Music,
   ExternalLink,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -253,6 +255,14 @@ function ParamsPage() {
           <SectionTitle>🎵 Musique</SectionTitle>
           <div className="mt-1.5">
             <MusicCard />
+          </div>
+        </section>
+
+        {/* 🌗 Thème */}
+        <section>
+          <SectionTitle>🌗 Thème</SectionTitle>
+          <div className="mt-1.5">
+            <ThemeCard />
           </div>
         </section>
 
@@ -1343,6 +1353,60 @@ function NotionSyncCard() {
         🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
         accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
         fait que contourner la règle CORS de Notion.
+      </p>
+    </div>
+  );
+}
+
+/** Carte de configuration du thème (clair/sombre/système). */
+const THEME_KEY = "calli-theme";
+
+function ThemeCard() {
+  const [theme, setTheme] = useState<string>(() => {
+    if (typeof window === "undefined") return "dark";
+    return localStorage.getItem(THEME_KEY) || "system";
+  });
+
+  const applyTheme = (t: string) => {
+    setTheme(t);
+    if (t === "system") {
+      localStorage.removeItem(THEME_KEY);
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
+    } else {
+      localStorage.setItem(THEME_KEY, t);
+      document.documentElement.setAttribute("data-theme", t);
+    }
+  };
+
+  const options: { id: string; label: string; icon: React.ReactNode }[] = [
+    { id: "dark", label: "Sombre", icon: <Moon className="h-4 w-4" /> },
+    { id: "light", label: "Clair", icon: <Sun className="h-4 w-4" /> },
+    { id: "system", label: "Système", icon: <span className="text-xs">🖥️</span> },
+  ];
+
+  return (
+    <div className="card-premium p-4 space-y-3">
+      <h3 className="font-bold text-sm">Apparence</h3>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => applyTheme(opt.id)}
+            className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-bold transition-all ${
+              theme === opt.id
+                ? "bg-primary/10 border-primary/40 text-foreground"
+                : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {opt.icon}
+            <span>{opt.label}</span>
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        « Système » suit les réglages de ton téléphone/ordinateur.
       </p>
     </div>
   );

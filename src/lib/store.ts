@@ -77,6 +77,8 @@ export interface WorkoutLog {
   exercises: ExerciseLog[];
   totalVolume?: number;
   successCount?: number;
+  /** Tags émotion (V11) encodés dans notes en JSON: {"t":["💪","🔥"],"n":"..."} */
+  _tags?: string[];
 }
 
 export interface CardioLog {
