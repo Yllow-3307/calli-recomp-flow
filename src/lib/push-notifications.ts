@@ -28,14 +28,16 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
       applicationServerKey: vapidKey,
     });
     const subJson = sub.toJSON();
-    const { error } = await (supabase as any).from("push_subscriptions").upsert(
-      {
-        endpoint: sub.endpoint,
-        keys: subJson.keys as Record<string, string>,
-        user_id: (await supabase.auth.getSession()).data.session?.user?.id,
-      },
-      { onConflict: "endpoint" },
-    );
+    const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (!userId) return { ok: false, error: "Non connecté" };
+
+    // Supprime l'ancien abonnement de cet utilisateur puis insère le nouveau
+    await (supabase as any).from("push_subscriptions").delete().eq("user_id", userId);
+    const { error } = await (supabase as any).from("push_subscriptions").insert({
+      user_id: userId,
+      endpoint: sub.endpoint,
+      keys: subJson.keys as Record<string, string>,
+    });
     if (error) throw error;
     return { ok: true };
   } catch (err: any) {
