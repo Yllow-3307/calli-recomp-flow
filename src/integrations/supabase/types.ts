@@ -25,6 +25,7 @@ export type Database = {
           training_days: Json;
           exercise_swaps: Json;
           favorite_meals: Json;
+          notion_config: Json;
         };
         Insert: {
           id: string;
@@ -44,6 +45,7 @@ export type Database = {
           training_days?: Json;
           exercise_swaps?: Json;
           favorite_meals?: Json;
+          notion_config?: Json;
         };
         Update: {
           id?: string;
@@ -63,6 +65,7 @@ export type Database = {
           training_days?: Json;
           exercise_swaps?: Json;
           favorite_meals?: Json;
+          notion_config?: Json;
         };
         Relationships: [
           {

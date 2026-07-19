@@ -1,0 +1,2072 @@
+diff --git a/public/sw.js b/public/sw.js
+index a1df81b..45cff90 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -3,7 +3,7 @@
+  * cache d'abord pour les assets statiques hashés par Vite.
+  * Les appels API (Supabase, auth) ne sont JAMAIS interceptés ni mis en cache.
+  */
+-const VERSION = "v2";
++const VERSION = "v3";
+ const CACHE_NAME = `calli-recomp-${VERSION}`;
+ const OFFLINE_URL = "/";
+ const PRECACHE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+diff --git a/src/integrations/supabase/types.ts b/src/integrations/supabase/types.ts
+index 7296fdc..7f454a1 100644
+--- a/src/integrations/supabase/types.ts
++++ b/src/integrations/supabase/types.ts
+@@ -25,6 +25,7 @@ export type Database = {
+           training_days: Json;
+           exercise_swaps: Json;
+           favorite_meals: Json;
++          notion_config: Json;
+         };
+         Insert: {
+           id: string;
+@@ -44,6 +45,7 @@ export type Database = {
+           training_days?: Json;
+           exercise_swaps?: Json;
+           favorite_meals?: Json;
++          notion_config?: Json;
+         };
+         Update: {
+           id?: string;
+@@ -63,6 +65,7 @@ export type Database = {
+           training_days?: Json;
+           exercise_swaps?: Json;
+           favorite_meals?: Json;
++          notion_config?: Json;
+         };
+         Relationships: [
+           {
+diff --git a/src/lib/notion-datasets.ts b/src/lib/notion-datasets.ts
+new file mode 100644
+index 0000000..e4d1752
+--- /dev/null
++++ b/src/lib/notion-datasets.ts
+@@ -0,0 +1,643 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Jeux de données Notion V5 — catalogue de champs + moteur d'agrégats.
++// Chaque jeu produit des lignes « par période » (jour / semaine / mois) ou par
++// élément (mesure / test), prêtes à être associées aux colonnes Notion de
++// n'importe quel utilisateur via l'écran de correspondance.
++// ─────────────────────────────────────────────────────────────────────────────
++import type { BodyMetric, CardioLog, MealLog, Profile, ProgressTest, WorkoutLog } from "./store";
++import { nutritionTargets, plannedSessionsPerWeek } from "./plan";
++import { PROGRESS_TESTS, programByKey } from "./program";
++import { EXPORT_WINDOW_DAYS } from "./exporter";
++
++/** Sous-ensemble du store nécessaire à la synchro Notion. */
++export interface NotionStateSlice {
++  profile: Profile;
++  workouts: WorkoutLog[];
++  cardio: CardioLog[];
++  meals: MealLog[];
++  metrics: BodyMetric[];
++  tests: ProgressTest[];
++}
++
++export type NotionDatasetKind = "seances" | "hebdo" | "macros" | "mensuel" | "mesures" | "tests";
++export type FieldKind = "text" | "number" | "date" | "select" | "checkbox";
++
++export interface FieldDef {
++  key: string;
++  label: string;
++  kind: FieldKind;
++  /** requis pour retrouver/mettre à jour la ligne (clé d'upsert) */
++  required?: boolean;
++  /** mots-clés pour pré-remplir la correspondance avec tes colonnes */
++  hints?: string[];
++}
++
++export interface DatasetDef {
++  kind: NotionDatasetKind;
++  label: string;
++  emoji: string;
++  /** date = une ligne par jour/semaine/mois (retrouvée par la date) ; uid = anti-doublon par colonne ID */
++  upsertBy: "date" | "uid";
++  fields: FieldDef[];
++}
++
++/** Types de colonnes Notion compatibles avec chaque kind de champ. */
++export const COMPAT: Record<FieldKind, string[]> = {
++  date: ["date"],
++  number: ["number"],
++  text: ["rich_text"],
++  select: ["select", "rich_text"],
++  checkbox: ["checkbox"],
++};
++
++export const NOTION_DATASETS: Record<NotionDatasetKind, DatasetDef> = {
++  seances: {
++    kind: "seances",
++    label: "Séances du jour",
++    emoji: "🏋️",
++    upsertBy: "date",
++    fields: [
++      { key: "date", label: "Date du jour", kind: "date", required: true, hints: ["date", "jour"] },
++      { key: "type_seance", label: "Type de séance", kind: "text", hints: ["type"] },
++      { key: "duree_min", label: "Durée totale (min)", kind: "number", hints: ["duree", "dur"] },
++      { key: "km", label: "Course — distance (km)", kind: "number", hints: ["km", "distance"] },
++      {
++        key: "chrono_min",
++        label: "Course — chrono (min)",
++        kind: "number",
++        hints: ["chrono", "temps"],
++      },
++      { key: "allure", label: "Course — allure (/km)", kind: "text", hints: ["allure", "pace"] },
++      {
++        key: "pompes",
++        label: "Pompes — meilleure série",
++        kind: "number",
++        hints: ["pompe", "push"],
++      },
++      {
++        key: "tractions",
++        label: "Tractions — meilleure série",
++        kind: "number",
++        hints: ["traction", "pull"],
++      },
++      { key: "dips", label: "Dips — meilleure série", kind: "number", hints: ["dip"] },
++      {
++        key: "squats",
++        label: "Squats — meilleure série",
++        kind: "number",
++        hints: ["squat", "fente"],
++      },
++      {
++        key: "gainage_s",
++        label: "Gainage — max (s)",
++        kind: "number",
++        hints: ["gainage", "planche", "core"],
++      },
++      {
++        key: "seance_faite",
++        label: "Séance faite (case à cocher)",
++        kind: "checkbox",
++        hints: ["fait", "done", "check"],
++      },
++      { key: "resume", label: "Résumé (texte)", kind: "text", hints: ["resume", "recap", "note"] },
++    ],
++  },
++  hebdo: {
++    kind: "hebdo",
++    label: "Résumé hebdo",
++    emoji: "📆",
++    upsertBy: "date",
++    fields: [
++      {
++        key: "date",
++        label: "Lundi de la semaine (date)",
++        kind: "date",
++        required: true,
++        hints: ["date", "semaine"],
++      },
++      { key: "seances_faites", label: "Séances faites (nb)", kind: "number", hints: ["seance"] },
++      {
++        key: "seances_prevues",
++        label: "Séances prévues (nb)",
++        kind: "number",
++        hints: ["prevu", "planifie", "cible"],
++      },
++      { key: "km", label: "Km courus", kind: "number", hints: ["km"] },
++      { key: "duree_totale_min", label: "Durée totale (min)", kind: "number", hints: ["duree"] },
++      {
++        key: "kcal_moy",
++        label: "Kcal moyennes / jour",
++        kind: "number",
++        hints: ["kcal", "calorie"],
++      },
++      { key: "resume", label: "Résumé (texte)", kind: "text", hints: ["resume", "note"] },
++    ],
++  },
++  macros: {
++    kind: "macros",
++    label: "Macros du jour",
++    emoji: "🍽️",
++    upsertBy: "date",
++    fields: [
++      { key: "date", label: "Date du jour", kind: "date", required: true, hints: ["date", "jour"] },
++      { key: "kcal", label: "Calories (kcal)", kind: "number", hints: ["kcal", "calorie"] },
++      { key: "prot_g", label: "Protéines (g)", kind: "number", hints: ["prot"] },
++      { key: "gluc_g", label: "Glucides (g)", kind: "number", hints: ["gluc", "carb"] },
++      { key: "lip_g", label: "Lipides (g)", kind: "number", hints: ["lip", "graiss", "fat"] },
++      {
++        key: "kcal_cible",
++        label: "Cible kcal",
++        kind: "number",
++        hints: ["cible kcal", "kcal cible", "objectif kcal"],
++      },
++      { key: "prot_cible", label: "Cible protéines (g)", kind: "number", hints: ["cible prot"] },
++      { key: "gluc_cible", label: "Cible glucides (g)", kind: "number", hints: ["cible gluc"] },
++      { key: "lip_cible", label: "Cible lipides (g)", kind: "number", hints: ["cible lip"] },
++      { key: "ecart_kcal", label: "Écart kcal (réel − cible)", kind: "number", hints: ["ecart"] },
++      { key: "resume", label: "Résumé (texte)", kind: "text", hints: ["resume", "stat", "recap"] },
++    ],
++  },
++  mensuel: {
++    kind: "mensuel",
++    label: "Résumé mensuel",
++    emoji: "🗓️",
++    upsertBy: "date",
++    fields: [
++      {
++        key: "date",
++        label: "1er du mois (date)",
++        kind: "date",
++        required: true,
++        hints: ["date", "mois"],
++      },
++      {
++        key: "poids_debut_kg",
++        label: "Poids début de mois (kg)",
++        kind: "number",
++        hints: ["debut"],
++      },
++      { key: "poids_fin_kg", label: "Poids fin de mois (kg)", kind: "number", hints: ["fin"] },
++      { key: "kcal_cible", label: "Kcal cible", kind: "number", hints: ["cible"] },
++      { key: "kcal_moy", label: "Kcal moyennes (conso)", kind: "number", hints: ["moyen"] },
++      { key: "prot_moy_g", label: "Protéines moyennes (g)", kind: "number", hints: ["prot"] },
++      { key: "rigueur_pct", label: "Rigueur (%)", kind: "number", hints: ["rigueur", "assidu"] },
++      { key: "seances_faites", label: "Séances faites (nb)", kind: "number", hints: ["seance"] },
++      { key: "km", label: "Km courus", kind: "number", hints: ["km"] },
++    ],
++  },
++  mesures: {
++    kind: "mesures",
++    label: "Mesures (poids…)",
++    emoji: "⚖️",
++    upsertBy: "date",
++    fields: [
++      { key: "date", label: "Date", kind: "date", required: true, hints: ["date"] },
++      { key: "poids_kg", label: "Poids (kg)", kind: "number", hints: ["poids"] },
++      { key: "tour_taille_cm", label: "Tour de taille (cm)", kind: "number", hints: ["taille"] },
++      { key: "sommeil_h", label: "Sommeil (h)", kind: "number", hints: ["sommeil"] },
++      { key: "energie_5", label: "Énergie (/5)", kind: "number", hints: ["energie"] },
++      { key: "fatigue_5", label: "Fatigue (/5)", kind: "number", hints: ["fatigue"] },
++      { key: "note", label: "Note (texte)", kind: "text", hints: ["note"] },
++    ],
++  },
++  tests: {
++    kind: "tests",
++    label: "Tests & skills",
++    emoji: "🏆",
++    upsertBy: "uid",
++    fields: [
++      { key: "date", label: "Date", kind: "date", required: true, hints: ["date"] },
++      {
++        key: "uid",
++        label: "ID anti-doublons (texte)",
++        kind: "text",
++        required: true,
++        hints: ["id app", "identifiant"],
++      },
++      { key: "test", label: "Test (nom)", kind: "text", hints: ["test", "exercice"] },
++      { key: "valeur", label: "Valeur", kind: "number", hints: ["valeur", "resultat", "score"] },
++      { key: "unite", label: "Unité", kind: "text", hints: ["unite"] },
++    ],
++  },
++};
++
++export const DATASET_ORDER: NotionDatasetKind[] = [
++  "seances",
++  "hebdo",
++  "macros",
++  "mensuel",
++  "mesures",
++  "tests",
++];
++
++/** Ligne prête pour Notion : clé d'upsert + date de titre + champs mappables. */
++export interface NotionRow {
++  /** jour yyyy-mm-dd / lundi / 1er du mois / uid (tests) */
++  key: string;
++  /** date utilisée pour le titre en mention « @… » et le champ date */
++  dateISO: string;
++  /** titre texte de repli (style « texte ») */
++  title: string;
++  /** suffixe ajouté après la mention date (ex. nom du test) */
++  titleSuffix?: string;
++  fields: Record<string, string | number | boolean | null>;
++}
++
++// ── Helpers dates (locales, sans piège de fuseau) ────────────────────────────
++
++const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
++
++export const fmtLocalDay = (d: Date) =>
++  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
++
++const atNoon = (day: string) => new Date(`${day}T12:00:00`);
++const dayOf = (iso: string) => iso.slice(0, 10);
++
++export function windowStartDay(): string {
++  const d = new Date();
++  d.setDate(d.getDate() - EXPORT_WINDOW_DAYS);
++  return fmtLocalDay(d);
++}
++
++function mondayOf(day: string): string {
++  const d = atNoon(day);
++  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
++  return fmtLocalDay(d);
++}
++
++function addDays(day: string, n: number): string {
++  const d = atNoon(day);
++  d.setDate(d.getDate() + n);
++  return fmtLocalDay(d);
++}
++
++const frDay = (day: string) =>
++  atNoon(day).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
++const frShort = (day: string) =>
++  atNoon(day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
++
++// ── Heuristiques sportives (meilleure série du jour par famille d'exos) ──────
++
++const EXO_KEYWORDS = {
++  pompes: ["pompe", "push"],
++  tractions: ["traction", "pull", "chin"],
++  dips: ["dip"],
++  squats: ["squat", "fente"],
++  gainage: ["gainage", "planche", "hollow", "plank"],
++} as const;
++
++function bestSetOf(workouts: WorkoutLog[], family: keyof typeof EXO_KEYWORDS): number | null {
++  const time = family === "gainage";
++  let best: number | null = null;
++  for (const w of workouts)
++    for (const e of w.exercises) {
++      if (e.kind !== (time ? "time" : "reps")) continue;
++      const n = norm(e.name);
++      if (!EXO_KEYWORDS[family].some((k) => n.includes(k))) continue;
++      for (const s of e.sets) {
++        if (!s.done) continue;
++        const v = time ? s.time : s.reps;
++        if (typeof v === "number" && v > 0 && (best === null || v > best)) best = v;
++      }
++    }
++  return best;
++}
++
++const r2 = (n: number) => Math.round(n * 100) / 100;
++
++// ── Agrégat « Séances du jour » (muscu + cardio fusionnés par jour) ──────────
++
++function buildSeances(state: NotionStateSlice): NotionRow[] {
++  const start = windowStartDay();
++  const workoutsByDay = new Map<string, WorkoutLog[]>();
++  const cardioByDay = new Map<string, CardioLog[]>();
++  for (const w of state.workouts) {
++    const d = dayOf(w.date);
++    if (d < start) continue;
++    workoutsByDay.set(d, [...(workoutsByDay.get(d) ?? []), w]);
++  }
++  for (const c of state.cardio) {
++    const d = dayOf(c.date);
++    if (d < start) continue;
++    cardioByDay.set(d, [...(cardioByDay.get(d) ?? []), c]);
++  }
++  const days = [...new Set([...workoutsByDay.keys(), ...cardioByDay.keys()])].sort();
++
++  return days.map((d) => {
++    const ws = workoutsByDay.get(d) ?? [];
++    const cs = cardioByDay.get(d) ?? [];
++    const runs = cs.filter((c) => c.type === "course");
++
++    const kmSum = runs.reduce((a, c) => a + (c.distance ?? 0), 0);
++    const chronoSum = runs.reduce((a, c) => a + c.duration, 0);
++    const paces = runs
++      .filter((c) => (c.distance ?? 0) > 0)
++      .map((c) => c.duration / (c.distance as number));
++    const p = paces.length ? Math.min(...paces) : null;
++    const allure =
++      p !== null ? `${Math.floor(p)}:${String(Math.round((p % 1) * 60)).padStart(2, "0")}` : null;
++
++    const duree = Math.round(
++      ws.reduce((a, w) => a + w.duration, 0) + cs.reduce((a, c) => a + c.duration, 0),
++    );
++
++    const types = new Set<string>();
++    for (const w of ws) {
++      const t = programByKey(w.dayKey)?.type;
++      if (t === "running") types.add("Course");
++      else if (t && t !== "rest") types.add(`Muscu — ${w.dayTitle || t}`);
++      else types.add(w.dayTitle || "Séance");
++    }
++    if (runs.length) types.add("Course");
++    cs.filter((c) => c.type !== "course").forEach((c) => types.add(c.type));
++
++    const parts: string[] = [];
++    for (const w of ws)
++      for (const e of w.exercises) {
++        const done = e.sets.filter((s) => s.done);
++        if (!done.length) continue;
++        const vals = done
++          .map((s) => (e.kind === "time" ? s.time : s.reps))
++          .filter((v): v is number => typeof v === "number" && v > 0);
++        if (!vals.length) {
++          parts.push(e.name);
++          continue;
++        }
++        const suffix = e.kind === "time" ? "s" : "";
++        const uniform = vals.every((v) => v === vals[0]);
++        const perf = uniform
++          ? `${vals.length}×${vals[0]}${suffix}`
++          : vals.map((v) => `${v}${suffix}`).join("/");
++        parts.push(`${e.name} ${perf}`);
++      }
++    for (const run of runs)
++      parts.push(
++        `Course ${run.distance ? `${r2(run.distance)} km en ` : ""}${Math.round(run.duration)} min`,
++      );
++
++    return {
++      key: d,
++      dateISO: d,
++      title: frDay(d),
++      fields: {
++        date: d,
++        type_seance: [...types].join(" + ") || null,
++        duree_min: duree || null,
++        km: kmSum > 0 ? r2(kmSum) : null,
++        chrono_min: runs.length ? Math.round(chronoSum * 10) / 10 : null,
++        allure,
++        pompes: bestSetOf(ws, "pompes"),
++        tractions: bestSetOf(ws, "tractions"),
++        dips: bestSetOf(ws, "dips"),
++        squats: bestSetOf(ws, "squats"),
++        gainage_s: bestSetOf(ws, "gainage"),
++        seance_faite: true,
++        resume: parts.join(" · ").slice(0, 1800) || null,
++      },
++    };
++  });
++}
++
++// ── Agrégat « Résumé hebdo » (semaines chevauchant la fenêtre) ───────────────
++
++function buildHebdo(state: NotionStateSlice): NotionRow[] {
++  const mondays = new Set<string>();
++  for (let i = 0; i <= EXPORT_WINDOW_DAYS; i++) {
++    const d = new Date();
++    d.setDate(d.getDate() - i);
++    mondays.add(mondayOf(fmtLocalDay(d)));
++  }
++  const planned = plannedSessionsPerWeek(state.profile);
++
++  const rows: NotionRow[] = [];
++  for (const m of [...mondays].sort()) {
++    const end = addDays(m, 6);
++    const inWeek = (iso: string) => {
++      const dd = dayOf(iso);
++      return dd >= m && dd <= end;
++    };
++    const sessions =
++      state.workouts.filter((w) => inWeek(w.date)).length +
++      state.cardio.filter((c) => inWeek(c.date)).length;
++    const km = r2(
++      state.cardio
++        .filter((c) => c.type === "course" && inWeek(c.date))
++        .reduce((a, c) => a + (c.distance ?? 0), 0),
++    );
++    const duree = Math.round(
++      state.workouts.filter((w) => inWeek(w.date)).reduce((a, w) => a + w.duration, 0) +
++        state.cardio.filter((c) => inWeek(c.date)).reduce((a, c) => a + c.duration, 0),
++    );
++    const meals = state.meals.filter((x) => inWeek(x.date));
++    const mealDays = new Set(meals.map((x) => dayOf(x.date))).size;
++    const kcalMoy = mealDays ? Math.round(meals.reduce((a, x) => a + x.kcal, 0) / mealDays) : null;
++
++    if (!sessions && !mealDays) continue; // semaine vide → pas de ligne
++
++    rows.push({
++      key: m,
++      dateISO: m,
++      title: `Semaine du ${frShort(m)}`,
++      fields: {
++        date: m,
++        seances_faites: sessions || null,
++        seances_prevues: planned,
++        km: km > 0 ? km : null,
++        duree_totale_min: duree || null,
++        kcal_moy: kcalMoy,
++        resume: `${sessions} séance(s)${km > 0 ? ` · ${km} km` : ""}${kcalMoy ? ` · 🔥 ${kcalMoy} kcal/j` : ""}`,
++      },
++    });
++  }
++  return rows;
++}
++
++// ── Agrégat « Macros du jour » (totaux + cibles recalculées du plan) ─────────
++
++function buildMacros(state: NotionStateSlice): NotionRow[] {
++  const start = windowStartDay();
++  const t = nutritionTargets(state.profile);
++  const protCible = Math.round((t.proteinMin + t.proteinMax) / 2);
++
++  const byDay = new Map<string, MealLog[]>();
++  for (const m of state.meals) {
++    const d = dayOf(m.date);
++    if (d < start) continue;
++    byDay.set(d, [...(byDay.get(d) ?? []), m]);
++  }
++
++  return [...byDay.keys()].sort().map((d) => {
++    const ms = byDay.get(d) ?? [];
++    const kcal = Math.round(ms.reduce((a, x) => a + x.kcal, 0));
++    const p = Math.round(ms.reduce((a, x) => a + x.protein, 0));
++    const g = Math.round(ms.reduce((a, x) => a + x.carbs, 0));
++    const l = Math.round(ms.reduce((a, x) => a + x.fat, 0));
++    return {
++      key: d,
++      dateISO: d,
++      title: frDay(d),
++      fields: {
++        date: d,
++        kcal,
++        prot_g: p,
++        gluc_g: g,
++        lip_g: l,
++        kcal_cible: t.kcalTarget,
++        prot_cible: protCible,
++        gluc_cible: t.carbsTarget,
++        lip_cible: t.fatTarget,
++        ecart_kcal: kcal - t.kcalTarget,
++        resume: `🔥 ${kcal} kcal · P ${p} g · G ${g} g · L ${l} g`,
++      },
++    };
++  });
++}
++
++// ── Agrégat « Résumé mensuel » (poids début/fin, moyennes, rigueur) ──────────
++
++function buildMensuel(state: NotionStateSlice): NotionRow[] {
++  const starts = new Set<string>();
++  for (let i = 0; i <= EXPORT_WINDOW_DAYS; i++) {
++    const d = new Date();
++    d.setDate(d.getDate() - i);
++    starts.add(fmtLocalDay(d).slice(0, 8) + "01");
++  }
++  const t = nutritionTargets(state.profile);
++
++  const rows: NotionRow[] = [];
++  for (const m of [...starts].sort()) {
++    const next = addDays(m, 32).slice(0, 8) + "01"; // 1er du mois suivant
++    const inMonth = (iso: string) => {
++      const dd = dayOf(iso);
++      return dd >= m && dd < next;
++    };
++
++    const weights = state.metrics
++      .filter((x) => typeof x.weight === "number" && inMonth(x.date))
++      .sort((a, b) => a.date.localeCompare(b.date));
++    const meals = state.meals.filter((x) => inMonth(x.date));
++    const days = new Set(meals.map((x) => dayOf(x.date)));
++    const kcalMoy = days.size
++      ? Math.round(meals.reduce((a, x) => a + x.kcal, 0) / days.size)
++      : null;
++    const protMoy = days.size
++      ? Math.round(meals.reduce((a, x) => a + x.protein, 0) / days.size)
++      : null;
++
++    // Rigueur : % de jours logués dans ±10 % de la cible
++    let rigueur: number | null = null;
++    if (days.size) {
++      let ok = 0;
++      for (const d of days) {
++        const sum = meals.filter((x) => dayOf(x.date) === d).reduce((a, x) => a + x.kcal, 0);
++        if (Math.abs(sum - t.kcalTarget) <= t.kcalTarget * 0.1) ok++;
++      }
++      rigueur = Math.round((ok / days.size) * 100);
++    }
++
++    const sessions =
++      state.workouts.filter((w) => inMonth(w.date)).length +
++      state.cardio.filter((c) => inMonth(c.date)).length;
++    const km = r2(
++      state.cardio
++        .filter((c) => c.type === "course" && inMonth(c.date))
++        .reduce((a, c) => a + (c.distance ?? 0), 0),
++    );
++
++    if (!weights.length && !days.size && !sessions) continue; // mois vide
++
++    rows.push({
++      key: m,
++      dateISO: m,
++      title: atNoon(m).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
++      fields: {
++        date: m,
++        poids_debut_kg: weights.length ? (weights[0].weight ?? null) : null,
++        poids_fin_kg: weights.length ? (weights[weights.length - 1].weight ?? null) : null,
++        kcal_cible: t.kcalTarget,
++        kcal_moy: kcalMoy,
++        prot_moy_g: protMoy,
++        rigueur_pct: rigueur,
++        seances_faites: sessions || null,
++        km: km > 0 ? km : null,
++      },
++    });
++  }
++  return rows;
++}
++
++// ── Mesures & tests (1 ligne par élément, fenêtre 14 jours) ──────────────────
++
++function buildMesures(state: NotionStateSlice): NotionRow[] {
++  const start = windowStartDay();
++  return state.metrics
++    .filter((m) => dayOf(m.date) >= start)
++    .sort((a, b) => a.date.localeCompare(b.date))
++    .map((m) => {
++      const d = dayOf(m.date);
++      return {
++        key: d,
++        dateISO: d,
++        title: `Mesures du ${frShort(d)}`,
++        fields: {
++          date: d,
++          poids_kg: m.weight ?? null,
++          tour_taille_cm: m.waist ?? null,
++          sommeil_h: m.sleep ?? null,
++          energie_5: m.energy ?? null,
++          fatigue_5: m.fatigue ?? null,
++          note: m.photoNote?.trim() || null,
++        },
++      };
++    });
++}
++
++function buildTests(state: NotionStateSlice): NotionRow[] {
++  const start = windowStartDay();
++  return state.tests
++    .filter((t) => dayOf(t.date) >= start)
++    .sort((a, b) => a.date.localeCompare(b.date))
++    .map((t) => {
++      const def = PROGRESS_TESTS.find((x) => x.id === t.testId);
++      const d = dayOf(t.date);
++      return {
++        key: t.id, // uid stable → anti-doublons via colonne ID
++        dateISO: d,
++        title: `${def?.name ?? t.testId} — ${frShort(d)}`,
++        titleSuffix: ` · ${def?.name ?? t.testId}`,
++        fields: {
++          date: d,
++          test: def?.name ?? t.testId,
++          valeur: t.value,
++          unite: def?.unit ?? "",
++        },
++      };
++    });
++}
++
++/** Construit les 6 jeux de données (fenêtre glissante de 14 jours). */
++export function buildNotionRows(state: NotionStateSlice): Record<NotionDatasetKind, NotionRow[]> {
++  return {
++    seances: buildSeances(state),
++    hebdo: buildHebdo(state),
++    macros: buildMacros(state),
++    mensuel: buildMensuel(state),
++    mesures: buildMesures(state),
++    tests: buildTests(state),
++  };
++}
++
++/** Pré-remplit la correspondance champ → colonne (hints + type compatible). */
++export function guessProperty(
++  props: { name: string; type: string }[],
++  field: FieldDef,
++): string | null {
++  const cands = props.filter((p) => p.type !== "title" && COMPAT[field.kind].includes(p.type));
++  if (!cands.length) return null;
++  for (const h of field.hints ?? []) {
++    const hit = cands.find((p) => norm(p.name).includes(norm(h)));
++    if (hit) return hit.name;
++  }
++  // Sans hint : ne pré-remplir une date que si une seule colonne date existe.
++  return field.kind === "date" && cands.length === 1 ? cands[0].name : null;
++}
+diff --git a/src/lib/notion-sync.ts b/src/lib/notion-sync.ts
+index 8cca34c..6952620 100644
+--- a/src/lib/notion-sync.ts
++++ b/src/lib/notion-sync.ts
+@@ -1,193 +1,87 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+-// Synchro Notion — fonction serveur (RPC) qui appelle l'API Notion.
++// Relais Notion — fonction serveur (RPC) générique qui appelle l'API Notion.
+ // Le navigateur ne peut PAS appeler api.notion.com directement (CORS),
+ // d'où ce relais côté serveur (hébergé sur ton Vercel, gratuit).
+-// La clé Notion n'est jamais stockée côté serveur : elle voyage dans la
+-// requête depuis l'appareil de l'utilisateur (stockée en localStorage chez lui).
++// La clé Notion n'est jamais stockée côté serveur : elle voyage dans chaque
++// requête depuis l'appareil de l'utilisateur (config gardée dans son profil).
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { createServerFn } from "@tanstack/react-start";
+ 
+-const API = "https://api.notion.com/v1";
++const API = "https://api.notion.com";
+ const NOTION_VERSION = "2022-06-28";
+-const THROTTLE_MS = 340; // ~3 requêtes/s (limite Notion)
+-const MAX_CREATES = 40; // budget temps d'une fonction serverless (~60 s)
+ 
+-export interface NotionRowPayload {
+-  uid: string;
+-  name: string;
+-  date: string;
+-  values: Record<string, string | number | null>;
+-}
+-
+-export interface SyncPayload {
++export interface NotionProxyPayload {
+   secret: string;
+-  parentPageId: string;
+-  /** id de la base si déjà créée (null = première synchro → la créer) */
+-  dbId: string | null;
+-  title: string;
+-  columns: { name: string; type: "number" | "text" }[];
+-  rows: NotionRowPayload[];
++  method: "GET" | "POST" | "PATCH";
++  /** chemin d'API Notion, ex. "/v1/databases/abc" — doit commencer par /v1/ */
++  path: string;
++  body?: unknown;
+ }
+ 
+-export interface SyncResult {
++export interface NotionProxyResult {
+   ok: boolean;
+-  dbId?: string;
+-  created?: number;
+-  skipped?: number;
+-  remaining?: number;
++  status: number;
++  /** corps de réponse Notion, JSON stringifié (null si vide) — à parser côté app */
++  body: string | null;
+   error?: string;
+ }
+ 
+-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+-
+-async function notionFetch(
+-  secret: string,
+-  path: string,
+-  init: RequestInit,
+-): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+-  const res = await fetch(`${API}${path}`, {
+-    ...init,
+-    headers: {
+-      Authorization: `Bearer ${secret}`,
+-      "Notion-Version": NOTION_VERSION,
+-      "Content-Type": "application/json",
+-      ...(init.headers || {}),
+-    },
+-  });
+-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+-  return { ok: res.ok, status: res.status, body };
+-}
+-
+-function friendlyError(status: number, body: Record<string, unknown>): string {
+-  const msg = typeof body.message === "string" ? body.message : `Erreur Notion (${status})`;
++function friendlyError(status: number, bodyText: string): string {
++  let msg = "";
++  try {
++    const parsed = JSON.parse(bodyText) as { message?: unknown };
++    if (typeof parsed.message === "string") msg = parsed.message;
++  } catch {
++    /* corps non-JSON : on garde les messages génériques */
++  }
++  if (status === 400 && msg) return `Notion refuse : ${msg}`;
+   if (status === 401) return "Clé Notion invalide (401). Vérifie ta clé d'intégration.";
++  if (status === 403) return "Accès refusé (403). L'intégration n'a pas le droit d'écrire ici.";
+   if (status === 404)
+-    return "Page introuvable (404). As-tu bien CONNECTÉ ton intégration à la page ? (⋯ → Connexions)";
++    return "Base/page introuvable (404). As-tu bien CONNECTÉ ton intégration à cette base ? (⋯ → Connexions)";
+   if (status === 429) return "Notion demande de ralentir — réessaie dans une minute.";
+-  return msg;
++  return msg || `Erreur Notion (${status})`;
+ }
+ 
+-/** Propriétés d'une page = colonnes de la base. */
+-type NotionProperties = Record<string, unknown>;
+-
+-function pageProperties(row: NotionRowPayload, columns: SyncPayload["columns"]): NotionProperties {
+-  const props: NotionProperties = {
+-    Nom: { title: [{ text: { content: row.name.slice(0, 2000) } }] },
+-    Date: row.date ? { date: { start: row.date } } : { date: null },
+-    ID: { rich_text: [{ text: { content: row.uid } }] },
+-  };
+-  for (const col of columns) {
+-    const v = row.values[col.name];
+-    if (v === null || v === undefined || v === "") continue;
+-    props[col.name] =
+-      col.type === "number" && typeof v === "number"
+-        ? { number: v }
+-        : { rich_text: [{ text: { content: String(v).slice(0, 2000) } }] };
+-  }
+-  return props;
+-}
+-
+-export const syncNotionDataset = createServerFn({ method: "POST" })
+-  .validator((payload: unknown): SyncPayload => payload as SyncPayload)
+-  .handler(async ({ data }): Promise<SyncResult> => {
++export const notionRequest = createServerFn({ method: "POST" })
++  .validator((payload: unknown): NotionProxyPayload => payload as NotionProxyPayload)
++  .handler(async ({ data }): Promise<NotionProxyResult> => {
+     try {
+-      const { secret, parentPageId, title, columns, rows } = data;
+-      let { dbId } = data;
+-      if (!secret || !parentPageId) return { ok: false, error: "Clé ou page manquante." };
++      const { secret, method, path, body } = data;
++      if (!secret) return { ok: false, status: 0, body: null, error: "Clé Notion manquante." };
++      if (
++        typeof path !== "string" ||
++        !path.startsWith("/v1/") ||
++        path.includes("..") ||
++        !["GET", "POST", "PATCH"].includes(method)
++      )
++        return { ok: false, status: 0, body: null, error: "Requête invalide." };
+ 
+-      // 1) Créer la base si première synchro
+-      if (!dbId) {
+-        const properties: NotionProperties = {
+-          Nom: { title: {} },
+-          Date: { date: {} },
+-          ID: { rich_text: {} },
++      const res = await fetch(`${API}${path}`, {
++        method,
++        headers: {
++          Authorization: `Bearer ${secret}`,
++          "Notion-Version": NOTION_VERSION,
++          "Content-Type": "application/json",
++        },
++        body: body !== undefined ? JSON.stringify(body) : undefined,
++      });
++      const text = await res.text().catch(() => "");
++      if (!res.ok)
++        return {
++          ok: false,
++          status: res.status,
++          body: text || null,
++          error: friendlyError(res.status, text),
+         };
+-        for (const col of columns)
+-          properties[col.name] = col.type === "number" ? { number: {} } : { rich_text: {} };
+-
+-        const created = await notionFetch(secret, "/databases", {
+-          method: "POST",
+-          body: JSON.stringify({
+-            parent: { type: "page_id", page_id: parentPageId },
+-            title: [{ type: "text", text: { content: title } }],
+-            properties,
+-          }),
+-        });
+-        if (!created.ok) return { ok: false, error: friendlyError(created.status, created.body) };
+-        dbId = created.body.id as string;
+-      }
+-
+-      // 2) Récupérer les ID existants (anti-doublons)
+-      const existing = new Set<string>();
+-      let cursor: string | undefined;
+-      for (let page = 0; page < 10; page++) {
+-        const q = await notionFetch(secret, `/databases/${dbId}/query`, {
+-          method: "POST",
+-          body: JSON.stringify({
+-            page_size: 100,
+-            ...(cursor ? { start_cursor: cursor } : {}),
+-          }),
+-        });
+-        if (!q.ok) {
+-          if (q.status === 404) {
+-            // Base supprimée dans Notion → on la recrée au prochain appel
+-            return {
+-              ok: false,
+-              error:
+-                "Base introuvable dans Notion (supprimée ?). Supprime l'ID de base dans les réglages pour la recréer.",
+-            };
+-          }
+-          return { ok: false, error: friendlyError(q.status, q.body) };
+-        }
+-        const results = (q.body.results ?? []) as {
+-          properties?: Record<string, { rich_text?: { plain_text?: string }[] }>;
+-        }[];
+-        for (const r of results) {
+-          const uid = r.properties?.ID?.rich_text?.[0]?.plain_text;
+-          if (uid) existing.add(uid);
+-        }
+-        if (q.body.has_more && typeof q.body.next_cursor === "string") {
+-          cursor = q.body.next_cursor;
+-        } else break;
+-      }
+-
+-      // 3) Créer les lignes manquantes (limité par appel)
+-      const todo = rows.filter((r) => !existing.has(r.uid));
+-      const batch = todo.slice(0, MAX_CREATES);
+-      let created = 0;
+-      for (const row of batch) {
+-        const res = await notionFetch(secret, "/pages", {
+-          method: "POST",
+-          body: JSON.stringify({
+-            parent: { database_id: dbId },
+-            properties: pageProperties(row, columns),
+-          }),
+-        });
+-        if (!res.ok)
+-          return {
+-            ok: false,
+-            dbId,
+-            created,
+-            skipped: rows.length - todo.length,
+-            remaining: todo.length - created,
+-            error: friendlyError(res.status, res.body),
+-          };
+-        created++;
+-        await sleep(THROTTLE_MS);
+-      }
+-
+-      return {
+-        ok: true,
+-        dbId,
+-        created,
+-        skipped: rows.length - todo.length,
+-        remaining: todo.length - created,
+-      };
++      return { ok: true, status: res.status, body: text || null };
+     } catch (err) {
+-      console.error("syncNotionDataset:", err);
++      console.error("notionRequest:", err);
+       return {
+         ok: false,
+-        error: "Le serveur de synchro n'a pas répondu. Réessaie dans un instant.",
++        status: 0,
++        body: null,
++        error: "Le relais de synchro n'a pas répondu. Vérifie ta connexion et réessaie.",
+       };
+     }
+   });
+diff --git a/src/lib/notion.ts b/src/lib/notion.ts
+index 2fcec0f..7b1d855 100644
+--- a/src/lib/notion.ts
++++ b/src/lib/notion.ts
+@@ -1,26 +1,101 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+-// Réglages Notion (par appareil, localStorage) + orchestration de la synchro.
+-// La synchro elle-même tourne côté serveur (voir notion-sync.ts).
++// Synchro Notion V5 — réglages, introspection de bases existantes et
++// orchestration (create/update). Toute la logique vit ici (côté app) ; le
++// serveur ne fait que relayer les requêtes (voir notion-sync.ts).
++// Deux modes par jeu de données :
++//   • « auto »     → l'app crée la base dans ta page parente (simple)
++//   • « existing » → l'app écrit dans TA base, selon TES correspondances
+ // ─────────────────────────────────────────────────────────────────────────────
+-import { buildDatasets, DATASET_LABELS, type AppStateSlice, type DatasetKey } from "./exporter";
+-import { syncNotionDataset, type NotionRowPayload } from "./notion-sync";
++import { notionRequest } from "./notion-sync";
++import {
++  buildNotionRows,
++  DATASET_ORDER,
++  NOTION_DATASETS,
++  windowStartDay,
++  type DatasetDef,
++  type NotionDatasetKind,
++  type NotionRow,
++  type NotionStateSlice,
++} from "./notion-datasets";
+ 
+-export type { AppStateSlice } from "./exporter";
++export type { NotionDatasetKind, NotionStateSlice } from "./notion-datasets";
++
++/** Appel API Notion via le relais serveur + parsing du corps JSON. */
++async function callNotion<T>(
++  secret: string,
++  method: "GET" | "POST" | "PATCH",
++  path: string,
++  body?: unknown,
++): Promise<{ ok: boolean; data?: T; error?: string }> {
++  const res = await notionRequest({ data: { secret, method, path, body } });
++  if (!res.ok) return { ok: false, error: res.error };
++  if (!res.body) return { ok: true };
++  try {
++    return { ok: true, data: JSON.parse(res.body) as T };
++  } catch {
++    return { ok: false, error: "Réponse Notion illisible (JSON invalide)." };
++  }
++}
++
++// ── Réglages ─────────────────────────────────────────────────────────────────
++
++export type NotionMode = "off" | "auto" | "existing";
++
++export interface DatasetBinding {
++  mode: NotionMode;
++  /** URL ou ID de TA base (mode « existing ») */
++  databaseUrl?: string;
++  /** champ app → nom de colonne Notion */
++  mapping?: Record<string, string>;
++  /** id de la base créée par l'app (mode « auto », rempli à la 1re synchro) */
++  autoDbId?: string;
++}
+ 
+ export interface NotionSettings {
+   secret: string;
++  /** page parente pour les bases créées en mode auto */
+   parentPageId: string;
+-  /** id des bases créées par dataset (première synchro) */
+-  databases: Partial<Record<DatasetKey, string>>;
++  /** titres en mention date « @aujourd'hui » ou texte simple */
++  titleStyle: "mention" | "texte";
++  bindings: Partial<Record<NotionDatasetKind, DatasetBinding>>;
+   lastSync?: string;
+ }
+ 
+-const KEY = "calli-notion-v1";
+-const DEFAULTS: NotionSettings = { secret: "", parentPageId: "", databases: {} };
++const KEY = "calli-notion-v1"; // même clé : migration V1 → V2 transparente
++const DEFAULTS: NotionSettings = {
++  secret: "",
++  parentPageId: "",
++  titleStyle: "mention",
++  bindings: {},
++};
+ 
+ export function loadNotionSettings(): NotionSettings {
+   try {
+-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) || "{}") as object) };
++    const raw = JSON.parse(localStorage.getItem(KEY) || "{}") as Record<string, unknown> & {
++      databases?: Partial<Record<string, string>>;
++    };
++    if (raw && !raw.bindings) {
++      // Migration V4 → V5 : les bases auto (Séances/Mesures/Tests) restent branchées.
++      const bindings: NotionSettings["bindings"] = {};
++      for (const [oldKey, kind] of [
++        ["seances", "seances"],
++        ["mesures", "mesures"],
++        ["tests", "tests"],
++      ] as const) {
++        const id = raw.databases?.[oldKey];
++        if (id) bindings[kind] = { mode: "auto", autoDbId: id };
++      }
++      // « repas » V4 (détail) → jeu « macros » V5 (totaux/jour) : nouvelle base auto
++      if (raw.databases?.repas) bindings.macros = { mode: "auto" };
++      return {
++        ...DEFAULTS,
++        secret: typeof raw.secret === "string" ? raw.secret : "",
++        parentPageId: typeof raw.parentPageId === "string" ? raw.parentPageId : "",
++        lastSync: typeof raw.lastSync === "string" ? raw.lastSync : undefined,
++        bindings,
++      };
++    }
++    return { ...DEFAULTS, ...(raw as object) } as NotionSettings;
+   } catch {
+     return DEFAULTS;
+   }
+@@ -30,81 +105,430 @@ export function saveNotionSettings(s: NotionSettings) {
+   localStorage.setItem(KEY, JSON.stringify(s));
+ }
+ 
+-/** Accepte une URL Notion complète ou un ID brut → ID 32 caractères hex. */
++/** Accepte une URL Notion complète (page ou base) ou un ID brut → ID 32 hex. */
+ export function parseNotionPageId(input: string): string {
+   const hex = (input.replace(/-/g, "").match(/[0-9a-fA-F]{32}/) ?? [null])[0];
+   return hex ?? input.trim();
+ }
+ 
+-export interface SyncSummary {
++// ── Schéma d'une base existante (introspection) ──────────────────────────────
++
++export interface NotionPropDef {
++  name: string;
++  type: string;
++  options?: string[];
++}
++
++export interface NotionSchema {
++  id: string;
++  title: string;
++  titleProp: string;
++  props: NotionPropDef[];
++}
++
++export async function fetchDatabaseSchema(
++  secret: string,
++  dbId: string,
++): Promise<{ ok: boolean; schema?: NotionSchema; error?: string }> {
++  const res = await callNotion<{
++    id: string;
++    title?: { plain_text: string }[];
++    properties?: Record<string, { type: string; select?: { options?: { name: string }[] } }>;
++  }>(secret, "GET", `/v1/databases/${dbId}`);
++  if (!res.ok || !res.data) return { ok: false, error: res.error };
++  const b = res.data;
++  const props: NotionPropDef[] = Object.entries(b.properties ?? {}).map(([name, p]) => ({
++    name,
++    type: p.type,
++    options: p.select?.options?.map((o) => o.name),
++  }));
++  if (!props.some((p) => p.type === "title"))
++    return { ok: false, error: "Cette base n'a pas de colonne titre (étrange 🤔)." };
++  return {
++    ok: true,
++    schema: {
++      id: b.id,
++      title: b.title?.[0]?.plain_text || "Base Notion",
++      titleProp: props.find((p) => p.type === "title")?.name ?? "Nom",
++      props,
++    },
++  };
++}
++
++/** Ajoute la colonne anti-doublons « ID » (texte) dans une base existante. */
++export async function addUidColumn(
++  secret: string,
++  dbId: string,
++  name = "ID",
++): Promise<{ ok: boolean; error?: string }> {
++  const res = await callNotion<object>(secret, "PATCH", `/v1/databases/${dbId}`, {
++    properties: { [name]: { rich_text: {} } },
++  });
++  return res.ok ? { ok: true } : { ok: false, error: res.error };
++}
++
++// ── Mode auto : création des bases + schéma/mapping implicites ───────────────
++
++const AUTO_TITLE: Record<NotionDatasetKind, string> = {
++  seances: "Calli — Séances du jour",
++  hebdo: "Calli — Résumé hebdo",
++  macros: "Calli — Macros du jour",
++  mensuel: "Calli — Résumé mensuel",
++  mesures: "Calli — Mesures",
++  tests: "Calli — Tests & skills",
++};
++
++function autoSchema(kind: NotionDatasetKind): NotionSchema {
++  const def = NOTION_DATASETS[kind];
++  const props: NotionPropDef[] = [
++    { name: "Nom", type: "title" },
++    { name: "Date", type: "date" },
++    { name: "ID", type: "rich_text" },
++    ...def.fields
++      .filter((f) => f.key !== "date" && f.key !== "uid")
++      .map((f) => ({
++        name: f.label,
++        type:
++          f.kind === "number"
++            ? "number"
++            : f.kind === "select"
++              ? "select"
++              : f.kind === "checkbox"
++                ? "checkbox"
++                : "rich_text",
++      })),
++  ];
++  return { id: "", title: AUTO_TITLE[kind], titleProp: "Nom", props };
++}
++
++function autoMapping(kind: NotionDatasetKind): Record<string, string> {
++  const def = NOTION_DATASETS[kind];
++  const m: Record<string, string> = { date: "Date" };
++  if (def.upsertBy === "uid") m.uid = "ID";
++  for (const f of def.fields) if (f.key !== "date" && f.key !== "uid") m[f.key] = f.label;
++  return m;
++}
++
++/** Corps « création de colonne » pour l'API Notion selon le type voulu. */
++function columnDefOf(type: string): Record<string, unknown> {
++  switch (type) {
++    case "title":
++      return { title: {} };
++    case "date":
++      return { date: {} };
++    case "number":
++      return { number: {} };
++    case "select":
++      return { select: {} };
++    case "checkbox":
++      return { checkbox: {} };
++    default:
++      return { rich_text: {} };
++  }
++}
++
++async function createAutoDatabase(
++  secret: string,
++  parentPageId: string,
++  kind: NotionDatasetKind,
++): Promise<{ ok: boolean; dbId?: string; error?: string }> {
++  const properties: Record<string, unknown> = {};
++  for (const p of autoSchema(kind).props) properties[p.name] = columnDefOf(p.type);
++  const res = await callNotion<{ id: string }>(secret, "POST", "/v1/databases", {
++    parent: { type: "page_id", page_id: parentPageId },
++    title: [{ type: "text", text: { content: AUTO_TITLE[kind] } }],
++    properties,
++  });
++  if (!res.ok || !res.data) return { ok: false, error: res.error };
++  return { ok: true, dbId: res.data.id };
++}
++
++// ── Construction des propriétés d'une ligne ──────────────────────────────────
++
++function buildPageProps(
++  row: NotionRow,
++  def: DatasetDef,
++  schema: NotionSchema,
++  mapping: Record<string, string>,
++  titleStyle: NotionSettings["titleStyle"],
++): Record<string, unknown> {
++  const props: Record<string, unknown> = {};
++
++  // Titre : mention date « @aujourd'hui » (collé à ton usage) ou texte simple.
++  props[schema.titleProp] =
++    titleStyle === "mention"
++      ? {
++          title: [
++            { type: "mention", mention: { type: "date", date: { start: row.dateISO } } },
++            ...(row.titleSuffix
++              ? [{ type: "text", text: { content: row.titleSuffix.slice(0, 1900) } }]
++              : []),
++          ],
++        }
++      : {
++          title: [
++            {
++              type: "text",
++              text: { content: `${row.title}${row.titleSuffix ?? ""}`.slice(0, 2000) },
++            },
++          ],
++        };
++
++  const typeByName = new Map(schema.props.map((p) => [p.name, p.type]));
++  for (const f of def.fields) {
++    const propName = mapping[f.key];
++    if (!propName) continue; // champ non mappé → jamais écrit
++    const propType = typeByName.get(propName);
++    if (!propType) continue;
++    const v =
++      f.key === "uid" ? row.key : (row.fields[f.key] ?? (f.key === "date" ? row.dateISO : null));
++    if (v === null || v === undefined || v === "") continue;
++    switch (propType) {
++      case "number":
++        if (typeof v === "number") props[propName] = { number: v };
++        break;
++      case "date":
++        props[propName] = { date: { start: String(v).slice(0, 10) } };
++        break;
++      case "select":
++        props[propName] = { select: { name: String(v).slice(0, 100) } };
++        break;
++      case "checkbox":
++        props[propName] = { checkbox: !!v };
++        break;
++      case "rich_text":
++        props[propName] = {
++          rich_text: [{ type: "text", text: { content: String(v).slice(0, 2000) } }],
++        };
++        break;
++      // formules, rollups, relations… : lus mais jamais écrits
++    }
++  }
++  return props;
++}
++
++// ── Récupération des lignes existantes (upsert par date ou par ID) ───────────
++
++interface QueryPage {
++  id: string;
++  properties: Record<
++    string,
++    { type: string; date?: { start: string } | null; rich_text?: { plain_text?: string }[] }
++  >;
++}
++
++async function findExistingPages(
++  secret: string,
++  dbId: string,
++  def: DatasetDef,
++  mapping: Record<string, string>,
++): Promise<{ ok: boolean; byKey: Map<string, string>; error?: string }> {
++  const byKey = new Map<string, string>();
++  const dateProp = mapping.date;
++  if (!dateProp) return { ok: false, byKey, error: "Colonne Date non associée." };
++  const uidProp = def.upsertBy === "uid" ? mapping.uid : undefined;
++  if (def.upsertBy === "uid" && !uidProp)
++    return { ok: false, byKey, error: "Colonne ID (anti-doublons) non associée." };
++
++  let cursor: string | undefined;
++  for (let page = 0; page < 5; page++) {
++    const res = await callNotion<{
++      results?: QueryPage[];
++      has_more?: boolean;
++      next_cursor?: string;
++    }>(secret, "POST", `/v1/databases/${dbId}/query`, {
++      page_size: 100,
++      ...(cursor ? { start_cursor: cursor } : {}),
++      filter: { property: dateProp, date: { on_or_after: windowStartDay() } },
++    });
++    if (!res.ok || !res.data) return { ok: false, byKey, error: res.error };
++    const b = res.data;
++    for (const r of b.results ?? []) {
++      if (def.upsertBy === "uid") {
++        const uid = uidProp ? r.properties[uidProp]?.rich_text?.[0]?.plain_text : undefined;
++        if (uid) byKey.set(uid, r.id);
++      } else {
++        const d = r.properties[dateProp]?.date?.start?.slice(0, 10);
++        if (d) byKey.set(d, r.id);
++      }
++    }
++    if (b.has_more && b.next_cursor) cursor = b.next_cursor;
++    else break;
++  }
++  return { ok: true, byKey };
++}
++
++// ── Orchestration de la synchro ──────────────────────────────────────────────
++
++const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
++
++export interface SyncReport {
+   ok: boolean;
+   message: string;
++  /** détail par jeu de données, affiché dans la carte */
++  lines: string[];
+ }
+ 
+-/** Synchronise les 2 dernières semaines vers les 4 bases du page parent. */
+ export async function syncToNotion(
+-  state: AppStateSlice,
++  state: NotionStateSlice,
+   onProgress: (msg: string) => void,
+-): Promise<SyncSummary> {
++): Promise<SyncReport> {
+   const settings = loadNotionSettings();
+-  const parentPageId = parseNotionPageId(settings.parentPageId);
+-  if (!settings.secret || !parentPageId)
+-    return { ok: false, message: "Renseigne d'abord la clé d'intégration et la page Notion." };
+-
+-  const datasets = buildDatasets(state);
+-  let created = 0;
+-  let already = 0;
+-  let synced = 0;
+-
+-  for (const ds of datasets) {
+-    if (!ds.rows.length) continue;
+-    synced++;
+-    onProgress(`${DATASET_LABELS[ds.key]} (${ds.rows.length})…`);
+-
+-    const valueKeys = ds.headers.slice(2, -1);
+-    const columns = valueKeys.map((name) => ({
+-      name,
+-      type: (ds.rows.some((r) => typeof r.values[name] === "number") ? "number" : "text") as
+-        "number" | "text",
+-    }));
+-    const rows: NotionRowPayload[] = ds.rows.map((r) => ({
+-      uid: r.uid,
+-      name: r.name,
+-      date: r.date,
+-      values: r.values,
+-    }));
+-
+-    let dbId = settings.databases[ds.key] ?? null;
+-    // Plusieurs passes si plus de 40 lignes à créer
+-    for (let pass = 0; pass < 5; pass++) {
+-      const res = await syncNotionDataset({
+-        data: {
+-          secret: settings.secret,
+-          parentPageId,
+-          dbId,
+-          title: `Calli Recomp — ${DATASET_LABELS[ds.key]}`,
+-          columns,
+-          rows,
+-        },
+-      });
+-      if (!res.ok) return { ok: false, message: res.error ?? "Erreur de synchro Notion." };
+-      if (res.dbId) {
+-        dbId = res.dbId;
+-        settings.databases[ds.key] = res.dbId;
++  if (!settings.secret)
++    return { ok: false, message: "Renseigne d'abord ta clé d'intégration.", lines: [] };
++
++  const active = DATASET_ORDER.filter((k) => {
++    const b = settings.bindings[k];
++    return b && b.mode !== "off";
++  });
++  if (!active.length)
++    return {
++      ok: false,
++      message:
++        "Aucun export activé — choisis un mode (« ma base » ou « auto ») pour au moins un jeu de données.",
++      lines: [],
++    };
++
++  const rows = buildNotionRows(state);
++  const lines: string[] = [];
++  let totalCreated = 0;
++  let totalUpdated = 0;
++  let errors = 0;
++
++  for (const kind of active) {
++    const def = NOTION_DATASETS[kind];
++    const binding = settings.bindings[kind]!;
++    const data = rows[kind];
++    if (!data.length) {
++      lines.push(`${def.emoji} ${def.label} : aucune donnée sur la période`);
++      continue;
++    }
++
++    onProgress(`${def.emoji} ${def.label} — préparation…`);
++
++    // 1) Résoudre base + schéma + mapping selon le mode
++    let dbId: string | null = null;
++    let schema: NotionSchema | null = null;
++    let mapping: Record<string, string> | null = null;
++
++    if (binding.mode === "auto") {
++      schema = autoSchema(kind);
++      mapping = autoMapping(kind);
++      dbId = binding.autoDbId ?? null;
++
++      // Base auto existante : vérifier qu'elle existe encore et que toutes les
++      // colonnes attendues y sont (ex. base créée par une ancienne version) —
++      // les colonnes manquantes sont ajoutées automatiquement.
++      if (dbId) {
++        const check = await fetchDatabaseSchema(settings.secret, dbId);
++        if (!check.ok || !check.schema) {
++          dbId = null; // supprimée côté Notion → recréation ci-dessous
++          binding.autoDbId = undefined;
++          saveNotionSettings(settings);
++        } else {
++          const missing = schema.props.filter(
++            (p) => !check.schema!.props.some((x) => x.name === p.name),
++          );
++          if (missing.length) {
++            const add: Record<string, unknown> = {};
++            for (const p of missing) add[p.name] = columnDefOf(p.type);
++            await callNotion(settings.secret, "PATCH", `/v1/databases/${dbId}`, {
++              properties: add,
++            });
++          }
++        }
++      }
++
++      if (!dbId) {
++        const parent = parseNotionPageId(settings.parentPageId);
++        if (!parent) {
++          lines.push(`${def.emoji} ${def.label} : page parente manquante pour le mode auto ⚠️`);
++          errors++;
++          continue;
++        }
++        const created = await createAutoDatabase(settings.secret, parent, kind);
++        if (!created.ok || !created.dbId) {
++          lines.push(`${def.emoji} ${def.label} : ${created.error ?? "création impossible"} ⚠️`);
++          errors++;
++          continue;
++        }
++        dbId = created.dbId;
++        binding.autoDbId = dbId;
+         saveNotionSettings(settings);
+       }
+-      created += res.created ?? 0;
+-      already += res.skipped ?? 0;
+-      if (!res.remaining) break;
++    } else {
++      dbId = parseNotionPageId(binding.databaseUrl ?? "");
++      mapping = binding.mapping ?? {};
++      if (!dbId || !mapping.date) {
++        lines.push(`${def.emoji} ${def.label} : base non analysée ou colonne Date non associée ⚠️`);
++        errors++;
++        continue;
++      }
++      const s = await fetchDatabaseSchema(settings.secret, dbId);
++      if (!s.ok || !s.schema) {
++        lines.push(`${def.emoji} ${def.label} : ${s.error ?? "base illisible"} ⚠️`);
++        errors++;
++        continue;
++      }
++      schema = s.schema;
++    }
++
++    // 2) Lignes déjà présentes
++    const existing = await findExistingPages(settings.secret, dbId, def, mapping);
++    if (!existing.ok) {
++      lines.push(`${def.emoji} ${def.label} : ${existing.error ?? "lecture impossible"} ⚠️`);
++      errors++;
++      continue;
++    }
++
++    // 3) Créer / mettre à jour (les colonnes non mappées ne sont JAMAIS touchées)
++    let created = 0;
++    let updated = 0;
++    let failed: string | null = null;
++    let i = 0;
++    for (const row of data) {
++      i++;
++      onProgress(`${def.emoji} ${def.label} — ${i}/${data.length}…`);
++      const props = buildPageProps(row, def, schema, mapping, settings.titleStyle);
++      const pageId = existing.byKey.get(row.key);
++      const res = pageId
++        ? await callNotion<{ id: string }>(settings.secret, "PATCH", `/v1/pages/${pageId}`, {
++            properties: props,
++          })
++        : await callNotion<{ id: string }>(settings.secret, "POST", "/v1/pages", {
++            parent: { database_id: dbId },
++            properties: props,
++          });
++      if (!res.ok || !res.data) {
++        failed = `erreur sur « ${row.title} » : ${res.error ?? "inconnue"}`;
++        break;
++      }
++      if (pageId) updated++;
++      else {
++        created++;
++        existing.byKey.set(row.key, res.data.id);
++      }
++      await sleep(350); // ~3 requêtes/s (limite Notion)
++    }
++
++    totalCreated += created;
++    totalUpdated += updated;
++    if (failed) {
++      errors++;
++      lines.push(
++        `${def.emoji} ${def.label} : ${created} créée(s) · ${updated} màj… puis ${failed} ⚠️`,
++      );
++    } else {
++      lines.push(`${def.emoji} ${def.label} : ${created} créée(s) · ${updated} màj ✅`);
+     }
+   }
+ 
+   settings.lastSync = new Date().toISOString();
+   saveNotionSettings(settings);
+ 
+-  if (!synced) return { ok: true, message: "Aucune donnée sur les 14 derniers jours à envoyer." };
+-  return {
+-    ok: true,
+-    message: `Synchro terminée : ${created} ajouté(s) · ${already} déjà présent(s) ✅`,
+-  };
++  const message =
++    errors === 0
++      ? `Synchro terminée : ${totalCreated} créée(s) · ${totalUpdated} mise(s) à jour ✅`
++      : `Synchro partielle : ${totalCreated} créée(s) · ${totalUpdated} màj · ${errors} erreur(s) ⚠️`;
++  return { ok: errors === 0, message, lines };
+ }
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index 27516bb..b0cf996 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -39,6 +39,7 @@ export interface Profile {
+   trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
+   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
+   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
++  notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
+ }
+ 
+ export interface SetLog {
+@@ -260,6 +261,8 @@ export function useAppActions() {
+             favoriteMeals: Array.isArray(data.favorite_meals)
+               ? (data.favorite_meals as unknown as FavoriteMeal[])
+               : s.profile.favoriteMeals,
++            notionConfig:
++              (data.notion_config as Record<string, unknown> | null) ?? s.profile.notionConfig,
+           },
+         }));
+       }
+@@ -310,6 +313,9 @@ export function useAppActions() {
+           favoriteMeals: Array.isArray(profileData.favorite_meals)
+             ? (profileData.favorite_meals as unknown as FavoriteMeal[])
+             : currentProfile.favoriteMeals,
++          notionConfig:
++            (profileData.notion_config as Record<string, unknown> | null) ??
++            currentProfile.notionConfig,
+         };
+       } else {
+         const mappedProfile = {
+@@ -328,6 +334,7 @@ export function useAppActions() {
+           training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
+           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
+           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
++          notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
+           updated_at: new Date().toISOString(),
+         };
+         await supabase.from("profiles").upsert(mappedProfile);
+@@ -887,6 +894,7 @@ export function useAppActions() {
+               training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
+               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
+               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
++              notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
+               updated_at: new Date().toISOString(),
+             };
+             supabase
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index c901f76..0abb302 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -1,4 +1,4 @@
+-import { useState, useEffect } from "react";
++import { useState, useEffect, useMemo, useRef } from "react";
+ import { createFileRoute, useNavigate } from "@tanstack/react-router";
+ import { PageShell, TopBar } from "@/components/BottomNav";
+ import { useAppState, useAppActions } from "@/lib/store";
+@@ -32,8 +32,28 @@ import {
+   saveNotionSettings,
+   parseNotionPageId,
+   syncToNotion,
++  fetchDatabaseSchema,
++  addUidColumn,
+   type NotionSettings,
++  type DatasetBinding,
++  type NotionSchema,
+ } from "@/lib/notion";
++import {
++  buildNotionRows,
++  guessProperty,
++  COMPAT,
++  NOTION_DATASETS,
++  DATASET_ORDER,
++  type NotionDatasetKind,
++  type FieldDef,
++} from "@/lib/notion-datasets";
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectTrigger,
++  SelectValue,
++} from "@/components/ui/select";
+ import {
+   loadReminderSettings,
+   saveReminderSettings,
+@@ -430,25 +450,185 @@ function ExportDataCard() {
+   );
+ }
+ 
++/** Libellé court pour le type d'une colonne Notion. */
++function typeBadge(type: string): string {
++  switch (type) {
++    case "date":
++      return "📅";
++    case "number":
++      return "🔢";
++    case "rich_text":
++      return "🔤";
++    case "select":
++      return "🏷️";
++    case "checkbox":
++      return "☑️";
++    case "formula":
++      return "🧮";
++    default:
++      return "▫️";
++  }
++}
++
++const IGNORE = "__ignore__";
++
++/** Une ligne de correspondance : champ de l'app → colonne Notion. */
++function MappingRow({
++  field,
++  schema,
++  value,
++  onChange,
++}: {
++  field: FieldDef;
++  schema: NotionSchema;
++  value: string | undefined;
++  onChange: (v: string | null) => void;
++}) {
++  const candidates = schema.props.filter(
++    (p) => p.type !== "title" && COMPAT[field.kind].includes(p.type),
++  );
++  const missing = field.required && !value;
++  return (
++    <div className="flex items-center gap-2">
++      <span
++        className={`text-[11px] flex-1 min-w-0 truncate ${
++          missing ? "text-amber-300 font-semibold" : "text-muted-foreground"
++        }`}
++        title={field.label}
++      >
++        {field.label}
++        {field.required ? " *" : ""}
++      </span>
++      <Select value={value ?? IGNORE} onValueChange={(v) => onChange(v === IGNORE ? null : v)}>
++        <SelectTrigger className="h-7 w-[54%] shrink-0 text-[11px] bg-input">
++          <SelectValue placeholder="— Ignorer —" />
++        </SelectTrigger>
++        <SelectContent>
++          <SelectItem value={IGNORE}>— Ne pas envoyer —</SelectItem>
++          {candidates.map((p) => (
++            <SelectItem key={p.name} value={p.name}>
++              {typeBadge(p.type)} {p.name}
++            </SelectItem>
++          ))}
++          {value && !candidates.some((p) => p.name === value) && (
++            <SelectItem value={value}>⚠️ {value} (colonne introuvable)</SelectItem>
++          )}
++        </SelectContent>
++      </Select>
++    </div>
++  );
++}
++
+ /** Synchro automatique vers le Notion de l'utilisateur (clé perso, gratuite). */
+ function NotionSyncCard() {
+   const state = useAppState();
++  const { setProfile } = useAppActions();
+   const [settings, setSettings] = useState<NotionSettings>(() => loadNotionSettings());
++  const [schemas, setSchemas] = useState<Partial<Record<NotionDatasetKind, NotionSchema>>>({});
++  const [analyzing, setAnalyzing] = useState<NotionDatasetKind | null>(null);
+   const [running, setRunning] = useState(false);
+   const [progress, setProgress] = useState("");
++  const [report, setReport] = useState<string[] | null>(null);
++
++  const rows = useMemo(() => buildNotionRows(state), [state]);
++
++  // Sur un nouvel appareil : adopte la config enregistrée dans le profil (si l'appareil est vierge).
++  const adoptedRef = useRef(false);
++  useEffect(() => {
++    if (adoptedRef.current) return;
++    const cloud = state.profile.notionConfig as unknown as NotionSettings | undefined;
++    const local = loadNotionSettings();
++    if (cloud?.secret && !local.secret && !Object.keys(local.bindings).length) {
++      adoptedRef.current = true;
++      saveNotionSettings(cloud);
++      setSettings(cloud);
++    }
++  }, [state.profile.notionConfig]);
+ 
+   const update = (patch: Partial<NotionSettings>) => {
+     const next = { ...settings, ...patch };
+     setSettings(next);
+     saveNotionSettings(next);
++    // Miroir dans le profil Supabase → config retrouvée sur tous les appareils.
++    setProfile({ notionConfig: next as unknown as Record<string, unknown> });
++  };
++
++  const bindingOf = (kind: NotionDatasetKind): DatasetBinding =>
++    settings.bindings[kind] ?? { mode: "off" };
++
++  const updateBinding = (kind: NotionDatasetKind, patch: Partial<DatasetBinding>) => {
++    update({ bindings: { ...settings.bindings, [kind]: { ...bindingOf(kind), ...patch } } });
+   };
+ 
++  const setMapping = (kind: NotionDatasetKind, fieldKey: string, propName: string | null) => {
++    const mapping = { ...(bindingOf(kind).mapping ?? {}) };
++    if (propName === null) delete mapping[fieldKey];
++    else mapping[fieldKey] = propName;
++    updateBinding(kind, { mapping });
++  };
++
++  const analyze = async (kind: NotionDatasetKind) => {
++    const b = bindingOf(kind);
++    const dbId = parseNotionPageId(b.databaseUrl ?? "");
++    if (!settings.secret) {
++      toast.error("Colle d'abord ta clé d'intégration.");
++      return;
++    }
++    if (!dbId) {
++      toast.error("Colle l'URL de ta base Notion.");
++      return;
++    }
++    setAnalyzing(kind);
++    try {
++      const res = await fetchDatabaseSchema(settings.secret, dbId);
++      if (!res.ok || !res.schema) {
++        toast.error(res.error ?? "Analyse impossible.");
++        return;
++      }
++      setSchemas((s) => ({ ...s, [kind]: res.schema }));
++      // Pré-remplissage des correspondances (n'écrase jamais tes choix existants)
++      const mapping: Record<string, string> = { ...(b.mapping ?? {}) };
++      let filled = 0;
++      for (const f of NOTION_DATASETS[kind].fields) {
++        if (mapping[f.key]) continue;
++        const g = guessProperty(res.schema.props, f);
++        if (g) {
++          mapping[f.key] = g;
++          filled++;
++        }
++      }
++      updateBinding(kind, { mapping });
++      toast.success(
++        `« ${res.schema.title} » : ${res.schema.props.length} colonnes · ${filled} correspondance(s) pré-remplie(s) ✅`,
++      );
++    } finally {
++      setAnalyzing(null);
++    }
++  };
++
++  const createUid = async (kind: NotionDatasetKind) => {
++    const b = bindingOf(kind);
++    const dbId = parseNotionPageId(b.databaseUrl ?? "");
++    if (!settings.secret || !dbId) return;
++    const res = await addUidColumn(settings.secret, dbId, "ID");
++    if (!res.ok) {
++      toast.error(res.error ?? "Impossible d'ajouter la colonne.");
++      return;
++    }
++    toast.success("Colonne « ID » ajoutée à ta base ✅");
++    await analyze(kind); // relit le schéma + pré-remplit
++  };
++
++  const activeKinds = DATASET_ORDER.filter((k) => bindingOf(k).mode !== "off");
++  const ready = !!settings.secret && activeKinds.length > 0;
++
+   const run = async () => {
+-    update({ parentPageId: parseNotionPageId(settings.parentPageId) });
+     setRunning(true);
++    setReport(null);
+     setProgress("Préparation…");
+     try {
+       const res = await syncToNotion(state, setProgress);
++      setReport(res.lines);
+       if (res.ok) {
+         toast.success(res.message);
+         setSettings(loadNotionSettings());
+@@ -464,30 +644,38 @@ function NotionSyncCard() {
+     }
+   };
+ 
+-  const ready = !!settings.secret && !!parseNotionPageId(settings.parentPageId);
+-
+   return (
+     <div className="card-premium p-4 space-y-3 lg:col-span-2 border border-violet-400/20">
+-      <h3 className="font-bold text-sm">📓 Synchro automatique vers mon Notion</h3>
++      <h3 className="font-bold text-sm">📓 Synchro vers mon Notion</h3>
+       <details className="text-xs">
+         <summary className="cursor-pointer text-violet-300 font-bold">
+-          Config (une seule fois, ~10 min, gratuit)
++          Config (une seule fois, ~5 min, gratuit)
+         </summary>
+         <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
+           <li>
+-            Va sur <b>notion.so/profile/integrations</b> → « + Nouvelle intégration » → donne-lui un
+-            nom (ex. Calli Recomp) → copie la <b>clé interne</b> (commence par ntn_).
++            Va sur <b>notion.so/profile/integrations</b> → « + Nouvelle intégration » → copie la{" "}
++            <b>clé interne</b> (commence par ntn_).
++          </li>
++          <li>
++            Sur <b>chaque base</b> à synchroniser (ou sur la page qui les contient) : ⋯ en haut →{" "}
++            <b>Connexions</b> → choisis ton intégration — sinon erreur 404.
++          </li>
++          <li>
++            Mode <b>« Ma base »</b> : colle l'URL de ta base → <b>Analyser</b> → l'app lit tes
++            colonnes et pré-remplit les correspondances (★ = requis). Tes formules, RPE et notes ne
++            sont jamais écrasés.
+           </li>
+-          <li>Crée une page Notion « Calli Recomp » (ou utilise une page existante).</li>
+           <li>
+-            Sur cette page : ⋯ en haut à droite → <b>Connexions</b> → choisis ton intégration
+-            (obligatoire, sinon erreur 404).
++            Mode <b>« Auto »</b> : colle l'URL d'une page → l'app crée les bases pour toi.
++          </li>
++          <li>
++            La synchro écrit <b>une ligne par jour / semaine / mois</b> et la met à jour ensuite —
++            relance-la quand tu veux (rythme pesée 😉), jamais de doublon.
+           </li>
+-          <li>Colle ci-dessous la clé + l'URL de la page → Synchroniser. C'est fini 🎉</li>
+         </ol>
+       </details>
+ 
+-      <div className="space-y-2">
++      <div className="grid gap-2 lg:grid-cols-2">
+         <div>
+           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+             Clé d'intégration
+@@ -503,7 +691,35 @@ function NotionSyncCard() {
+         </div>
+         <div>
+           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+-            Page Notion (URL ou ID)
++            Style de titre des lignes
++          </label>
++          <div className="grid grid-cols-2 gap-2 mt-1">
++            {(
++              [
++                ["mention", "@mention date"],
++                ["texte", "Texte simple"],
++              ] as const
++            ).map(([v, label]) => (
++              <button
++                key={v}
++                onClick={() => update({ titleStyle: v })}
++                className={`h-9 rounded-lg border text-xs font-semibold transition ${
++                  settings.titleStyle === v
++                    ? "btn-hero border-transparent"
++                    : "bg-card border-border text-muted-foreground"
++                }`}
++              >
++                {label}
++              </button>
++            ))}
++          </div>
++        </div>
++      </div>
++
++      {activeKinds.some((k) => bindingOf(k).mode === "auto") && (
++        <div>
++          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
++            Page parente (mode auto) — URL ou ID
+           </label>
+           <Input
+             value={settings.parentPageId}
+@@ -513,6 +729,118 @@ function NotionSyncCard() {
+             autoComplete="off"
+           />
+         </div>
++      )}
++
++      <div className="space-y-2">
++        {DATASET_ORDER.map((kind) => {
++          const def = NOTION_DATASETS[kind];
++          const b = bindingOf(kind);
++          const schema = schemas[kind];
++          return (
++            <div key={kind} className="rounded-xl border border-white/10 p-3 space-y-2">
++              <div className="flex items-center justify-between gap-2">
++                <p className="text-sm font-semibold">
++                  {def.emoji} {def.label}
++                </p>
++                <span className="text-[10px] text-muted-foreground shrink-0">
++                  {rows[kind].length} ligne(s) · 14 j
++                </span>
++              </div>
++
++              <Select
++                value={b.mode}
++                onValueChange={(v) => updateBinding(kind, { mode: v as DatasetBinding["mode"] })}
++              >
++                <SelectTrigger className="h-8 text-xs bg-input">
++                  <SelectValue />
++                </SelectTrigger>
++                <SelectContent>
++                  <SelectItem value="off">🚫 Ne pas synchroniser</SelectItem>
++                  <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
++                  <SelectItem value="auto">✨ Base auto (créée dans ma page)</SelectItem>
++                </SelectContent>
++              </Select>
++
++              {b.mode === "existing" && (
++                <div className="space-y-2">
++                  <div className="flex gap-2">
++                    <Input
++                      value={b.databaseUrl ?? ""}
++                      onChange={(e) => updateBinding(kind, { databaseUrl: e.target.value.trim() })}
++                      placeholder="URL de ta base (https://…notion.so/xxxx?v=…)"
++                      className="bg-input h-8 text-xs"
++                      autoComplete="off"
++                    />
++                    <Button
++                      size="sm"
++                      variant="secondary"
++                      className="h-8 text-xs shrink-0 bg-white/5 border border-white/10"
++                      disabled={analyzing !== null}
++                      onClick={() => {
++                        void analyze(kind);
++                      }}
++                    >
++                      {analyzing === kind ? (
++                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
++                      ) : schema ? (
++                        "Ré-analyser"
++                      ) : (
++                        "Analyser"
++                      )}
++                    </Button>
++                  </div>
++
++                  {schema && (
++                    <div className="rounded-lg bg-white/5 border border-white/10 p-2.5 space-y-1.5">
++                      <p className="text-[11px] text-muted-foreground">
++                        Base <b className="text-foreground">« {schema.title} »</b> · titre : colonne{" "}
++                        <b className="text-foreground">« {schema.titleProp} »</b>
++                      </p>
++                      {kind === "tests" && !b.mapping?.uid && (
++                        <div className="flex items-center justify-between gap-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5">
++                          <p className="text-[10px] text-amber-200">
++                            Tests : une colonne texte « ID » est requise contre les doublons.
++                          </p>
++                          <Button
++                            size="sm"
++                            variant="secondary"
++                            className="h-7 text-[10px] shrink-0"
++                            onClick={() => {
++                              void createUid(kind);
++                            }}
++                          >
++                            ➕ L'ajouter
++                          </Button>
++                        </div>
++                      )}
++                      {def.fields.map((f) => (
++                        <MappingRow
++                          key={f.key}
++                          field={f}
++                          schema={schema}
++                          value={b.mapping?.[f.key]}
++                          onChange={(v) => setMapping(kind, f.key, v)}
++                        />
++                      ))}
++                      <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
++                        ★ requis · « Ne pas envoyer » = colonne jamais touchée (RPE, notes,
++                        formules… tranquilles ✌️)
++                      </p>
++                    </div>
++                  )}
++                </div>
++              )}
++
++              {b.mode === "auto" && (
++                <p className="text-[11px] text-muted-foreground leading-relaxed">
++                  {b.autoDbId
++                    ? "✅ Base déjà créée par l'app — les colonnes y sont gérées automatiquement."
++                    : "La base sera créée dans ta page parente à la première synchro."}
++                </p>
++              )}
++            </div>
++          );
++        })}
+       </div>
+ 
+       <Button onClick={run} disabled={!ready || running} className="w-full h-11 btn-hero font-bold">
+@@ -526,6 +854,21 @@ function NotionSyncCard() {
+           </span>
+         )}
+       </Button>
++      {!ready && !settings.secret && (
++        <p className="text-[10px] text-amber-300 text-center">
++          Colle ta clé d'intégration et active au moins un export pour lancer la synchro.
++        </p>
++      )}
++
++      {report && (
++        <div className="rounded-lg bg-white/5 border border-white/10 p-3 space-y-1">
++          {report.map((l, i) => (
++            <p key={i} className="text-[11px] text-muted-foreground">
++              {l}
++            </p>
++          ))}
++        </div>
++      )}
+ 
+       {settings.lastSync && (
+         <p className="text-[10px] text-muted-foreground text-center">
+@@ -539,8 +882,9 @@ function NotionSyncCard() {
+         </p>
+       )}
+       <p className="text-[10px] text-muted-foreground leading-relaxed">
+-        🔒 Ta clé reste sur cet appareil (rien n'est stocké côté serveur). La synchro passe par ton
+-        propre hébergement Vercel uniquement pour contourner la règle CORS de Notion.
++        🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
++        accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
++        fait que contourner la règle CORS de Notion.
+       </p>
+     </div>
+   );
+diff --git a/supabase/migrations/20260719000002_notion_config.sql b/supabase/migrations/20260719000002_notion_config.sql
+new file mode 100644
+index 0000000..d4a047b
+--- /dev/null
++++ b/supabase/migrations/20260719000002_notion_config.sql
+@@ -0,0 +1,3 @@
++-- V5 : configuration de la synchro Notion par utilisateur (retrouvée sur tous
++-- ses appareils : bases liées, correspondances de colonnes, style de titre).
++alter table public.profiles add column if not exists notion_config jsonb not null default '{}'::jsonb;

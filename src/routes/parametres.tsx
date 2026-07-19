@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { useAppState, useAppActions } from "@/lib/store";
@@ -32,8 +32,28 @@ import {
   saveNotionSettings,
   parseNotionPageId,
   syncToNotion,
+  fetchDatabaseSchema,
+  addUidColumn,
   type NotionSettings,
+  type DatasetBinding,
+  type NotionSchema,
 } from "@/lib/notion";
+import {
+  buildNotionRows,
+  guessProperty,
+  COMPAT,
+  NOTION_DATASETS,
+  DATASET_ORDER,
+  type NotionDatasetKind,
+  type FieldDef,
+} from "@/lib/notion-datasets";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   loadReminderSettings,
   saveReminderSettings,
@@ -430,25 +450,185 @@ function ExportDataCard() {
   );
 }
 
+/** Libellé court pour le type d'une colonne Notion. */
+function typeBadge(type: string): string {
+  switch (type) {
+    case "date":
+      return "📅";
+    case "number":
+      return "🔢";
+    case "rich_text":
+      return "🔤";
+    case "select":
+      return "🏷️";
+    case "checkbox":
+      return "☑️";
+    case "formula":
+      return "🧮";
+    default:
+      return "▫️";
+  }
+}
+
+const IGNORE = "__ignore__";
+
+/** Une ligne de correspondance : champ de l'app → colonne Notion. */
+function MappingRow({
+  field,
+  schema,
+  value,
+  onChange,
+}: {
+  field: FieldDef;
+  schema: NotionSchema;
+  value: string | undefined;
+  onChange: (v: string | null) => void;
+}) {
+  const candidates = schema.props.filter(
+    (p) => p.type !== "title" && COMPAT[field.kind].includes(p.type),
+  );
+  const missing = field.required && !value;
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`text-[11px] flex-1 min-w-0 truncate ${
+          missing ? "text-amber-300 font-semibold" : "text-muted-foreground"
+        }`}
+        title={field.label}
+      >
+        {field.label}
+        {field.required ? " *" : ""}
+      </span>
+      <Select value={value ?? IGNORE} onValueChange={(v) => onChange(v === IGNORE ? null : v)}>
+        <SelectTrigger className="h-7 w-[54%] shrink-0 text-[11px] bg-input">
+          <SelectValue placeholder="— Ignorer —" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={IGNORE}>— Ne pas envoyer —</SelectItem>
+          {candidates.map((p) => (
+            <SelectItem key={p.name} value={p.name}>
+              {typeBadge(p.type)} {p.name}
+            </SelectItem>
+          ))}
+          {value && !candidates.some((p) => p.name === value) && (
+            <SelectItem value={value}>⚠️ {value} (colonne introuvable)</SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 /** Synchro automatique vers le Notion de l'utilisateur (clé perso, gratuite). */
 function NotionSyncCard() {
   const state = useAppState();
+  const { setProfile } = useAppActions();
   const [settings, setSettings] = useState<NotionSettings>(() => loadNotionSettings());
+  const [schemas, setSchemas] = useState<Partial<Record<NotionDatasetKind, NotionSchema>>>({});
+  const [analyzing, setAnalyzing] = useState<NotionDatasetKind | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
+  const [report, setReport] = useState<string[] | null>(null);
+
+  const rows = useMemo(() => buildNotionRows(state), [state]);
+
+  // Sur un nouvel appareil : adopte la config enregistrée dans le profil (si l'appareil est vierge).
+  const adoptedRef = useRef(false);
+  useEffect(() => {
+    if (adoptedRef.current) return;
+    const cloud = state.profile.notionConfig as unknown as NotionSettings | undefined;
+    const local = loadNotionSettings();
+    if (cloud?.secret && !local.secret && !Object.keys(local.bindings).length) {
+      adoptedRef.current = true;
+      saveNotionSettings(cloud);
+      setSettings(cloud);
+    }
+  }, [state.profile.notionConfig]);
 
   const update = (patch: Partial<NotionSettings>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
     saveNotionSettings(next);
+    // Miroir dans le profil Supabase → config retrouvée sur tous les appareils.
+    setProfile({ notionConfig: next as unknown as Record<string, unknown> });
   };
 
+  const bindingOf = (kind: NotionDatasetKind): DatasetBinding =>
+    settings.bindings[kind] ?? { mode: "off" };
+
+  const updateBinding = (kind: NotionDatasetKind, patch: Partial<DatasetBinding>) => {
+    update({ bindings: { ...settings.bindings, [kind]: { ...bindingOf(kind), ...patch } } });
+  };
+
+  const setMapping = (kind: NotionDatasetKind, fieldKey: string, propName: string | null) => {
+    const mapping = { ...(bindingOf(kind).mapping ?? {}) };
+    if (propName === null) delete mapping[fieldKey];
+    else mapping[fieldKey] = propName;
+    updateBinding(kind, { mapping });
+  };
+
+  const analyze = async (kind: NotionDatasetKind) => {
+    const b = bindingOf(kind);
+    const dbId = parseNotionPageId(b.databaseUrl ?? "");
+    if (!settings.secret) {
+      toast.error("Colle d'abord ta clé d'intégration.");
+      return;
+    }
+    if (!dbId) {
+      toast.error("Colle l'URL de ta base Notion.");
+      return;
+    }
+    setAnalyzing(kind);
+    try {
+      const res = await fetchDatabaseSchema(settings.secret, dbId);
+      if (!res.ok || !res.schema) {
+        toast.error(res.error ?? "Analyse impossible.");
+        return;
+      }
+      setSchemas((s) => ({ ...s, [kind]: res.schema }));
+      // Pré-remplissage des correspondances (n'écrase jamais tes choix existants)
+      const mapping: Record<string, string> = { ...(b.mapping ?? {}) };
+      let filled = 0;
+      for (const f of NOTION_DATASETS[kind].fields) {
+        if (mapping[f.key]) continue;
+        const g = guessProperty(res.schema.props, f);
+        if (g) {
+          mapping[f.key] = g;
+          filled++;
+        }
+      }
+      updateBinding(kind, { mapping });
+      toast.success(
+        `« ${res.schema.title} » : ${res.schema.props.length} colonnes · ${filled} correspondance(s) pré-remplie(s) ✅`,
+      );
+    } finally {
+      setAnalyzing(null);
+    }
+  };
+
+  const createUid = async (kind: NotionDatasetKind) => {
+    const b = bindingOf(kind);
+    const dbId = parseNotionPageId(b.databaseUrl ?? "");
+    if (!settings.secret || !dbId) return;
+    const res = await addUidColumn(settings.secret, dbId, "ID");
+    if (!res.ok) {
+      toast.error(res.error ?? "Impossible d'ajouter la colonne.");
+      return;
+    }
+    toast.success("Colonne « ID » ajoutée à ta base ✅");
+    await analyze(kind); // relit le schéma + pré-remplit
+  };
+
+  const activeKinds = DATASET_ORDER.filter((k) => bindingOf(k).mode !== "off");
+  const ready = !!settings.secret && activeKinds.length > 0;
+
   const run = async () => {
-    update({ parentPageId: parseNotionPageId(settings.parentPageId) });
     setRunning(true);
+    setReport(null);
     setProgress("Préparation…");
     try {
       const res = await syncToNotion(state, setProgress);
+      setReport(res.lines);
       if (res.ok) {
         toast.success(res.message);
         setSettings(loadNotionSettings());
@@ -464,30 +644,38 @@ function NotionSyncCard() {
     }
   };
 
-  const ready = !!settings.secret && !!parseNotionPageId(settings.parentPageId);
-
   return (
     <div className="card-premium p-4 space-y-3 lg:col-span-2 border border-violet-400/20">
-      <h3 className="font-bold text-sm">📓 Synchro automatique vers mon Notion</h3>
+      <h3 className="font-bold text-sm">📓 Synchro vers mon Notion</h3>
       <details className="text-xs">
         <summary className="cursor-pointer text-violet-300 font-bold">
-          Config (une seule fois, ~10 min, gratuit)
+          Config (une seule fois, ~5 min, gratuit)
         </summary>
         <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
           <li>
-            Va sur <b>notion.so/profile/integrations</b> → « + Nouvelle intégration » → donne-lui un
-            nom (ex. Calli Recomp) → copie la <b>clé interne</b> (commence par ntn_).
+            Va sur <b>notion.so/profile/integrations</b> → « + Nouvelle intégration » → copie la{" "}
+            <b>clé interne</b> (commence par ntn_).
           </li>
-          <li>Crée une page Notion « Calli Recomp » (ou utilise une page existante).</li>
           <li>
-            Sur cette page : ⋯ en haut à droite → <b>Connexions</b> → choisis ton intégration
-            (obligatoire, sinon erreur 404).
+            Sur <b>chaque base</b> à synchroniser (ou sur la page qui les contient) : ⋯ en haut →{" "}
+            <b>Connexions</b> → choisis ton intégration — sinon erreur 404.
           </li>
-          <li>Colle ci-dessous la clé + l'URL de la page → Synchroniser. C'est fini 🎉</li>
+          <li>
+            Mode <b>« Ma base »</b> : colle l'URL de ta base → <b>Analyser</b> → l'app lit tes
+            colonnes et pré-remplit les correspondances (★ = requis). Tes formules, RPE et notes ne
+            sont jamais écrasés.
+          </li>
+          <li>
+            Mode <b>« Auto »</b> : colle l'URL d'une page → l'app crée les bases pour toi.
+          </li>
+          <li>
+            La synchro écrit <b>une ligne par jour / semaine / mois</b> et la met à jour ensuite —
+            relance-la quand tu veux (rythme pesée 😉), jamais de doublon.
+          </li>
         </ol>
       </details>
 
-      <div className="space-y-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         <div>
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
             Clé d'intégration
@@ -503,7 +691,35 @@ function NotionSyncCard() {
         </div>
         <div>
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-            Page Notion (URL ou ID)
+            Style de titre des lignes
+          </label>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            {(
+              [
+                ["mention", "@mention date"],
+                ["texte", "Texte simple"],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => update({ titleStyle: v })}
+                className={`h-9 rounded-lg border text-xs font-semibold transition ${
+                  settings.titleStyle === v
+                    ? "btn-hero border-transparent"
+                    : "bg-card border-border text-muted-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {activeKinds.some((k) => bindingOf(k).mode === "auto") && (
+        <div>
+          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+            Page parente (mode auto) — URL ou ID
           </label>
           <Input
             value={settings.parentPageId}
@@ -513,6 +729,118 @@ function NotionSyncCard() {
             autoComplete="off"
           />
         </div>
+      )}
+
+      <div className="space-y-2">
+        {DATASET_ORDER.map((kind) => {
+          const def = NOTION_DATASETS[kind];
+          const b = bindingOf(kind);
+          const schema = schemas[kind];
+          return (
+            <div key={kind} className="rounded-xl border border-white/10 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">
+                  {def.emoji} {def.label}
+                </p>
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  {rows[kind].length} ligne(s) · 14 j
+                </span>
+              </div>
+
+              <Select
+                value={b.mode}
+                onValueChange={(v) => updateBinding(kind, { mode: v as DatasetBinding["mode"] })}
+              >
+                <SelectTrigger className="h-8 text-xs bg-input">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">🚫 Ne pas synchroniser</SelectItem>
+                  <SelectItem value="existing">🗂️ Ma base existante</SelectItem>
+                  <SelectItem value="auto">✨ Base auto (créée dans ma page)</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {b.mode === "existing" && (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      value={b.databaseUrl ?? ""}
+                      onChange={(e) => updateBinding(kind, { databaseUrl: e.target.value.trim() })}
+                      placeholder="URL de ta base (https://…notion.so/xxxx?v=…)"
+                      className="bg-input h-8 text-xs"
+                      autoComplete="off"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 text-xs shrink-0 bg-white/5 border border-white/10"
+                      disabled={analyzing !== null}
+                      onClick={() => {
+                        void analyze(kind);
+                      }}
+                    >
+                      {analyzing === kind ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : schema ? (
+                        "Ré-analyser"
+                      ) : (
+                        "Analyser"
+                      )}
+                    </Button>
+                  </div>
+
+                  {schema && (
+                    <div className="rounded-lg bg-white/5 border border-white/10 p-2.5 space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">
+                        Base <b className="text-foreground">« {schema.title} »</b> · titre : colonne{" "}
+                        <b className="text-foreground">« {schema.titleProp} »</b>
+                      </p>
+                      {kind === "tests" && !b.mapping?.uid && (
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5">
+                          <p className="text-[10px] text-amber-200">
+                            Tests : une colonne texte « ID » est requise contre les doublons.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-7 text-[10px] shrink-0"
+                            onClick={() => {
+                              void createUid(kind);
+                            }}
+                          >
+                            ➕ L'ajouter
+                          </Button>
+                        </div>
+                      )}
+                      {def.fields.map((f) => (
+                        <MappingRow
+                          key={f.key}
+                          field={f}
+                          schema={schema}
+                          value={b.mapping?.[f.key]}
+                          onChange={(v) => setMapping(kind, f.key, v)}
+                        />
+                      ))}
+                      <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
+                        ★ requis · « Ne pas envoyer » = colonne jamais touchée (RPE, notes,
+                        formules… tranquilles ✌️)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {b.mode === "auto" && (
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {b.autoDbId
+                    ? "✅ Base déjà créée par l'app — les colonnes y sont gérées automatiquement."
+                    : "La base sera créée dans ta page parente à la première synchro."}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <Button onClick={run} disabled={!ready || running} className="w-full h-11 btn-hero font-bold">
@@ -526,6 +854,21 @@ function NotionSyncCard() {
           </span>
         )}
       </Button>
+      {!ready && !settings.secret && (
+        <p className="text-[10px] text-amber-300 text-center">
+          Colle ta clé d'intégration et active au moins un export pour lancer la synchro.
+        </p>
+      )}
+
+      {report && (
+        <div className="rounded-lg bg-white/5 border border-white/10 p-3 space-y-1">
+          {report.map((l, i) => (
+            <p key={i} className="text-[11px] text-muted-foreground">
+              {l}
+            </p>
+          ))}
+        </div>
+      )}
 
       {settings.lastSync && (
         <p className="text-[10px] text-muted-foreground text-center">
@@ -539,8 +882,9 @@ function NotionSyncCard() {
         </p>
       )}
       <p className="text-[10px] text-muted-foreground leading-relaxed">
-        🔒 Ta clé reste sur cet appareil (rien n'est stocké côté serveur). La synchro passe par ton
-        propre hébergement Vercel uniquement pour contourner la règle CORS de Notion.
+        🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
+        accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
+        fait que contourner la règle CORS de Notion.
       </p>
     </div>
   );

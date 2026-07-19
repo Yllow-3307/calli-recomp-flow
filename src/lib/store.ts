@@ -39,6 +39,7 @@ export interface Profile {
   trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
+  notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
 }
 
 export interface SetLog {
@@ -260,6 +261,8 @@ export function useAppActions() {
             favoriteMeals: Array.isArray(data.favorite_meals)
               ? (data.favorite_meals as unknown as FavoriteMeal[])
               : s.profile.favoriteMeals,
+            notionConfig:
+              (data.notion_config as Record<string, unknown> | null) ?? s.profile.notionConfig,
           },
         }));
       }
@@ -310,6 +313,9 @@ export function useAppActions() {
           favoriteMeals: Array.isArray(profileData.favorite_meals)
             ? (profileData.favorite_meals as unknown as FavoriteMeal[])
             : currentProfile.favoriteMeals,
+          notionConfig:
+            (profileData.notion_config as Record<string, unknown> | null) ??
+            currentProfile.notionConfig,
         };
       } else {
         const mappedProfile = {
@@ -328,6 +334,7 @@ export function useAppActions() {
           training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
+          notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -887,6 +894,7 @@ export function useAppActions() {
               training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
+              notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase

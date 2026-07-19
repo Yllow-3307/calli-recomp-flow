@@ -3,7 +3,7 @@
  * cache d'abord pour les assets statiques hashés par Vite.
  * Les appels API (Supabase, auth) ne sont JAMAIS interceptés ni mis en cache.
  */
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE_NAME = `calli-recomp-${VERSION}`;
 const OFFLINE_URL = "/";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
