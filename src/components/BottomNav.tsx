@@ -1,67 +1,32 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Home,
-  Dumbbell,
-  TrendingUp,
-  Apple,
-  Ruler,
-  Settings,
-  CalendarDays,
-  History,
-  Trophy,
-  MoreHorizontal,
-} from "lucide-react";
+import { Home, MoreHorizontal, Ruler } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { NAV_CANDIDATES, normalizeNavPicks } from "@/lib/nav-menu";
 import { useAppState, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
-
-const mainItems = [
-  { to: "/", label: "Accueil", icon: Home, exact: true },
-  { to: "/seance", label: "Séance", icon: Dumbbell, exact: false },
-  { to: "/nutrition", label: "Nutrition", icon: Apple, exact: false },
-  { to: "/progression", label: "Progrès", icon: TrendingUp, exact: false },
-] as const;
-
-const moreItems = [
-  {
-    to: "/programme",
-    label: "Programme",
-    icon: CalendarDays,
-    color: "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  },
-  {
-    to: "/historique",
-    label: "Historique",
-    icon: History,
-    color: "text-pink-400 bg-pink-500/10 border-pink-500/20",
-  },
-  {
-    to: "/skills",
-    label: "Skills",
-    icon: Trophy,
-    color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  },
-  {
-    to: "/mesures",
-    label: "Mesures",
-    icon: Ruler,
-    color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  },
-  {
-    to: "/parametres",
-    label: "Paramètres",
-    icon: Settings,
-    color: "text-slate-400 bg-slate-500/10 border-slate-500/20",
-  },
-] as const;
 
 export function BottomNav() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-    if (location.pathname === "/onboarding") return null;
+  const picks = normalizeNavPicks(useAppState().profile.navMenus);
 
+  const mainItems = [
+    { to: "/", label: "Accueil", icon: Home, exact: true },
+    ...NAV_CANDIDATES.filter((c) => picks.includes(c.id)).map((c) => ({
+      to: c.to,
+      label: c.label,
+      icon: c.icon,
+      exact: false,
+    })),
+  ];
+  const moreItems = NAV_CANDIDATES.filter((c) => !picks.includes(c.id));
+
+  // L'onboarding est un assistant plein Ã©cran : sa propre barre (Continuer/Retour)
+  // est fixÃ©e en bas, il faut masquer la navigation sinon elle passe par-dessus
+  // et bloque le bouton Continuer (mÃªme z-index, rendue aprÃ¨s dans le DOM).
+  if (location.pathname === "/onboarding") return null;
 
   // Check if any of the items in the "Plus" menu are currently active
   const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
@@ -180,8 +145,8 @@ export function PageShell({
 }
 
 /**
- * Barre latérale desktop (lg = icônes seules, xl = icônes + labels).
- * Masquée sur mobile (la BottomNav prend le relais) et pendant l'onboarding.
+ * Barre latÃ©rale desktop (lg = icÃ´nes seules, xl = icÃ´nes + labels).
+ * MasquÃ©e sur mobile (la BottomNav prend le relais) et pendant l'onboarding.
  */
 export function DesktopNav() {
   const location = useLocation();
@@ -195,10 +160,14 @@ export function DesktopNav() {
     });
   }, []);
 
-  // Assistant plein écran, même logique que la BottomNav
+  // Assistant plein Ã©cran, mÃªme logique que la BottomNav
   if (location.pathname === "/onboarding") return null;
 
-  const items = [...mainItems, ...moreItems];
+  // Sur desktop, la barre latÃ©rale affiche TOUS les menus (pas de Â« Plus Â»).
+  const items = [
+    { to: "/", label: "Accueil", icon: Home, exact: true as const },
+    ...NAV_CANDIDATES.map((c) => ({ to: c.to, label: c.label, icon: c.icon, exact: false })),
+  ];
 
   return (
     <nav className="hidden lg:flex fixed left-0 top-0 bottom-0 z-40 w-20 xl:w-64 flex-col border-r border-white/[0.06] bg-slate-950/85 backdrop-blur-xl">
@@ -244,14 +213,14 @@ export function DesktopNav() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hidden xl:block">
             Streak
           </p>
-          <p className="text-lg font-black text-gradient">🔥 {streak}j</p>
+          <p className="text-lg font-black text-gradient">ðŸ”¥ {streak}j</p>
         </div>
         {email && (
           <p
             className="hidden xl:block text-[10px] text-muted-foreground truncate px-1"
             title={email}
           >
-            {state.profile.username ? `👤 ${state.profile.username} · ${email}` : email}
+            {state.profile.username ? `ðŸ‘¤ ${state.profile.username} Â· ${email}` : email}
           </p>
         )}
       </div>
