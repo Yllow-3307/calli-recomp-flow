@@ -83,7 +83,7 @@ import { computeAutoStatus, SKILL_STATUS_META } from "@/lib/skill-status";
 import { loadNotionSettings, syncToNotion } from "@/lib/notion";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
-import { UserCheck, X, ClipboardList, PartyPopper } from "lucide-react";
+import { UserCheck, X, ClipboardList, PartyPopper, ExternalLink } from "lucide-react";
 
 // Badges colorés de type de séance stylisés
 export function SessionTypeBadge({
@@ -213,7 +213,7 @@ function Dashboard() {
     };
     const onUp = () => {
       setDrag((d) => {
-        if (d?.over && (Math.abs(d.dx) > 6 || Math.abs(d.dy) > 6)) moveBlockToIndex(d.from, d.over);
+        if (d?.over && (Math.abs(d.dx) > 4 || Math.abs(d.dy) > 4)) moveBlockToIndex(d.from, d.over);
         return null;
       });
     };
@@ -301,6 +301,20 @@ function Dashboard() {
 
   const resetLayout = () => {
     if (confirm("Revenir a la mise en page d'origine de l'accueil ?")) applyLayout([]);
+  };
+
+  /** Réorganise les blocs pour combler les trous visuels : tri par span descendant (gros d'abord)
+   *  puis position dans la section. Utile après un resize sauvage. */
+  const compactLayout = () => {
+    const next = layout.map((s) => ({
+      ...s,
+      blocks: [...s.blocks].sort((a, b) => {
+        if (a.span !== b.span) return b.span - a.span; // les plus larges d'abord
+        return blockKeyOf(a).localeCompare(blockKeyOf(b));
+      }),
+    }));
+    applyLayout(next);
+    toast.success("Blocs réorganisés pour remplir les trous ✨");
   };
 
   const usedKinds = new Set(layout.flatMap((s) => s.blocks.map((b) => b.kind)));
@@ -577,10 +591,13 @@ function Dashboard() {
         style={
           isDragged && drag
             ? {
-                transform: `translate(${drag.dx}px, ${drag.dy}px)`,
-                zIndex: 40,
-                opacity: 0.85,
+                transform: `translate(${drag.dx}px, ${drag.dy}px) scale(1.03)`,
+                zIndex: 50,
+                opacity: 0.92,
                 pointerEvents: "none",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px var(--color-primary)",
+                borderRadius: "1rem",
+                transition: "box-shadow 0.15s ease",
               }
             : undefined
         }
@@ -709,6 +726,14 @@ function Dashboard() {
               }}
             >
               + Bloc
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-full text-xs text-muted-foreground"
+              onClick={compactLayout}
+            >
+              Réorganiser
             </Button>
             <Button
               size="sm"
@@ -1307,17 +1332,77 @@ function HomeMesuresBlock() {
   );
 }
 
-/** Bloc « Musique » : coquille en attendant le contenu (V10). */
+/** Bloc « Musique » : lance ta playlist sport depuis l'app (Spotify/Deezer/Apple Music). */
 function MusiqueBlock() {
+  const state = useAppState();
+  const today = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
+  const playlists = state.profile.musicPlaylists ?? {};
+  const tType = today.type;
+  const sessionType: string =
+    tType === "running" ? "running" : tType === "rest" || tType === "recovery" ? "recovery" : tType;
+  const url = playlists[sessionType] || playlists["running"] || "";
+
+  const appName = url.includes("spotify")
+    ? "Spotify"
+    : url.includes("deezer")
+      ? "Deezer"
+      : url.includes("music.apple") || url.includes("apple")
+        ? "Apple Music"
+        : null;
+
+  const appColors: Record<string, string> = {
+    Spotify: "bg-green-500/20 text-green-400 border-green-500/30",
+    Deezer: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    "Apple Music": "bg-pink-500/20 text-pink-400 border-pink-500/30",
+  };
+
   return (
     <div className="card-premium p-5 border border-pink-400/25 bg-gradient-to-b from-pink-400/[0.10] to-transparent relative overflow-hidden h-full">
       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
         <Music className="h-4 w-4 text-pink-400" /> Musique
       </div>
-      <p className="mt-3 text-sm font-black">Ton bloc musique 🎧</p>
-      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-        Lecteur & playlists d'entrainement — le contenu arrive dans la prochaine version.
+      <p className="mt-3 text-sm font-black">
+        {sessionType === "recovery" || sessionType === "rest"
+          ? "Récup 💆"
+          : `Playlist ${sessionType === "running" ? "🏃 Course" : sessionType === "push" ? "💪 Push" : sessionType === "pull" ? "🎯 Pull" : "🦵 Legs"}`}
       </p>
+      {url ? (
+        <div className="mt-3 space-y-2">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center justify-between w-full px-3 py-2.5 rounded-xl border text-xs font-bold transition-all hover:scale-[1.02] ${
+              appColors[appName ?? ""] ?? "bg-white/10 text-foreground border-white/20"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <ExternalLink className="h-3.5 w-3.5" />
+              Lancer sur {appName ?? "le lecteur"}
+            </span>
+            <span className="text-[10px] opacity-70">↗</span>
+          </a>
+          <Link
+            to="/parametres"
+            className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors"
+          >
+            Changer de playlist dans Paramètres
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Configure ta playlist sport dans Paramètres → Musique pour lancer ta musique depuis
+            l'app.
+          </p>
+          <Link
+            to="/parametres"
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all"
+          >
+            <Music className="h-3.5 w-3.5" /> Configurer mes playlists
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

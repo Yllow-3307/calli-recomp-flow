@@ -52,6 +52,21 @@ function StatusBadge({ status }: { status: "non commencé" | "en cours" | "proch
   );
 }
 
+/** Description lisible du statut auto-calculé, selon l'avancement. */
+function computeAutoDescription(skillId: string, latestValue: number | undefined): string {
+  if (latestValue === undefined)
+    return "Aucun test enregistré — un test toutes les 4 semaines pour évaluer ta progression.";
+  const info = SKILLS_GUIDE.find((g) => g.id === skillId);
+  if (!info) return "";
+  const status = computeAutoStatus(skillId, latestValue);
+  if (status === "validé")
+    return `Objectif 3 mois atteint (${info.month3}). Continue à entretenir !`;
+  if (status === "proche")
+    return `Plus que ${Math.round((1 - latestValue / info.month3Val) * 100)}% pour atteindre l'objectif 3 mois.`;
+  // prochaine milestone
+  return `Prochaine étape : ${info.month1} → ${info.month2} → ${info.month3}. Continue !`;
+}
+
 function SkillsPage() {
   const state = useAppState();
   const actions = useAppActions();
@@ -282,29 +297,17 @@ function SkillsPage() {
                     </div>
                   </div>
 
-                  {/* Status Configuration override */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                      Ajustement du statut
-                    </label>
-                    <select
-                      value={savedStatus}
-                      onChange={(e) => {
-                        actions.setSkillStatus(
-                          skill.id,
-                          e.target.value as
-                            "non commencé" | "en cours" | "proche" | "validé" | "auto",
-                        );
-                        toast.success("Statut ajusté !");
-                      }}
-                      className="w-full h-10 px-3 rounded-xl bg-input border border-border text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                    >
-                      <option value="auto">Auto-calculé ({autoStatus})</option>
-                      <option value="non commencé">Non commencé</option>
-                      <option value="en cours">En cours</option>
-                      <option value="proche">Proche</option>
-                      <option value="validé">Validé</option>
-                    </select>
+                  {/* Statut (calculé automatiquement) */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Statut
+                    </p>
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/20 border border-border/30">
+                      <StatusBadge status={currentStatus} />
+                      <span className="text-[11px] text-muted-foreground leading-relaxed">
+                        {computeAutoDescription(skill.id, latestTestValue)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Technical notes */}

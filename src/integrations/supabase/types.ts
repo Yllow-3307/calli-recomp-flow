@@ -29,6 +29,7 @@ export type Database = {
           username: string | null;
           home_layout: Json;
           nav_menus: Json;
+          music_playlists: Json;
         };
         Insert: {
           id: string;
@@ -52,6 +53,7 @@ export type Database = {
           username?: string | null;
           home_layout?: Json;
           nav_menus?: Json;
+          music_playlists?: Json;
         };
         Update: {
           id?: string;
@@ -75,6 +77,7 @@ export type Database = {
           username?: string | null;
           home_layout?: Json;
           nav_menus?: Json;
+          music_playlists?: Json;
         };
         Relationships: [
           {

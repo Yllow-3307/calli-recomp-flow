@@ -27,6 +27,7 @@ import {
   History,
   ChevronRight,
   Trophy,
+  Trash2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EvolutionChartDialog } from "@/components/EvolutionChart";
@@ -389,7 +390,7 @@ function ProgressionPage() {
                       return (
                         <div
                           key={log.id}
-                          className="flex items-center justify-between text-[11px] py-1 border-b border-border/20 last:border-none"
+                          className="flex items-center justify-between text-[11px] py-1 border-b border-border/20 last:border-none group"
                         >
                           <span className="text-muted-foreground">
                             {new Date(log.date).toLocaleDateString("fr-FR", {
@@ -418,6 +419,15 @@ function ProgressionPage() {
                                 {diff})
                               </span>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => actions.removeTest(log.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                              title="Supprimer ce test"
+                              aria-label="Supprimer ce test"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
                           </div>
                         </div>
                       );

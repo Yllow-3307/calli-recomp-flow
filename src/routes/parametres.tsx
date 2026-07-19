@@ -24,6 +24,8 @@ import {
   EyeOff,
   KeyRound,
   Check,
+  Music,
+  ExternalLink,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -243,6 +245,14 @@ function ParamsPage() {
           <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
             <ExportDataCard />
             <NotionSyncCard />
+          </div>
+        </section>
+
+        {/* 🎵 Musique */}
+        <section>
+          <SectionTitle>🎵 Musique</SectionTitle>
+          <div className="mt-1.5">
+            <MusicCard />
           </div>
         </section>
 
@@ -1333,6 +1343,106 @@ function NotionSyncCard() {
         🔒 Ta clé et ta config sont gardées dans TON profil Supabase (règles RLS : toi seul y as
         accès) pour les retrouver sur tous tes appareils. Le relais serveur ne stocke rien, il ne
         fait que contourner la règle CORS de Notion.
+      </p>
+    </div>
+  );
+}
+
+/** Carte de configuration des playlists musique par type de séance. */
+function MusicCard() {
+  const state = useAppState();
+  const { setProfile } = useAppActions();
+  const playlists = state.profile.musicPlaylists ?? {};
+  const [local, setLocal] = useState<Record<string, string>>(() => ({
+    push: playlists.push ?? "",
+    pull: playlists.pull ?? "",
+    legs: playlists.legs ?? "",
+    running: playlists.running ?? "",
+  }));
+
+  const types: { key: string; label: string; emoji: string; hint: string }[] = [
+    {
+      key: "push",
+      label: "Push (Pectoraux/Épaules)",
+      emoji: "💪",
+      hint: "Musique énergique, tempo élevé",
+    },
+    {
+      key: "pull",
+      label: "Pull (Dos/Biceps)",
+      emoji: "🎯",
+      hint: "Rythme soutenu pour les tractions",
+    },
+    { key: "legs", label: "Legs (Jambes)", emoji: "🦵", hint: "Gros sons pour les séances dures" },
+    {
+      key: "running",
+      label: "Running (Course)",
+      emoji: "🏃",
+      hint: "Playlist running, BPM stable",
+    },
+  ];
+
+  const save = () => {
+    setProfile({ musicPlaylists: local });
+    toast.success("Playlists enregistrées ✅");
+  };
+
+  return (
+    <div className="card-premium p-4 space-y-3 border border-pink-400/20">
+      <div className="flex items-center gap-2">
+        <Music className="h-4 w-4 text-pink-400" />
+        <h3 className="font-bold text-sm">Playlists sport</h3>
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Colle un lien <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b> par type de séance. Le bon
+        lien s'affichera automatiquement dans le bloc Musique de l'accueil selon la séance du jour.
+      </p>
+
+      <div className="space-y-2.5">
+        {types.map((t) => (
+          <div key={t.key}>
+            <label className="text-xs font-semibold flex items-center gap-1.5 mb-1">
+              <span>{t.emoji}</span> {t.label}
+            </label>
+            <Input
+              value={local[t.key] ?? ""}
+              onChange={(e) => setLocal((prev) => ({ ...prev, [t.key]: e.target.value.trim() }))}
+              placeholder={`Lien ${t.key === "running" ? "Spotify/Deezer/Apple Music" : "de playlist"}…`}
+              className="bg-input h-9 text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground mt-0.5">{t.hint}</p>
+          </div>
+        ))}
+      </div>
+
+      <Button size="sm" onClick={save} className="w-full h-9 btn-hero text-xs font-bold">
+        Enregistrer mes playlists
+      </Button>
+
+      <details className="text-xs">
+        <summary className="cursor-pointer text-pink-300 font-bold">
+          Comment récupérer un lien de playlist ?
+        </summary>
+        <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
+          <li>Ouvre ton app de musique (Spotify, Deezer ou Apple Music).</li>
+          <li>Va dans ta playlist sport.</li>
+          <li>
+            <b>Spotify</b> : ⋯ → Partager → « Copier le lien vers la playlist ».
+          </li>
+          <li>
+            <b>Deezer</b> : ⋯ → Partager → Copie le lien.
+          </li>
+          <li>
+            <b>Apple Music</b> : ⋯ → Partager → « Copier le lien ».
+          </li>
+          <li>Colle le lien ci-dessus pour le type de séance correspondant.</li>
+        </ol>
+      </details>
+
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        🔗 Les liens s'ouvrent dans ton navigateur, qui détectera automatiquement l'application de
+        musique installée sur ton téléphone.
       </p>
     </div>
   );

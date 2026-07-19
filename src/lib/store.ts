@@ -43,6 +43,7 @@ export interface Profile {
   username?: string; // nom d'affichage du compte (V7)
   homeLayout?: unknown[]; // disposition personnalisée de l'accueil (V8, voir home-layout.ts)
   navMenus?: string[]; // 3 entrées choisies de la barre de menu mobile (V9)
+  musicPlaylists?: Record<string, string>; // liens de playlists par type de séance (V10)
 }
 
 export interface SetLog {
@@ -273,6 +274,8 @@ export function useAppActions() {
             navMenus: Array.isArray(data.nav_menus)
               ? (data.nav_menus as string[])
               : s.profile.navMenus,
+            musicPlaylists:
+              (data.music_playlists as Record<string, string> | null) ?? s.profile.musicPlaylists,
           },
         }));
       }
@@ -333,6 +336,9 @@ export function useAppActions() {
           navMenus: Array.isArray(profileData.nav_menus)
             ? (profileData.nav_menus as string[])
             : currentProfile.navMenus,
+          musicPlaylists:
+            (profileData.music_playlists as Record<string, string> | null) ??
+            currentProfile.musicPlaylists,
         };
       } else {
         const mappedProfile = {
@@ -355,6 +361,7 @@ export function useAppActions() {
           username: currentProfile.username ?? null,
           home_layout: (currentProfile.homeLayout ?? []) as unknown as Json,
           nav_menus: (currentProfile.navMenus ?? []) as unknown as Json,
+          music_playlists: (currentProfile.musicPlaylists ?? {}) as unknown as Json,
           updated_at: new Date().toISOString(),
         };
         await supabase.from("profiles").upsert(mappedProfile);
@@ -918,6 +925,7 @@ export function useAppActions() {
               username: profileToSync.username ?? null,
               home_layout: (profileToSync.homeLayout ?? []) as unknown as Json,
               nav_menus: (profileToSync.navMenus ?? []) as unknown as Json,
+              music_playlists: (profileToSync.musicPlaylists ?? {}) as unknown as Json,
               updated_at: new Date().toISOString(),
             };
             supabase
@@ -1202,6 +1210,31 @@ export function useAppActions() {
         } catch (err) {
           console.error("Erreur d'enregistrement du test de progression dans Supabase :", err);
           syncFailureToast("Test de progression");
+        }
+      }, 0);
+    }, []),
+    removeTest: useCallback((id: string) => {
+      setState((s) => ({ ...s, tests: s.tests.filter((x) => x.id !== id) }));
+
+      setTimeout(async () => {
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!session?.user) return;
+
+          if (isUUID(id)) {
+            const { error } = await supabase
+              .from("progress_tests")
+              .delete()
+              .eq("id", id)
+              .eq("user_id", session.user.id);
+
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error("Erreur de suppression du test dans Supabase :", err);
+          toast.error("Erreur de synchronisation réseau pour la suppression du test.");
         }
       }, 0);
     }, []),
