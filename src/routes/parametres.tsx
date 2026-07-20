@@ -1545,7 +1545,7 @@ function MusicCard() {
   });
 
   const save = () => {
-    setProfile({ musicPlaylists: items as unknown as Record<string, unknown> });
+    setProfile({ musicPlaylists: items });
     toast.success("Playlists enregistrées ✅");
   };
 

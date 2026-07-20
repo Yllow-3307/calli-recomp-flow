@@ -28,11 +28,13 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
       applicationServerKey: vapidKey,
     });
     const subJson = sub.toJSON();
+    const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (!userId) return { ok: false, error: "Non connecté" };
     const { error } = await (supabase as any).from("push_subscriptions").upsert(
       {
         endpoint: sub.endpoint,
         keys: subJson.keys as Record<string, string>,
-        user_id: (await supabase.auth.getSession()).data.session?.user?.id,
+        user_id: userId,
       },
       { onConflict: "endpoint" },
     );

@@ -267,7 +267,12 @@ export async function exportProgramPDF(): Promise<boolean> {
   } catch (err) {
     console.error("Erreur export PDF:", err);
     // Fallback ultime: impression navigateur
-    try { window.print(); return true; } catch {}
+    try {
+      window.print();
+      return true;
+    } catch (printErr) {
+      console.warn("Print fallback also failed:", printErr);
+    }
     return false;
   }
 }

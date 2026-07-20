@@ -625,12 +625,34 @@ function ExerciseCard({
   );
 }
 
-function NumberField({ label, value }: { label: string; value?: number; optional?: boolean }) {
+function NumberField({ label, value, onChange }: { label: string; value?: number; onChange?: (v: number | undefined) => void; optional?: boolean }) {
   return (
     <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg px-1.5 py-0.5">
-      <span className="h-7 w-12 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums">
-        {value ?? "—"}
-      </span>
+      {onChange ? (
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => onChange((value ?? 0) > 0 ? value! - 1 : 0)}
+            className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-l-md hover:bg-white/5 transition-colors"
+          >
+            −
+          </button>
+          <span className="h-7 w-10 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums select-none">
+            {value ?? "—"}
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange((value ?? 0) + 1)}
+            className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-r-md hover:bg-white/5 transition-colors"
+          >
+            +
+          </button>
+        </div>
+      ) : (
+        <span className="h-7 w-12 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums">
+          {value ?? "—"}
+        </span>
+      )}
       <span className="text-[10px] font-extrabold text-muted-foreground lowercase">{label}</span>
     </div>
   );

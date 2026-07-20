@@ -43,7 +43,7 @@ export interface Profile {
   username?: string; // nom d'affichage du compte (V7)
   homeLayout?: unknown[]; // disposition personnalisée de l'accueil (V8, voir home-layout.ts)
   navMenus?: string[]; // 3 entrées choisies de la barre de menu mobile (V9)
-  musicPlaylists?: Record<string, string>; // liens de playlists par type de séance (V10)
+  musicPlaylists?: unknown; // liens de playlists (V10: Record, V13+: array[{id,label,url}])
 }
 
 export interface SetLog {
@@ -277,7 +277,7 @@ export function useAppActions() {
               ? (data.nav_menus as string[])
               : s.profile.navMenus,
             musicPlaylists:
-              (data.music_playlists as Record<string, string> | null) ?? s.profile.musicPlaylists,
+              data.music_playlists ?? s.profile.musicPlaylists,
           },
         }));
       }
@@ -339,7 +339,7 @@ export function useAppActions() {
             ? (profileData.nav_menus as string[])
             : currentProfile.navMenus,
           musicPlaylists:
-            (profileData.music_playlists as Record<string, string> | null) ??
+            profileData.music_playlists ??
             currentProfile.musicPlaylists,
         };
       } else {
