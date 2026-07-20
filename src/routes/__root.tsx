@@ -101,8 +101,9 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body className="safe-area-top">
         {children}
+        <div className="safe-gradient-top" />
         <Scripts />
       </body>
     </html>

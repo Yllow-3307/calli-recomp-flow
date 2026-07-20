@@ -322,85 +322,42 @@ function PhotoSlotInput({
   value?: string;
   onChange: (v: string) => void;
 }) {
-  const camRef = useRef<HTMLInputElement>(null);
-  const libRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
-
-  /** Réinitialise les 3 inputs après un choix (sinon re-sélection du même fichier = pas d'événement). */
-  const afterPick = () => {
-    setPickerOpen(false);
-    for (const r of [camRef, libRef, fileRef]) if (r.current) r.current.value = "";
-  };
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Check network connectivity first
-    if (!navigator.onLine) {
-      toast.error("Connexion requise pour envoyer les photos de progression.");
-      return;
-    }
-
+    if (!navigator.onLine) { toast.error("Connexion requise."); return; }
     setUploading(true);
     try {
-      // 1. Get current authenticated user
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) {
-        toast.error("Veuillez vous connecter pour envoyer des photos.");
-        return;
-      }
-      const userId = session.user.id;
-
-      // 2. Compress locally first to reduce bandwidth and memory footprint
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { toast.error("Connecte-toi."); return; }
       const b64 = await fileToCompressedBase64(file);
       const fileObj = base64ToFile(b64, `${Date.now()}-${slot}.jpg`);
       if (!fileObj) throw new Error("Conversion error");
-
-      // 3. Upload directly to private bucket progress-photos
-      const storagePath = `${userId}/${Date.now()}-${slot}.jpg`;
-      const { data, error } = await supabase.storage
-        .from("progress-photos")
-        .upload(storagePath, fileObj);
-
+      const { data, error } = await supabase.storage.from("progress-photos")
+        .upload(`${session.user.id}/${Date.now()}-${slot}.jpg`, fileObj);
       if (error) throw error;
-
-      if (data?.path) {
-        onChange(data.path);
-        toast.success("Photo chargée avec succès !");
-      }
+      if (data?.path) { onChange(data.path); toast.success("Photo chargée !"); }
     } catch (err) {
       console.error("Upload error:", err);
-      toast.error("Échec de l'envoi de la photo. Vérifie ta connexion.");
-    } finally {
-      setUploading(false);
-    }
+      toast.error("Échec de l'envoi.");
+    } finally { setUploading(false); if (inputRef.current) inputRef.current.value = ""; }
   };
 
   return (
     <>
-      <button
-        type="button"
-        disabled={uploading}
-        onClick={() => setPickerOpen(true)}
-        className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center disabled:opacity-70"
-      >
+      <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()}
+        className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center disabled:opacity-70">
         {uploading ? (
           <div className="text-center text-muted-foreground">
             <Loader2 className="h-5 w-5 mx-auto mb-1 animate-spin text-primary" />
             <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
           </div>
         ) : value ? (
-          <SecureImage
-            path={value}
-            fallbackLabel={label}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+          <SecureImage path={value} fallbackLabel={label} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="text-center text-muted-foreground">
             <Camera className="h-5 w-5 mx-auto mb-1" />
@@ -408,82 +365,7 @@ function PhotoSlotInput({
           </div>
         )}
       </button>
-
-      {/* Choix de la source : caméra / photothèque / fichiers */}
-      <Sheet open={pickerOpen} onOpenChange={setPickerOpen}>
-        <SheetContent
-          side="bottom"
-          className="rounded-t-[2rem] border-t border-white/10 bg-slate-950/95 backdrop-blur-2xl pb-8 max-w-md mx-auto"
-        >
-          <SheetHeader>
-            <SheetTitle className="text-center font-black">Photo « {label} »</SheetTitle>
-          </SheetHeader>
-          <div className="grid gap-2 pt-4">
-            <button
-              type="button"
-              onClick={() => camRef.current?.click()}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-bold hover:bg-white/[0.06] active:scale-[0.98] transition-all"
-            >
-              <span className="p-2 rounded-lg border text-primary bg-primary/10 border-primary/20">
-                <Camera className="h-4 w-4" />
-              </span>
-              Prendre une photo
-            </button>
-            <button
-              type="button"
-              onClick={() => libRef.current?.click()}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-bold hover:bg-white/[0.06] active:scale-[0.98] transition-all"
-            >
-              <span className="p-2 rounded-lg border text-cyan-400 bg-cyan-500/10 border-cyan-500/20">
-                <Images className="h-4 w-4" />
-              </span>
-              Choisir dans la photothèque
-            </button>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-bold hover:bg-white/[0.06] active:scale-[0.98] transition-all"
-            >
-              <span className="p-2 rounded-lg border text-amber-400 bg-amber-500/10 border-amber-500/20">
-                <FolderOpen className="h-4 w-4" />
-              </span>
-              Choisir dans les fichiers
-            </button>
-          </div>
-          {/* 3 entrées cachées : caméra (capture), photothèque, fichiers */}
-          <input
-            ref={camRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              afterPick();
-              handle(e);
-            }}
-            className="hidden"
-          />
-          <input
-            ref={libRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              afterPick();
-              handle(e);
-            }}
-            className="hidden"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,.pdf"
-            onChange={(e) => {
-              afterPick();
-              handle(e);
-            }}
-            className="hidden"
-          />
-        </SheetContent>
-      </Sheet>
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handle} className="hidden" />
     </>
   );
 }

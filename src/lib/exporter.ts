@@ -200,17 +200,22 @@ export function exportFilename(key: DatasetKey, ext: string): string {
 
 export async function exportProgramPDF(): Promise<boolean> {
   try {
+    // Attendre un tick pour être sûr que le DOM est à jour
+    await new Promise((r) => setTimeout(r, 100));
+    const el = document.getElementById("program-pdf-content");
+    if (!el) {
+      console.error("PDF: élément #program-pdf-content introuvable");
+      return false;
+    }
     const { default: html2canvas } = await import("html2canvas");
     const { default: jsPDF } = await import("jspdf");
-
-    const el = document.getElementById("program-pdf-content");
-    if (!el) return false;
 
     const canvas = await html2canvas(el, {
       scale: 2,
       backgroundColor: "#05070f",
       logging: false,
       useCORS: true,
+      allowTaint: true,
     });
 
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
@@ -221,16 +226,12 @@ export async function exportProgramPDF(): Promise<boolean> {
     const imgW = pageW - 20;
     const imgH = (canvas.height * imgW) / canvas.width;
 
-    let heightLeft = imgH;
-    let position = 10;
+    pdf.addImage(imgData, "JPEG", 10, 10, imgW, imgH);
 
-    pdf.addImage(imgData, "JPEG", 10, position, imgW, imgH);
-    heightLeft -= pageH - 20;
-
+    let heightLeft = imgH - (pageH - 20);
     while (heightLeft > 0) {
-      position = heightLeft - imgH + 10;
       pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 10, position, imgW, imgH);
+      pdf.addImage(imgData, "JPEG", 10, 10 - (imgH - heightLeft), imgW, imgH);
       heightLeft -= pageH - 20;
     }
 

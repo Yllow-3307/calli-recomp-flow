@@ -526,25 +526,18 @@ function ExerciseCard({
               >
                 Set {i + 1}
               </span>
-              {ex.kind === "time" ? (
-                <NumberField
-                  label="s"
-                  value={s.time}
-                  onChange={(v) => onSetChange(i, { time: v })}
-                />
+              {ex.kind === "distance" ? (
+                <span className="text-xs font-mono text-cyan-300 px-2 py-1 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
+                  🏃 {ex.target}
+                </span>
+              ) : ex.kind === "time" ? (
+                <NumberField label="s" value={s.time} onChange={(v) => onSetChange(i, { time: v })} />
               ) : (
-                <NumberField
-                  label="reps"
-                  value={s.reps}
-                  onChange={(v) => onSetChange(i, { reps: v })}
-                />
+                <>
+                  <NumberField label="reps" value={s.reps} onChange={(v) => onSetChange(i, { reps: v })} />
+                  <NumberField label="kg" value={s.weight} onChange={(v) => onSetChange(i, { weight: v })} optional />
+                </>
               )}
-              <NumberField
-                label="kg"
-                value={s.weight}
-                onChange={(v) => onSetChange(i, { weight: v })}
-                optional
-              />
               <RpeMini value={s.rpe ?? 7} onChange={(v) => onSetChange(i, { rpe: v })} />
 
               <button

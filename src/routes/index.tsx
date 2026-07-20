@@ -229,8 +229,8 @@ function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragging]);
 
-  // ---- Redimensionnement façon widget Apple (poignée au coin bas-droit) ----
-  const resizeRef = useRef<{ x: number; span: number; si: number; bi: number } | null>(null);
+  // ---- Redimensionnement fluide continu (Pointer Events, pas de snap) ----
+  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; si: number; bi: number } | null>(null);
   const setBlockSpan = (si: number, bi: number, span: 1 | 2 | 3) => {
     const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
     if (!next[si]?.blocks[bi]) return;
@@ -239,21 +239,18 @@ function Dashboard() {
   };
   const startResize = (e: React.PointerEvent, si: number, bi: number) => {
     e.preventDefault();
-    resizeRef.current = { x: e.clientX, span: layoutRef.current[si].blocks[bi].span, si, bi };
+    const cur = layoutRef.current[si]?.blocks[bi];
+    if (!cur) return;
+    resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: cur.span, origH: 1, si, bi };
     const onMove = (ev: PointerEvent) => {
       const r = resizeRef.current;
       if (!r) return;
-      // ~110 px de tirée = 1 colonne gagnée/perdue (desktop à 3 colonnes)
-      const steps = Math.round((ev.clientX - r.x) / 110);
-      const span = Math.min(3, Math.max(1, r.span + steps)) as 1 | 2 | 3;
-      if (layoutRef.current[r.si]?.blocks[r.bi]?.span !== span) setBlockSpan(r.si, r.bi, span);
+      // Continu : chaque ~90px de delta horizontal change la largeur
+      const dx = ev.clientX - r.startX;
+      const newW = Math.min(3, Math.max(1, r.origW + Math.round(dx / 90))) as 1 | 2 | 3;
+      if (layoutRef.current[r.si]?.blocks[r.bi]?.span !== newW) setBlockSpan(r.si, r.bi, newW);
     };
-    const onUp = () => {
-      resizeRef.current = null;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
+    const onUp = () => { resizeRef.current = null; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -625,7 +622,7 @@ function Dashboard() {
             title="Tirer pour redimensionner"
             aria-label="Tirer pour redimensionner"
             onPointerDown={(e) => startResize(e, si, bi)}
-            className="absolute -bottom-2 -right-2 z-20 h-6 w-6 grid place-items-center rounded-full border border-primary/40 bg-slate-950/95 shadow-lg cursor-nwse-resize touch-none hover:scale-110 transition-transform"
+            className="absolute bottom-0 right-0 translate-x-[50%] translate-y-[50%] z-30 h-6 w-6 grid place-items-center rounded-full border-2 border-primary/60 bg-slate-950 shadow-lg cursor-nwse-resize touch-none hover:scale-125 transition-transform"
           >
             <MoveDiagonal2 className="h-3 w-3 text-primary" />
           </button>

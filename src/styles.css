@@ -211,6 +211,38 @@
   }
 }
 
+/* Safe area iPhone — fond fondu pour éviter superposition barre d'état */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-gradient-top {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: inherit;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* Anti-débordement mobile universel */
+.mobile-truncate {
+  @media (max-width: 639px) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
+.mobile-break {
+  @media (max-width: 639px) {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+}
+
 @utility panel-coral {
   background:
     radial-gradient(circle at 85% 0%, rgba(255,77,141,0.3), transparent 55%),
