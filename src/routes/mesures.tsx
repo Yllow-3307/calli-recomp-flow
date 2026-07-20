@@ -322,7 +322,6 @@ function PhotoSlotInput({
   value?: string;
   onChange: (v: string) => void;
 }) {
-  const camRef = useRef<HTMLInputElement>(null);
   const libRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
@@ -344,7 +343,7 @@ function PhotoSlotInput({
     } catch (err) {
       console.error("Upload error:", err);
       toast.error("Échec de l'envoi.");
-    } finally { setUploading(false); if (camRef.current) camRef.current.value = ""; if (libRef.current) libRef.current.value = ""; }
+    } finally { setUploading(false); if (libRef.current) libRef.current.value = ""; }
   };
 
   return (
@@ -360,18 +359,11 @@ function PhotoSlotInput({
         ) : (
           <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">{label}</span>
         )}
-        <div className="absolute bottom-0 inset-x-0 flex z-10">
-          <button type="button" onClick={() => camRef.current?.click()}
-            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white border-r border-white/10 hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
-            <Camera className="h-3 w-3" /> Appareil
-          </button>
-          <button type="button" onClick={() => libRef.current?.click()}
-            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
-            <Images className="h-3 w-3" /> Choisir
-          </button>
-        </div>
+        <button type="button" onClick={() => libRef.current?.click()}
+          className="absolute bottom-0 inset-x-0 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1 z-10">
+          <Images className="h-3 w-3" /> Choisir une photo
+        </button>
       </div>
-      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
       <input ref={libRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
     </div>
   );

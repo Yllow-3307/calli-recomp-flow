@@ -200,42 +200,57 @@ export function exportFilename(key: DatasetKey, ext: string): string {
 
 export async function exportProgramPDF(): Promise<boolean> {
   try {
-    // Attendre que le DOM soit stable
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 500));
     const el = document.getElementById("program-pdf-content");
     if (!el) {
       console.error("PDF: élément #program-pdf-content introuvable");
-      return false;
+      // Fallback: impression navigateur stylée
+      window.print();
+      return true;
     }
     
-    // Forcer l'impression navigateur si html2canvas échoue
-    try {
-      const { default: html2canvas } = await import("html2canvas");
-      const { default: jsPDF } = await import("jspdf");
+    const { default: html2canvas } = await import("html2canvas");
+    const { default: jsPDF } = await import("jspdf");
 
-      // Dimensions fixes pour éviter les erreurs de rendu
-      const canvas = await html2canvas(el, {
-        scale: 1.5,
-        backgroundColor: "#ffffff",
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        width: el.scrollWidth,
-        height: el.scrollHeight,
-        windowWidth: el.scrollWidth,
-      });
+    // Cloner l'élément pour éviter les artefacts
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.padding = "20px";
+    clone.style.background = "#ffffff";
+    clone.style.color = "#000000";
+    clone.style.width = "800px";
+    
+    // Ajouter temporairement au DOM
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "absolute";
+    wrapper.style.left = "-9999px";
+    wrapper.style.top = "0";
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.9);
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageW = pdf.internal.pageSize.getWidth();
-      
-      const imgW = pageW - 15;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      const pageH = pdf.internal.pageSize.getHeight();
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      logging: false,
+      useCORS: true,
+      allowTaint: true,
+    });
 
-      // Première page
-      pdf.addImage(imgData, "JPEG", 7.5, 7.5, imgW, Math.min(imgH, pageH - 15));
-      
+    document.body.removeChild(wrapper);
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    
+    const imgW = pageW - 15;
+    const imgH = (canvas.height * imgW) / canvas.width;
+
+    // Si tient sur une page
+    if (imgH <= pageH - 15) {
+      pdf.addImage(imgData, "JPEG", 7.5, 7.5, imgW, imgH);
+    } else {
+      // Multi-pages
+      pdf.addImage(imgData, "JPEG", 7.5, 7.5, imgW, imgH);
       let remaining = imgH - (pageH - 15);
       let offset = pageH - 15;
       while (remaining > 0) {
@@ -244,18 +259,14 @@ export async function exportProgramPDF(): Promise<boolean> {
         offset += pageH - 15;
         remaining -= pageH - 15;
       }
-
-      const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
-      pdf.save(filename);
-      return true;
-    } catch (innerErr) {
-      console.warn("html2canvas a échoué, fallback sur window.print()", innerErr);
-      window.print();
-      return true;
     }
+
+    const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
+    pdf.save(filename);
+    return true;
   } catch (err) {
     console.error("Erreur export PDF:", err);
-    // Fallback ultime
+    // Fallback ultime: impression navigateur
     try { window.print(); return true; } catch {}
     return false;
   }

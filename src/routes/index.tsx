@@ -622,9 +622,9 @@ function Dashboard() {
             title="Tirer pour redimensionner"
             aria-label="Tirer pour redimensionner"
             onPointerDown={(e) => startResize(e, si, bi)}
-            className="absolute -bottom-3 -right-3 z-30 h-7 w-7 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
+            className="absolute -bottom-2.5 -right-2.5 z-40 h-6 w-6 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3),0_4px_12px_rgba(0,0,0,0.4)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
           >
-            <MoveDiagonal2 className="h-3.5 w-3.5 text-primary" />
+            <MoveDiagonal2 className="h-3 w-3 text-primary" />
           </button>
         )}
         <div

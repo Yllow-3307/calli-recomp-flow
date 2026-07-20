@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, EXERCISE_SWAPS, type Exercise } from "@/lib/program";
 import { planDays } from "@/lib/plan";
