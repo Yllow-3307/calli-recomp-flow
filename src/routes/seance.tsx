@@ -291,6 +291,19 @@ function SeancePage() {
         </section>
       )}
 
+      {/* Alternative cardio active */}
+      {swaps[`alt-${day.key}`] && (
+        <section className="px-5 mt-4">
+          <div className="card-premium p-3 flex items-center gap-3 border border-accent/30 bg-gradient-to-b from-accent/[0.08] to-transparent">
+            <span className="shrink-0 text-lg">↺</span>
+            <div>
+              <p className="text-xs font-bold text-accent">Cardio remplacé</p>
+              <p className="text-[11px] text-muted-foreground">{swaps[`alt-${day.key}`]}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {day.blocks.map((block) => (
         <section key={block.title} className="px-5 mt-5">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
@@ -332,15 +345,36 @@ function SeancePage() {
       {day.alternatives && day.alternatives.length > 0 && (
         <section className="px-5 mt-5">
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2 font-bold px-1">
-            Alternatives
+            Alternatives — clique pour remplacer le cardio du jour
           </p>
-          <div className="card-premium p-4 space-y-2 text-sm text-slate-300 border border-white/[0.04]">
-            {day.alternatives.map((a) => (
-              <p key={a} className="flex items-center gap-2">
-                <span className="text-accent font-bold">↺</span>
-                <span>{a}</span>
-              </p>
-            ))}
+          <div className="flex flex-wrap gap-2">
+            {day.alternatives.map((a) => {
+              const isActive = swaps[`alt-${day.key}`] === a;
+              return (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => {
+                    const next = { ...swaps };
+                    if (isActive) {
+                      delete next[`alt-${day.key}`];
+                    } else {
+                      next[`alt-${day.key}`] = a;
+                    }
+                    setSwaps(next);
+                    actions.setProfile({ exerciseSwaps: next });
+                    toast.success(isActive ? "Alternative retirée" : `Alternative choisie : ${a}`);
+                  }}
+                  className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                    isActive
+                      ? "bg-accent/20 border-accent/40 text-accent-foreground"
+                      : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {isActive ? "✓ " : "↺ "}{a}
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

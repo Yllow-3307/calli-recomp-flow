@@ -166,7 +166,7 @@ function ParamsPage() {
 
             <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
               <h3 className="font-bold">Niveau</h3>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2 min-w-0">
                 {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
                   <button
                     key={lvl}
@@ -1498,7 +1498,7 @@ function ThemeCard() {
   return (
     <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
       <h3 className="font-bold text-sm">Apparence</h3>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 min-w-0">
         {options.map((opt) => (
           <button
             key={opt.id}

@@ -1,0 +1,60 @@
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index 1d49ac7..7a8dfb5 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -876,7 +876,12 @@ export function useAppActions() {
+         meals: mergedMeals,
+         cardio: mergedCardio,
+         metrics: mergedMetrics,
+-        tests: mergedTests,
++        tests: (() => {
++          try {
++            const deletedSet = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[]);
++            return mergedTests.filter((t) => !deletedSet.has(t.id));
++          } catch { return mergedTests; }
++        })(),
+         water: mergedWater,
+         workouts: mergedWorkouts.sort(
+           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+@@ -885,6 +890,14 @@ export function useAppActions() {
+         skillStatuses: mergedSkillStatuses,
+       }));
+ 
++      // Nettoyer les IDs supprimés qui ne sont plus dans le remote
++      try {
++        const remoteIds = new Set((remoteTests || []).map((r) => r.id));
++        const stored = JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[];
++        const stillPending = stored.filter((id) => remoteIds.has(id));
++        localStorage.setItem("deleted-test-ids", JSON.stringify(stillPending));
++      } catch { /* noop */ }
++
+       toast.success("Données synchronisées avec Supabase !");
+     } catch (err) {
+       console.error("Erreur générale lors de la synchronisation Supabase :", err);
+@@ -1216,6 +1229,13 @@ export function useAppActions() {
+       }, 0);
+     }, []),
+     removeTest: useCallback((id: string) => {
++      // Sauvegarder l'ID dans un Set localStorage pour éviter la résurrection par la synchro
++      try {
++        const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
++        deleted.add(id);
++        localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
++      } catch { /* noop */ }
++
+       setState((s) => ({ ...s, tests: s.tests.filter((x) => x.id !== id) }));
+ 
+       setTimeout(async () => {
+@@ -1233,6 +1253,12 @@ export function useAppActions() {
+               .eq("user_id", session.user.id);
+ 
+             if (error) throw error;
++            // Suppression réussie → retirer du Set
++            try {
++              const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
++              deleted.delete(id);
++              localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
++            } catch { /* noop */ }
+           }
+         } catch (err) {
+           console.error("Erreur de suppression du test dans Supabase :", err);

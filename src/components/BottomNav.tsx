@@ -39,7 +39,7 @@ export function BottomNav() {
             <Link
               to={to}
               activeOptions={{ exact }}
-              className="relative flex flex-col items-center gap-1.5 py-3 px-0.5 text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
+              className="relative flex flex-col items-center gap-1.5 py-3 px-0.5 text-[10px] sm:text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
             >
               <Icon className="h-5 w-5 shrink-0 transition-transform duration-300 data-[status=active]:scale-110" />
               {/* truncate = anti-chevauchement : jamais de label par-dessus son voisin */}
@@ -53,7 +53,7 @@ export function BottomNav() {
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
               <button
-                className={`relative w-full flex flex-col items-center gap-1.5 py-3 px-0.5 text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
+                className={`relative w-full flex flex-col items-center gap-1.5 py-3 px-0.5 text-[10px] sm:text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
                   isMoreActive || isOpen
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"

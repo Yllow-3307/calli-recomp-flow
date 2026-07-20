@@ -230,25 +230,38 @@ function Dashboard() {
   }, [dragging]);
 
   // ---- Redimensionnement fluide continu (Pointer Events, pas de snap) ----
-  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; si: number; bi: number } | null>(null);
+  // ---- Redimensionnement style Apple : 3 poignées, fluide, hauteur + largeur ----
+  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; si: number; bi: number; mode: "corner" | "bottom" | "right" } | null>(null);
   const setBlockSpan = (si: number, bi: number, span: 1 | 2 | 3) => {
     const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
     if (!next[si]?.blocks[bi]) return;
     next[si].blocks[bi].span = span;
     applyLayout(next);
   };
-  const startResize = (e: React.PointerEvent, si: number, bi: number) => {
+  const setBlockHeight = (si: number, bi: number, height: 1 | 2 | 3 | 4) => {
+    const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
+    if (!next[si]?.blocks[bi]) return;
+    next[si].blocks[bi].height = height;
+    applyLayout(next);
+  };
+  const startResize = (e: React.PointerEvent, si: number, bi: number, mode: "corner" | "bottom" | "right") => {
     e.preventDefault();
     const cur = layoutRef.current[si]?.blocks[bi];
     if (!cur) return;
-    resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: cur.span, origH: 1, si, bi };
+    resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: cur.span, origH: cur.height, si, bi, mode };
     const onMove = (ev: PointerEvent) => {
       const r = resizeRef.current;
       if (!r) return;
-      // Continu : chaque ~90px de delta horizontal change la largeur
-      const dx = ev.clientX - r.startX;
-      const newW = Math.min(3, Math.max(1, r.origW + Math.round(dx / 90))) as 1 | 2 | 3;
-      if (layoutRef.current[r.si]?.blocks[r.bi]?.span !== newW) setBlockSpan(r.si, r.bi, newW);
+      if (r.mode === "corner" || r.mode === "right") {
+        const dx = ev.clientX - r.startX;
+        const newW = Math.min(3, Math.max(1, r.origW + Math.round(dx / 90))) as 1 | 2 | 3;
+        if (layoutRef.current[r.si]?.blocks[r.bi]?.span !== newW) setBlockSpan(r.si, r.bi, newW);
+      }
+      if (r.mode === "corner" || r.mode === "bottom") {
+        const dy = ev.clientY - r.startY;
+        const newH = Math.min(4, Math.max(1, r.origH + Math.round(dy / 60))) as 1 | 2 | 3 | 4;
+        if (layoutRef.current[r.si]?.blocks[r.bi]?.height !== newH) setBlockHeight(r.si, r.bi, newH);
+      }
     };
     const onUp = () => { resizeRef.current = null; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
     window.addEventListener("pointermove", onMove);
@@ -264,7 +277,7 @@ function Dashboard() {
 
   const addBlock = (si: number, kind: HomeBlockKind, refId?: string) => {
     const next = layout.map((s) => ({ ...s, blocks: [...s.blocks] }));
-    const inst: HomeBlockInstance = { kind, span: HOME_BLOCKS[kind].defaultSpan };
+    const inst: HomeBlockInstance = { kind, span: HOME_BLOCKS[kind].defaultSpan, height: 1 };
     if (refId) inst.refId = refId;
     next[si].blocks.push(inst);
     applyLayout(next);
@@ -575,6 +588,7 @@ function Dashboard() {
     const content = blockContent(si, bi, b);
     if (!editing && content === null) return null;
     const spanCls = b.span === 3 ? "lg:col-span-3" : b.span === 2 ? "lg:col-span-2" : "";
+    const heightCls = b.height === 4 ? "lg:row-span-4 min-h-[28rem]" : b.height === 3 ? "lg:row-span-3 min-h-[22rem]" : b.height === 2 ? "lg:row-span-2 min-h-[16rem]" : "min-h-[10rem]";
     const isDragged = drag?.from.si === si && drag?.from.bi === bi;
     const isDropTarget = editing && drag?.over?.si === si && drag?.over?.bi === bi && !isDragged;
     return (
@@ -618,24 +632,43 @@ function Dashboard() {
             </div>
           )}
           <div
-            className={
+            className={`${heightCls} ${
               editing
                 ? "rounded-2xl border border-dashed border-primary/40 bg-primary/[0.04] p-1 pt-6"
                 : ""
-            }
+            }`}
           >
             {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
           </div>
           {editing && (
-            <button
-              type="button"
-              title="Tirer pour redimensionner"
-              aria-label="Tirer pour redimensionner"
-              onPointerDown={(e) => startResize(e, si, bi)}
-              className="absolute -bottom-2 -right-2 z-40 h-6 w-6 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3),0_4px_12px_rgba(0,0,0,0.4)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
-            >
-              <MoveDiagonal2 className="h-3 w-3 text-primary" />
-            </button>
+            <>
+              {/* Coin bas-droit : largeur + hauteur */}
+              <button
+                type="button"
+                title="Redimensionner (largeur + hauteur)"
+                aria-label="Redimensionner (largeur + hauteur)"
+                onPointerDown={(e) => startResize(e, si, bi, "corner")}
+                className="absolute -bottom-2 -right-2 z-40 h-6 w-6 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3),0_4px_12px_rgba(0,0,0,0.4)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
+              >
+                <MoveDiagonal2 className="h-3 w-3 text-primary" />
+              </button>
+              {/* Bord droit : largeur seule */}
+              <button
+                type="button"
+                title="Redimensionner (largeur)"
+                aria-label="Redimensionner (largeur)"
+                onPointerDown={(e) => startResize(e, si, bi, "right")}
+                className="absolute -top-0 -right-2 z-40 h-8 w-2 rounded-full bg-primary/60 shadow-[0_0_0_1px_rgba(255,107,74,0.3)] cursor-ew-resize touch-none hover:bg-primary transition-colors"
+              />
+              {/* Bord bas : hauteur seule */}
+              <button
+                type="button"
+                title="Redimensionner (hauteur)"
+                aria-label="Redimensionner (hauteur)"
+                onPointerDown={(e) => startResize(e, si, bi, "bottom")}
+                className="absolute -bottom-2 left-2 z-40 h-2 w-8 rounded-full bg-primary/60 shadow-[0_0_0_1px_rgba(255,107,74,0.3)] cursor-ns-resize touch-none hover:bg-primary transition-colors"
+              />
+            </>
           )}
         </div>
       </div>

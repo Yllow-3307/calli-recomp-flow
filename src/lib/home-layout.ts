@@ -96,6 +96,8 @@ export const HOME_BLOCKS: Record<HomeBlockKind, HomeBlockMeta> = {
 export interface HomeBlockInstance {
   kind: HomeBlockKind;
   span: 1 | 2 | 3;
+  /** hauteur relative (1 = par défaut, 2 = double, jusqu'à 4) */
+  height: 1 | 2 | 3 | 4;
   /** identifiant de référence (ex : skill.id) pour les blocs « multi » */
   refId?: string;
 }
@@ -113,19 +115,19 @@ export function defaultHomeLayout(): HomeSection[] {
       id: "haut",
       title: "",
       blocks: [
-        { kind: "cycle", span: 3 },
-        { kind: "testsBanner", span: 3 },
-        { kind: "bilan", span: 3 },
+        { kind: "cycle", span: 3, height: 1 },
+        { kind: "testsBanner", span: 3, height: 1 },
+        { kind: "bilan", span: 3, height: 1 },
       ],
     },
     {
       id: "principal",
       title: "",
       blocks: [
-        { kind: "seance", span: 2 },
-        { kind: "nutrition", span: 1 },
-        { kind: "regles", span: 2 },
-        { kind: "liens", span: 1 },
+        { kind: "seance", span: 2, height: 1 },
+        { kind: "nutrition", span: 1, height: 1 },
+        { kind: "regles", span: 2, height: 1 },
+        { kind: "liens", span: 1, height: 1 },
       ],
     },
   ];
@@ -154,7 +156,8 @@ export function normalizeHomeLayout(raw: unknown): HomeSection[] {
       if (used.has(key)) continue;
       used.add(key);
       const span = b.span === 2 || b.span === 3 ? b.span : 1;
-      blocks.push(refId ? { kind, span, refId } : { kind, span });
+      const height = b.height === 2 || b.height === 3 || b.height === 4 ? b.height : 1;
+      blocks.push(refId ? { kind, span, height, refId } : { kind, span, height });
     }
     sections.push({
       id: typeof s.id === "string" && s.id ? s.id : generateUUID(),

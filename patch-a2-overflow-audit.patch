@@ -1,0 +1,66 @@
+diff --git a/src/components/BottomNav.tsx b/src/components/BottomNav.tsx
+index f1520e2..220be37 100644
+--- a/src/components/BottomNav.tsx
++++ b/src/components/BottomNav.tsx
+@@ -39,7 +39,7 @@ export function BottomNav() {
+             <Link
+               to={to}
+               activeOptions={{ exact }}
+-              className="relative flex flex-col items-center gap-1.5 py-3 px-0.5 text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
++              className="relative flex flex-col items-center gap-1.5 py-3 px-0.5 text-[10px] sm:text-[11px] font-bold text-muted-foreground data-[status=active]:text-primary transition-all active:scale-95 duration-200"
+             >
+               <Icon className="h-5 w-5 shrink-0 transition-transform duration-300 data-[status=active]:scale-110" />
+               {/* truncate = anti-chevauchement : jamais de label par-dessus son voisin */}
+@@ -53,7 +53,7 @@ export function BottomNav() {
+           <Sheet open={isOpen} onOpenChange={setIsOpen}>
+             <SheetTrigger asChild>
+               <button
+-                className={`relative w-full flex flex-col items-center gap-1.5 py-3 px-0.5 text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
++                className={`relative w-full flex flex-col items-center gap-1.5 py-3 px-0.5 text-[10px] sm:text-[11px] font-bold transition-all active:scale-95 duration-200 cursor-pointer ${
+                   isMoreActive || isOpen
+                     ? "text-primary"
+                     : "text-muted-foreground hover:text-foreground"
+diff --git a/src/routes/nutrition.tsx b/src/routes/nutrition.tsx
+index 12289e4..8438a9c 100644
+--- a/src/routes/nutrition.tsx
++++ b/src/routes/nutrition.tsx
+@@ -127,7 +127,7 @@ function NutritionPage() {
+ 
+       {/* Grille desktop : [stats/minis/aujourd'hui] à gauche · [favoris/templates/perso] à droite */}
+       <div className="masonry-lg">
+-        <div className="px-5 grid grid-cols-2 gap-3">
++        <div className="px-5 grid grid-cols-2 gap-3 min-w-0">
+           <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
+             <div className="flex items-center gap-2 text-muted-foreground text-xs">
+               <Beef className="h-4 w-4 text-lime-400" /> Protéines
+@@ -189,7 +189,7 @@ function NutritionPage() {
+           </div>
+         </div>
+ 
+-        <div className="px-5 mt-3 grid grid-cols-3 gap-3">
++        <div className="px-5 mt-3 grid grid-cols-3 gap-3 min-w-0">
+           <MiniStat
+             label="Calories"
+             value={`${kcal} kcal`}
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index 4f0ff5e..ad014e5 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -166,7 +166,7 @@ function ParamsPage() {
+ 
+             <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+               <h3 className="font-bold">Niveau</h3>
+-              <div className="grid grid-cols-3 gap-2">
++              <div className="grid grid-cols-3 gap-2 min-w-0">
+                 {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
+                   <button
+                     key={lvl}
+@@ -1498,7 +1498,7 @@ function ThemeCard() {
+   return (
+     <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+       <h3 className="font-bold text-sm">Apparence</h3>
+-      <div className="grid grid-cols-3 gap-2">
++      <div className="grid grid-cols-3 gap-2 min-w-0">
+         {options.map((opt) => (
+           <button
+             key={opt.id}

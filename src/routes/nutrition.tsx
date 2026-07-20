@@ -13,9 +13,10 @@ import { MEAL_TEMPLATES } from "@/lib/program";
 import { nutritionTargets } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Trash2, Beef, Flame, Droplet, Plus, Star, X } from "lucide-react";
+import { Trash2, Beef, Flame, Droplet, Plus, Star, X, Pencil } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { WaterBottle } from "@/components/WaterBottle";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/nutrition")({
@@ -127,7 +128,7 @@ function NutritionPage() {
 
       {/* Grille desktop : [stats/minis/aujourd'hui] à gauche · [favoris/templates/perso] à droite */}
       <div className="masonry-lg">
-        <div className="px-5 grid grid-cols-2 gap-3">
+        <div className="px-5 grid grid-cols-2 gap-3 min-w-0">
           <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Beef className="h-4 w-4 text-lime-400" /> Protéines
@@ -189,7 +190,7 @@ function NutritionPage() {
           </div>
         </div>
 
-        <div className="px-5 mt-3 grid grid-cols-3 gap-3">
+        <div className="px-5 mt-3 grid grid-cols-3 gap-3 min-w-0">
           <MiniStat
             label="Calories"
             value={`${kcal} kcal`}
@@ -208,28 +209,11 @@ function NutritionPage() {
             </p>
             <div className="space-y-2">
               {favs.map((f) => (
-                <div key={f.id} className="card-premium p-3 flex items-center gap-3">
-                  <button
-                    onClick={() => addFavAsMeal(f)}
-                    className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0 active:scale-95 transition-transform"
-                    aria-label={`Ajouter ${f.name}`}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate">{f.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {f.kcal} kcal · P {f.protein}g · G {f.carbs}g · L {f.fat}g
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => removeFav(f.id)}
-                    className="text-muted-foreground hover:text-destructive p-2"
-                    aria-label="Retirer des favoris"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+                <FavCard key={f.id} fav={f} onAdd={() => addFavAsMeal(f)} onRemove={() => removeFav(f.id)} onUpdate={(updated) => {
+                  const next = favs.map((x) => x.id === f.id ? updated : x);
+                  actions.setProfile({ favoriteMeals: next });
+                  toast.success("Favori modifié ✅");
+                }} />
               ))}
             </div>
           </section>
@@ -377,6 +361,67 @@ function NutritionPage() {
         </section>
       </div>
     </PageShell>
+  );
+}
+
+/** Carte favori avec bouton +, X et crayon d'édition (survol/tap). */
+function FavCard({ fav, onAdd, onRemove, onUpdate }: { fav: FavoriteMeal; onAdd: () => void; onRemove: () => void; onUpdate: (f: FavoriteMeal) => void }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState(fav.name);
+  const [editKcal, setEditKcal] = useState(fav.kcal);
+  const [editProtein, setEditProtein] = useState(fav.protein);
+  const [editCarbs, setEditCarbs] = useState(fav.carbs);
+  const [editFat, setEditFat] = useState(fav.fat);
+
+  return (
+    <div className="card-premium p-3 flex items-center gap-3 group">
+      <button onClick={onAdd} className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0 active:scale-95 transition-transform" aria-label={`Ajouter ${fav.name}`}>
+        <Plus className="h-4 w-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm truncate">{fav.name}</p>
+        <p className="text-xs text-muted-foreground">{fav.kcal} kcal · P {fav.protein}g · G {fav.carbs}g · L {fav.fat}g</p>
+      </div>
+      <div className="flex items-center shrink-0">
+        <button onClick={() => { setEditName(fav.name); setEditKcal(fav.kcal); setEditProtein(fav.protein); setEditCarbs(fav.carbs); setEditFat(fav.fat); setEditOpen(true); }}
+          className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all" aria-label="Modifier">
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-2" aria-label="Retirer">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-sm bg-slate-950 border-white/10">
+          <DialogHeader><DialogTitle className="font-black text-sm">Modifier le favori</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nom" className="bg-input h-9 text-xs" />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-muted-foreground">Kcal</label>
+                <Input type="number" value={editKcal} onChange={(e) => setEditKcal(Number(e.target.value))} className="bg-input h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Protéines (g)</label>
+                <Input type="number" value={editProtein} onChange={(e) => setEditProtein(Number(e.target.value))} className="bg-input h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Glucides (g)</label>
+                <Input type="number" value={editCarbs} onChange={(e) => setEditCarbs(Number(e.target.value))} className="bg-input h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Lipides (g)</label>
+                <Input type="number" value={editFat} onChange={(e) => setEditFat(Number(e.target.value))} className="bg-input h-9 text-xs" />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="secondary" className="flex-1 h-9 text-xs" onClick={() => setEditOpen(false)}>Annuler</Button>
+              <Button size="sm" className="flex-1 h-9 btn-hero text-xs" onClick={() => { onUpdate({ id: fav.id, name: editName, kcal: editKcal, protein: editProtein, carbs: editCarbs, fat: editFat }); setEditOpen(false); }}>Enregistrer</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
