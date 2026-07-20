@@ -200,46 +200,63 @@ export function exportFilename(key: DatasetKey, ext: string): string {
 
 export async function exportProgramPDF(): Promise<boolean> {
   try {
-    // Attendre un tick pour être sûr que le DOM est à jour
-    await new Promise((r) => setTimeout(r, 100));
+    // Attendre que le DOM soit stable
+    await new Promise((r) => setTimeout(r, 300));
     const el = document.getElementById("program-pdf-content");
     if (!el) {
       console.error("PDF: élément #program-pdf-content introuvable");
       return false;
     }
-    const { default: html2canvas } = await import("html2canvas");
-    const { default: jsPDF } = await import("jspdf");
+    
+    // Forcer l'impression navigateur si html2canvas échoue
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const { default: jsPDF } = await import("jspdf");
 
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      backgroundColor: "#05070f",
-      logging: false,
-      useCORS: true,
-      allowTaint: true,
-    });
+      // Dimensions fixes pour éviter les erreurs de rendu
+      const canvas = await html2canvas(el, {
+        scale: 1.5,
+        backgroundColor: "#ffffff",
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+      });
 
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
+      const imgData = canvas.toDataURL("image/jpeg", 0.9);
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageW = pdf.internal.pageSize.getWidth();
+      
+      const imgW = pageW - 15;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const pageH = pdf.internal.pageSize.getHeight();
 
-    const imgW = pageW - 20;
-    const imgH = (canvas.height * imgW) / canvas.width;
+      // Première page
+      pdf.addImage(imgData, "JPEG", 7.5, 7.5, imgW, Math.min(imgH, pageH - 15));
+      
+      let remaining = imgH - (pageH - 15);
+      let offset = pageH - 15;
+      while (remaining > 0) {
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 7.5, 7.5 - offset, imgW, imgH);
+        offset += pageH - 15;
+        remaining -= pageH - 15;
+      }
 
-    pdf.addImage(imgData, "JPEG", 10, 10, imgW, imgH);
-
-    let heightLeft = imgH - (pageH - 20);
-    while (heightLeft > 0) {
-      pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 10, 10 - (imgH - heightLeft), imgW, imgH);
-      heightLeft -= pageH - 20;
+      const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
+      pdf.save(filename);
+      return true;
+    } catch (innerErr) {
+      console.warn("html2canvas a échoué, fallback sur window.print()", innerErr);
+      window.print();
+      return true;
     }
-
-    const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
-    pdf.save(filename);
-    return true;
   } catch (err) {
     console.error("Erreur export PDF:", err);
+    // Fallback ultime
+    try { window.print(); return true; } catch {}
     return false;
   }
 }

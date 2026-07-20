@@ -104,7 +104,7 @@ function ParamsPage() {
         <section>
           <SectionTitle>🏋️ Profil</SectionTitle>
           <div className="space-y-3 lg:space-y-0 masonry-lg mt-1.5">
-            <div className="card-premium p-4 space-y-3">
+            <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
               <h3 className="font-bold">Profil</h3>
               <Row label="Poids (kg)">
                 <Input
@@ -141,7 +141,7 @@ function ParamsPage() {
               </Row>
             </div>
 
-            <div className="card-premium p-4 space-y-3">
+            <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
               <h3 className="font-bold">Fréquence</h3>
               <div className="grid grid-cols-2 gap-2">
                 {[5, 6].map((n) => (
@@ -164,7 +164,7 @@ function ParamsPage() {
               </p>
             </div>
 
-            <div className="card-premium p-4 space-y-3">
+            <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
               <h3 className="font-bold">Niveau</h3>
               <div className="grid grid-cols-3 gap-2">
                 {(["débutant", "intermédiaire", "avancé"] as const).map((lvl) => (
@@ -183,7 +183,7 @@ function ParamsPage() {
               </div>
             </div>
 
-            <div className="card-premium p-4 space-y-2">
+            <div className="card-premium p-4 space-y-2 min-w-0 mobile-break">
               <h3 className="font-bold">Équipement</h3>
               {[
                 "Barre traction",
@@ -488,7 +488,7 @@ function RemindersCard() {
   };
 
   return (
-    <div className="card-premium p-4 space-y-3">
+    <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
       <div className="flex items-center gap-2">
         <Bell className="h-4 w-4 text-primary" />
         <h3 className="font-bold text-sm">Rappels</h3>
@@ -620,7 +620,7 @@ function ExportDataCard() {
   const datasets = buildDatasets(state);
 
   return (
-    <div className="card-premium p-4 space-y-3">
+    <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
       <h3 className="font-bold text-sm">📤 Exporter mes données</h3>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
         Fenêtre glissante des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> — à faire toutes les 2
@@ -976,7 +976,7 @@ function NotionSyncCard() {
   };
 
   return (
-    <div className="card-premium p-4 space-y-3 border border-violet-400/20">
+    <div className="card-premium p-4 space-y-3 border border-violet-400/20 min-w-0 mobile-break">
       <h3 className="font-bold text-sm">📓 Synchro vers mon Notion</h3>
       <details className="text-xs">
         <summary className="cursor-pointer text-violet-300 font-bold">
@@ -1496,7 +1496,7 @@ function ThemeCard() {
   ];
 
   return (
-    <div className="card-premium p-4 space-y-3">
+    <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
       <h3 className="font-bold text-sm">Apparence</h3>
       <div className="grid grid-cols-3 gap-2">
         {options.map((opt) => (
@@ -1522,102 +1522,93 @@ function ThemeCard() {
   );
 }
 
-/** Carte de configuration des playlists musique par type de séance. */
+/** Carte de configuration des playlists musique (dynamique, ajout/suppression). */
 function MusicCard() {
   const state = useAppState();
   const { setProfile } = useAppActions();
-  const playlists = state.profile.musicPlaylists ?? {};
-  const [local, setLocal] = useState<Record<string, string>>(() => ({
-    push: playlists.push ?? "",
-    pull: playlists.pull ?? "",
-    legs: playlists.legs ?? "",
-    running: playlists.running ?? "",
-  }));
+  const playlists = Array.isArray(state.profile.musicPlaylists) 
+    ? state.profile.musicPlaylists as { id: string; label: string; url: string }[]
+    : [];
 
-  const types: { key: string; label: string; emoji: string; hint: string }[] = [
-    {
-      key: "push",
-      label: "Push (Pectoraux/Épaules)",
-      emoji: "💪",
-      hint: "Musique énergique, tempo élevé",
-    },
-    {
-      key: "pull",
-      label: "Pull (Dos/Biceps)",
-      emoji: "🎯",
-      hint: "Rythme soutenu pour les tractions",
-    },
-    { key: "legs", label: "Legs (Jambes)", emoji: "🦵", hint: "Gros sons pour les séances dures" },
-    {
-      key: "running",
-      label: "Running (Course)",
-      emoji: "🏃",
-      hint: "Playlist running, BPM stable",
-    },
-  ];
+  // Migration ancien format (Record<string, string>) vers nouveau format (array)
+  const [items, setItems] = useState<{ id: string; label: string; url: string }[]>(() => {
+    const raw = state.profile.musicPlaylists;
+    if (Array.isArray(raw)) return raw as { id: string; label: string; url: string }[];
+    if (raw && typeof raw === "object") {
+      const migrated: { id: string; label: string; url: string }[] = [];
+      for (const [k, v] of Object.entries(raw as Record<string, string>)) {
+        if (v) migrated.push({ id: k, label: k === "running" ? "Course 🏃" : k === "push" ? "Push 💪" : k === "pull" ? "Pull 🎯" : k === "legs" ? "Legs 🦵" : k, url: v });
+      }
+      return migrated;
+    }
+    return [{ id: "push", label: "Push 💪", url: "" }, { id: "pull", label: "Pull 🎯", url: "" }, { id: "legs", label: "Legs 🦵", url: "" }, { id: "running", label: "Course 🏃", url: "" }];
+  });
 
   const save = () => {
-    setProfile({ musicPlaylists: local });
+    setProfile({ musicPlaylists: items as unknown as Record<string, unknown> });
     toast.success("Playlists enregistrées ✅");
   };
 
+  const addItem = () => {
+    const id = `playlist-${Date.now()}`;
+    setItems((prev) => [...prev, { id, label: "Nouvelle playlist 🎧", url: "" }]);
+  };
+
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const updateItem = (id: string, patch: Partial<{ label: string; url: string }>) => {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  };
+
   return (
-    <div className="card-premium p-4 space-y-3 border border-pink-400/20">
+    <div className="card-premium p-4 space-y-3 border border-pink-400/20 min-w-0 mobile-break">
       <div className="flex items-center gap-2">
         <Music className="h-4 w-4 text-pink-400" />
         <h3 className="font-bold text-sm">Playlists sport</h3>
       </div>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Colle un lien <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b> par type de séance. Le bon
-        lien s'affichera automatiquement dans le bloc Musique de l'accueil selon la séance du jour.
+        Ajoute des liens <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b>. 
+        Le bon lien s'affichera dans le bloc Musique selon la séance du jour.
       </p>
 
       <div className="space-y-2.5">
-        {types.map((t) => (
-          <div key={t.key}>
-            <label className="text-xs font-semibold flex items-center gap-1.5 mb-1">
-              <span>{t.emoji}</span> {t.label}
-            </label>
+        {items.map((item) => (
+          <div key={item.id} className="rounded-xl border border-white/10 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Input
+                value={item.label}
+                onChange={(e) => updateItem(item.id, { label: e.target.value })}
+                placeholder="Nom de la playlist"
+                className="bg-input h-8 text-xs flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => removeItem(item.id)}
+                className="h-8 w-8 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive hover:bg-destructive/20 transition-colors shrink-0"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <Input
-              value={local[t.key] ?? ""}
-              onChange={(e) => setLocal((prev) => ({ ...prev, [t.key]: e.target.value.trim() }))}
-              placeholder={`Lien ${t.key === "running" ? "Spotify/Deezer/Apple Music" : "de playlist"}…`}
-              className="bg-input h-9 text-xs"
+              value={item.url}
+              onChange={(e) => updateItem(item.id, { url: e.target.value.trim() })}
+              placeholder="Lien Spotify / Deezer / Apple Music…"
+              className="bg-input h-8 text-xs"
               autoComplete="off"
             />
-            <p className="text-[10px] text-muted-foreground mt-0.5">{t.hint}</p>
           </div>
         ))}
       </div>
 
+      <Button size="sm" variant="secondary" onClick={addItem}
+        className="w-full h-9 border border-dashed border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20 text-xs font-bold">
+        ➕ Ajouter une playlist
+      </Button>
       <Button size="sm" onClick={save} className="w-full h-9 btn-hero text-xs font-bold">
         Enregistrer mes playlists
       </Button>
-
-      <details className="text-xs">
-        <summary className="cursor-pointer text-pink-300 font-bold">
-          Comment récupérer un lien de playlist ?
-        </summary>
-        <ol className="list-decimal ml-4 mt-2 space-y-1 text-muted-foreground leading-relaxed">
-          <li>Ouvre ton app de musique (Spotify, Deezer ou Apple Music).</li>
-          <li>Va dans ta playlist sport.</li>
-          <li>
-            <b>Spotify</b> : ⋯ → Partager → « Copier le lien vers la playlist ».
-          </li>
-          <li>
-            <b>Deezer</b> : ⋯ → Partager → Copie le lien.
-          </li>
-          <li>
-            <b>Apple Music</b> : ⋯ → Partager → « Copier le lien ».
-          </li>
-          <li>Colle le lien ci-dessus pour le type de séance correspondant.</li>
-        </ol>
-      </details>
-
-      <p className="text-[10px] text-muted-foreground leading-relaxed">
-        🔗 Les liens s'ouvrent dans ton navigateur, qui détectera automatiquement l'application de
-        musique installée sur ton téléphone.
-      </p>
     </div>
   );
 }
@@ -1644,7 +1635,7 @@ function NavMenuCard() {
   };
 
   return (
-    <div className="card-premium p-4 space-y-3">
+    <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
       <h3 className="font-bold">Barre du bas (téléphone)</h3>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
         Choisis jusqu'à <strong>{MAX_NAV_PICKS} menus</strong> affichés dans la barre du bas. «

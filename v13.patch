@@ -1,0 +1,288 @@
+diff --git a/src/lib/exporter.ts b/src/lib/exporter.ts
+index 44db5b3..7736766 100644
+--- a/src/lib/exporter.ts
++++ b/src/lib/exporter.ts
+@@ -200,46 +200,63 @@ export function exportFilename(key: DatasetKey, ext: string): string {
+ 
+ export async function exportProgramPDF(): Promise<boolean> {
+   try {
+-    // Attendre un tick pour être sûr que le DOM est à jour
+-    await new Promise((r) => setTimeout(r, 100));
++    // Attendre que le DOM soit stable
++    await new Promise((r) => setTimeout(r, 300));
+     const el = document.getElementById("program-pdf-content");
+     if (!el) {
+       console.error("PDF: élément #program-pdf-content introuvable");
+       return false;
+     }
+-    const { default: html2canvas } = await import("html2canvas");
+-    const { default: jsPDF } = await import("jspdf");
+-
+-    const canvas = await html2canvas(el, {
+-      scale: 2,
+-      backgroundColor: "#05070f",
+-      logging: false,
+-      useCORS: true,
+-      allowTaint: true,
+-    });
+-
+-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+-    const pdf = new jsPDF("p", "mm", "a4");
+-    const pageW = pdf.internal.pageSize.getWidth();
+-    const pageH = pdf.internal.pageSize.getHeight();
+-
+-    const imgW = pageW - 20;
+-    const imgH = (canvas.height * imgW) / canvas.width;
+-
+-    pdf.addImage(imgData, "JPEG", 10, 10, imgW, imgH);
+-
+-    let heightLeft = imgH - (pageH - 20);
+-    while (heightLeft > 0) {
+-      pdf.addPage();
+-      pdf.addImage(imgData, "JPEG", 10, 10 - (imgH - heightLeft), imgW, imgH);
+-      heightLeft -= pageH - 20;
+-    }
++    
++    // Forcer l'impression navigateur si html2canvas échoue
++    try {
++      const { default: html2canvas } = await import("html2canvas");
++      const { default: jsPDF } = await import("jspdf");
++
++      // Dimensions fixes pour éviter les erreurs de rendu
++      const canvas = await html2canvas(el, {
++        scale: 1.5,
++        backgroundColor: "#ffffff",
++        logging: false,
++        useCORS: true,
++        allowTaint: true,
++        width: el.scrollWidth,
++        height: el.scrollHeight,
++        windowWidth: el.scrollWidth,
++      });
++
++      const imgData = canvas.toDataURL("image/jpeg", 0.9);
++      const pdf = new jsPDF("p", "mm", "a4");
++      const pageW = pdf.internal.pageSize.getWidth();
++      
++      const imgW = pageW - 15;
++      const imgH = (canvas.height * imgW) / canvas.width;
++      const pageH = pdf.internal.pageSize.getHeight();
+ 
+-    const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
+-    pdf.save(filename);
+-    return true;
++      // Première page
++      pdf.addImage(imgData, "JPEG", 7.5, 7.5, imgW, Math.min(imgH, pageH - 15));
++      
++      let remaining = imgH - (pageH - 15);
++      let offset = pageH - 15;
++      while (remaining > 0) {
++        pdf.addPage();
++        pdf.addImage(imgData, "JPEG", 7.5, 7.5 - offset, imgW, imgH);
++        offset += pageH - 15;
++        remaining -= pageH - 15;
++      }
++
++      const filename = `calli-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
++      pdf.save(filename);
++      return true;
++    } catch (innerErr) {
++      console.warn("html2canvas a échoué, fallback sur window.print()", innerErr);
++      window.print();
++      return true;
++    }
+   } catch (err) {
+     console.error("Erreur export PDF:", err);
++    // Fallback ultime
++    try { window.print(); return true; } catch {}
+     return false;
+   }
+ }
+diff --git a/src/lib/push-notifications.ts b/src/lib/push-notifications.ts
+index b621b8e..cc49f6f 100644
+--- a/src/lib/push-notifications.ts
++++ b/src/lib/push-notifications.ts
+@@ -36,7 +36,20 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
+       },
+       { onConflict: "endpoint" },
+     );
+-    if (error) throw error;
++    if (error) {
++      // Si l'erreur est "duplicate key", on supprime l'ancien et on réessaie
++      if (error.message?.includes("duplicate") || error.message?.includes("unique")) {
++        await (supabase as any).from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
++        const { error: retryErr } = await (supabase as any).from("push_subscriptions").insert({
++          user_id: userId,
++          endpoint: sub.endpoint,
++          keys: subJson.keys as Record<string, string>,
++        });
++        if (retryErr) throw retryErr;
++      } else {
++        throw error;
++      }
++    }
+     return { ok: true };
+   } catch (err: any) {
+     console.error("Erreur subscribe push:", err);
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 6d49f3b..cd290a7 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -622,9 +622,9 @@ function Dashboard() {
+             title="Tirer pour redimensionner"
+             aria-label="Tirer pour redimensionner"
+             onPointerDown={(e) => startResize(e, si, bi)}
+-            className="absolute bottom-0 right-0 translate-x-[50%] translate-y-[50%] z-30 h-6 w-6 grid place-items-center rounded-full border-2 border-primary/60 bg-slate-950 shadow-lg cursor-nwse-resize touch-none hover:scale-125 transition-transform"
++            className="absolute -bottom-3 -right-3 z-30 h-7 w-7 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
+           >
+-            <MoveDiagonal2 className="h-3 w-3 text-primary" />
++            <MoveDiagonal2 className="h-3.5 w-3.5 text-primary" />
+           </button>
+         )}
+         <div
+diff --git a/src/routes/mesures.tsx b/src/routes/mesures.tsx
+index c4a6a8e..77db2cd 100644
+--- a/src/routes/mesures.tsx
++++ b/src/routes/mesures.tsx
+@@ -322,12 +322,12 @@ function PhotoSlotInput({
+   value?: string;
+   onChange: (v: string) => void;
+ }) {
+-  const inputRef = useRef<HTMLInputElement>(null);
++  const camRef = useRef<HTMLInputElement>(null);
++  const libRef = useRef<HTMLInputElement>(null);
+   const [uploading, setUploading] = useState(false);
+   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
+ 
+-  const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
+-    const file = e.target.files?.[0];
++  const uploadFile = async (file: File) => {
+     if (!file) return;
+     if (!navigator.onLine) { toast.error("Connexion requise."); return; }
+     setUploading(true);
+@@ -344,29 +344,36 @@ function PhotoSlotInput({
+     } catch (err) {
+       console.error("Upload error:", err);
+       toast.error("Échec de l'envoi.");
+-    } finally { setUploading(false); if (inputRef.current) inputRef.current.value = ""; }
++    } finally { setUploading(false); if (camRef.current) camRef.current.value = ""; if (libRef.current) libRef.current.value = ""; }
+   };
+ 
+   return (
+-    <>
+-      <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()}
+-        className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center disabled:opacity-70">
++    <div className="space-y-1">
++      <div className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden">
+         {uploading ? (
+-          <div className="text-center text-muted-foreground">
++          <div className="absolute inset-0 grid place-items-center text-center text-muted-foreground bg-muted/80 z-10">
+             <Loader2 className="h-5 w-5 mx-auto mb-1 animate-spin text-primary" />
+             <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
+           </div>
+         ) : value ? (
+           <SecureImage path={value} fallbackLabel={label} className="absolute inset-0 h-full w-full object-cover" />
+         ) : (
+-          <div className="text-center text-muted-foreground">
+-            <Camera className="h-5 w-5 mx-auto mb-1" />
+-            <p className="text-[10px] uppercase tracking-widest">{label}</p>
+-          </div>
++          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">{label}</span>
+         )}
+-      </button>
+-      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handle} className="hidden" />
+-    </>
++        <div className="absolute bottom-0 inset-x-0 flex z-10">
++          <button type="button" onClick={() => camRef.current?.click()}
++            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white border-r border-white/10 hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
++            <Camera className="h-3 w-3" /> Appareil
++          </button>
++          <button type="button" onClick={() => libRef.current?.click()}
++            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
++            <Images className="h-3 w-3" /> Choisir
++          </button>
++        </div>
++      </div>
++      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
++      <input ref={libRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
++    </div>
+   );
+ }
+ 
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index 5f40214..7b5301b 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -976,7 +976,7 @@ function NotionSyncCard() {
+   };
+ 
+   return (
+-    <div className="card-premium p-4 space-y-3 border border-violet-400/20">
++    <div className="card-premium p-4 space-y-3 border border-violet-400/20 min-w-0 mobile-break">
+       <h3 className="font-bold text-sm">📓 Synchro vers mon Notion</h3>
+       <details className="text-xs">
+         <summary className="cursor-pointer text-violet-300 font-bold">
+@@ -1563,7 +1563,7 @@ function MusicCard() {
+   };
+ 
+   return (
+-    <div className="card-premium p-4 space-y-3 border border-pink-400/20">
++    <div className="card-premium p-4 space-y-3 border border-pink-400/20 min-w-0 mobile-break">
+       <div className="flex items-center gap-2">
+         <Music className="h-4 w-4 text-pink-400" />
+         <h3 className="font-bold text-sm">Playlists sport</h3>
+diff --git a/src/routes/seance.tsx b/src/routes/seance.tsx
+index fee5bf9..087d2b6 100644
+--- a/src/routes/seance.tsx
++++ b/src/routes/seance.tsx
+@@ -625,27 +625,12 @@ function ExerciseCard({
+   );
+ }
+ 
+-function NumberField({
+-  label,
+-  value,
+-  onChange,
+-  optional,
+-}: {
+-  label: string;
+-  value?: number;
+-  onChange: (v: number | undefined) => void;
+-  optional?: boolean;
+-}) {
++function NumberField({ label, value }: { label: string; value?: number; optional?: boolean }) {
+   return (
+     <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg px-1.5 py-0.5">
+-      <Input
+-        type="number"
+-        inputMode="decimal"
+-        value={value ?? ""}
+-        onChange={(e) => onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+-        placeholder={optional ? "—" : ""}
+-        className="h-7 w-12 bg-transparent text-center border-none p-0 focus-visible:ring-0 text-xs font-bold text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+-      />
++      <span className="h-7 w-12 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums">
++        {value ?? "—"}
++      </span>
+       <span className="text-[10px] font-extrabold text-muted-foreground lowercase">{label}</span>
+     </div>
+   );
+@@ -680,10 +665,6 @@ function RestTimer({
+   label: string;
+   onClose: () => void;
+   autoNext?: boolean;
+-}) {
+-  seconds: number;
+-  label: string;
+-  onClose: () => void;
+ }) {
+   const [left, setLeft] = useState(seconds);
+   const [paused, setPaused] = useState(false);
+diff --git a/supabase/migrations/20260720000001_push_unique.sql b/supabase/migrations/20260720000001_push_unique.sql
+new file mode 100644
+index 0000000..bb89429
+--- /dev/null
++++ b/supabase/migrations/20260720000001_push_unique.sql
+@@ -0,0 +1,2 @@
++-- V13 : rendre endpoint unique pour éviter l'erreur onConflict
++alter table public.push_subscriptions add constraint if not exists push_subscriptions_endpoint_key unique (endpoint);

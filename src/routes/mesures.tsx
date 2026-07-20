@@ -322,12 +322,12 @@ function PhotoSlotInput({
   value?: string;
   onChange: (v: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
+  const libRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const label = slot === "face" ? "Face" : slot === "profile" ? "Profil" : "Dos";
 
-  const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const uploadFile = async (file: File) => {
     if (!file) return;
     if (!navigator.onLine) { toast.error("Connexion requise."); return; }
     setUploading(true);
@@ -344,29 +344,36 @@ function PhotoSlotInput({
     } catch (err) {
       console.error("Upload error:", err);
       toast.error("Échec de l'envoi.");
-    } finally { setUploading(false); if (inputRef.current) inputRef.current.value = ""; }
+    } finally { setUploading(false); if (camRef.current) camRef.current.value = ""; if (libRef.current) libRef.current.value = ""; }
   };
 
   return (
-    <>
-      <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()}
-        className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden grid place-items-center disabled:opacity-70">
+    <div className="space-y-1">
+      <div className="relative aspect-[3/4] w-full rounded-xl bg-muted/40 border border-border overflow-hidden">
         {uploading ? (
-          <div className="text-center text-muted-foreground">
+          <div className="absolute inset-0 grid place-items-center text-center text-muted-foreground bg-muted/80 z-10">
             <Loader2 className="h-5 w-5 mx-auto mb-1 animate-spin text-primary" />
             <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
           </div>
         ) : value ? (
           <SecureImage path={value} fallbackLabel={label} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="text-center text-muted-foreground">
-            <Camera className="h-5 w-5 mx-auto mb-1" />
-            <p className="text-[10px] uppercase tracking-widest">{label}</p>
-          </div>
+          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">{label}</span>
         )}
-      </button>
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handle} className="hidden" />
-    </>
+        <div className="absolute bottom-0 inset-x-0 flex z-10">
+          <button type="button" onClick={() => camRef.current?.click()}
+            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white border-r border-white/10 hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
+            <Camera className="h-3 w-3" /> Appareil
+          </button>
+          <button type="button" onClick={() => libRef.current?.click()}
+            className="flex-1 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1">
+            <Images className="h-3 w-3" /> Choisir
+          </button>
+        </div>
+      </div>
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
+      <input ref={libRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
+    </div>
   );
 }
 

@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SESSION_TAGS, encodeSessionTags } from "@/lib/session-tags";
+import { createInitialState, currentExercise, currentBlock, nextExercise, type PlayerState, type PlayerPhase } from "@/lib/workout-player";
 
 export const Route = createFileRoute("/seance")({
   head: () => ({ meta: [{ title: "Séance du jour — Calli Recomp" }] }),
@@ -78,6 +79,10 @@ function SeancePage() {
   // V11.0 : tags & humeur multi-sélection
   const [pickedTags, setPickedTags] = useState<string[]>([]);
   const [showTagPopup, setShowTagPopup] = useState(false);
+  // V12 : player guidé
+  const [player, setPlayer] = useState<PlayerState>(createInitialState());
+  const [elapsedStr, setElapsedStr] = useState("00:00");
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
   const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
@@ -246,7 +251,7 @@ function SeancePage() {
         <div className="card-premium p-4 sticky top-2 z-10 border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className="text-muted-foreground flex items-center gap-1.5">
-              <Activity className="h-4 w-4 text-primary" /> Progression séance
+              <Activity className="h-4 w-4 text-primary" /> {player.started ? `⏱️ ${elapsedStr}` : "Progression séance"}
             </span>
             <span className="font-extrabold text-primary">{progress}%</span>
           </div>
@@ -260,7 +265,9 @@ function SeancePage() {
             <span>
               {doneSets} / {totalSets} Séries complétées
             </span>
-            <span>⏱️ Temps écoulé</span>
+            {player.started && (
+              <span className="text-primary font-extrabold">⏱️ {elapsedStr}</span>
+            )}
           </div>
         </div>
         <p className="hidden lg:block text-[10px] text-muted-foreground mt-2 text-right">
@@ -418,13 +425,31 @@ function SeancePage() {
         </div>
       )}
 
-      <div className="px-5 mt-6 mb-8">
-        <Button
-          onClick={finish}
-          className="w-full h-14 rounded-2xl btn-hero text-base font-extrabold shadow-[0_8px_30px_rgba(139,92,246,0.35)] active:scale-95 transition-all"
-        >
-          Terminer la séance
-        </Button>
+      <div className="px-5 mt-6 mb-8 space-y-3">
+        {!player.started ? (
+          <Button
+            onClick={() => {
+              setPlayer({ ...player, started: true, phase: "exercise" });
+              timerRef.current = setInterval(() => {
+                setElapsedStr((prev) => {
+                  const [m, s] = prev.split(":").map(Number);
+                  const total = m * 60 + s + 1;
+                  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+                });
+              }, 1000);
+            }}
+            className="w-full h-14 rounded-2xl btn-hero text-base font-extrabold shadow-[0_8px_30px_rgba(255,107,74,0.35)] active:scale-95 transition-all"
+          >
+            ▶ Lancer la séance guidée
+          </Button>
+        ) : (
+          <Button
+            onClick={finish}
+            className="w-full h-14 rounded-2xl btn-hero text-base font-extrabold shadow-[0_8px_30px_rgba(139,92,246,0.35)] active:scale-95 transition-all"
+          >
+            ⏹ Terminer la séance
+          </Button>
+        )}
       </div>
 
       {restEx && (
@@ -600,27 +625,12 @@ function ExerciseCard({
   );
 }
 
-function NumberField({
-  label,
-  value,
-  onChange,
-  optional,
-}: {
-  label: string;
-  value?: number;
-  onChange: (v: number | undefined) => void;
-  optional?: boolean;
-}) {
+function NumberField({ label, value }: { label: string; value?: number; optional?: boolean }) {
   return (
     <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg px-1.5 py-0.5">
-      <Input
-        type="number"
-        inputMode="decimal"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
-        placeholder={optional ? "—" : ""}
-        className="h-7 w-12 bg-transparent text-center border-none p-0 focus-visible:ring-0 text-xs font-bold text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-      />
+      <span className="h-7 w-12 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums">
+        {value ?? "—"}
+      </span>
       <span className="text-[10px] font-extrabold text-muted-foreground lowercase">{label}</span>
     </div>
   );
@@ -649,10 +659,12 @@ function RestTimer({
   seconds,
   label,
   onClose,
+  autoNext,
 }: {
   seconds: number;
   label: string;
   onClose: () => void;
+  autoNext?: boolean;
 }) {
   const [left, setLeft] = useState(seconds);
   const [paused, setPaused] = useState(false);
@@ -667,11 +679,13 @@ function RestTimer({
     if (left === 0) {
       try {
         navigator.vibrate?.([200, 80, 200]);
-      } catch {
-        /* noop */
+      } catch { /* noop */ }
+      if (autoNext) {
+        const t = setTimeout(onClose, 1500);
+        return () => clearTimeout(t);
       }
     }
-  }, [left]);
+  }, [left, autoNext, onClose]);
 
   const pct = ((seconds - left) / seconds) * 100;
 

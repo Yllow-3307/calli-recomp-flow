@@ -622,9 +622,9 @@ function Dashboard() {
             title="Tirer pour redimensionner"
             aria-label="Tirer pour redimensionner"
             onPointerDown={(e) => startResize(e, si, bi)}
-            className="absolute bottom-0 right-0 translate-x-[50%] translate-y-[50%] z-30 h-6 w-6 grid place-items-center rounded-full border-2 border-primary/60 bg-slate-950 shadow-lg cursor-nwse-resize touch-none hover:scale-125 transition-transform"
+            className="absolute -bottom-3 -right-3 z-30 h-7 w-7 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
           >
-            <MoveDiagonal2 className="h-3 w-3 text-primary" />
+            <MoveDiagonal2 className="h-3.5 w-3.5 text-primary" />
           </button>
         )}
         <div
@@ -1384,15 +1384,24 @@ function HomeMesuresBlock() {
   );
 }
 
-/** Bloc « Musique » : lance ta playlist sport depuis l'app (Spotify/Deezer/Apple Music). */
+/** Bloc « Musique » : lance ta playlist sport depuis l'app (format dynamique). */
 function MusiqueBlock() {
   const state = useAppState();
   const today = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
-  const playlists = state.profile.musicPlaylists ?? {};
+  const raw = state.profile.musicPlaylists;
+  const playlists = Array.isArray(raw) 
+    ? raw as { id: string; label: string; url: string }[]
+    : [];
+  // Fallback ancien format
   const tType = today.type;
   const sessionType: string =
     tType === "running" ? "running" : tType === "rest" || tType === "recovery" ? "recovery" : tType;
-  const url = playlists[sessionType] || playlists["running"] || "";
+
+  // Trouver la playlist qui correspond le mieux
+  const match = playlists.length > 0
+    ? playlists.find((p) => p.label.toLowerCase().includes(tType) || p.id === tType) || playlists[0]
+    : null;
+  const url = match?.url || "";
 
   const appName = url.includes("spotify")
     ? "Spotify"
@@ -1413,7 +1422,16 @@ function MusiqueBlock() {
       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
         <Music className="h-4 w-4 text-pink-400" /> Musique
       </div>
-      <p className="mt-3 text-sm font-black">
+      {playlists.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {playlists.map((p) => (
+            <span key={p.id} className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${p.url ? "bg-pink-500/10 border-pink-500/20 text-pink-200" : "bg-white/5 border-white/10 text-muted-foreground"}`}>
+              {p.label} {p.url ? "🔗" : "⛔"}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="mt-2 text-sm font-black">
         {sessionType === "recovery" || sessionType === "rest"
           ? "Récup 💆"
           : `Playlist ${sessionType === "running" ? "🏃 Course" : sessionType === "push" ? "💪 Push" : sessionType === "pull" ? "🎯 Pull" : "🦵 Legs"}`}
@@ -1434,23 +1452,16 @@ function MusiqueBlock() {
             </span>
             <span className="text-[10px] opacity-70">↗</span>
           </a>
-          <Link
-            to="/parametres"
-            className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors"
-          >
+          <Link to="/parametres" className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors">
             Changer de playlist dans Paramètres
           </Link>
         </div>
       ) : (
         <div className="mt-3 space-y-2">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Configure ta playlist sport dans Paramètres → Musique pour lancer ta musique depuis
-            l'app.
+            Configure tes playlists dans Paramètres → Musique.
           </p>
-          <Link
-            to="/parametres"
-            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all"
-          >
+          <Link to="/parametres" className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all">
             <Music className="h-3.5 w-3.5" /> Configurer mes playlists
           </Link>
         </div>
