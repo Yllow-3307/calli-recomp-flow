@@ -1,0 +1,88 @@
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 933632c..8459bac 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -581,7 +581,7 @@ function Dashboard() {
+       <div
+         key={blockKeyOf(b)}
+         data-block-pos={`${si}:${bi}`}
+-        className={`relative ${spanCls} ${
++        className={`${spanCls} ${
+           isDropTarget
+             ? "rounded-2xl outline-2 outline-dashed outline-primary/70 -outline-offset-2"
+             : ""
+@@ -600,41 +600,43 @@ function Dashboard() {
+             : undefined
+         }
+       >
+-        {editing && (
+-          <div className="absolute -top-2 right-2 z-20 flex gap-1 rounded-full border border-primary/40 bg-slate-950/95 p-1 shadow-lg">
++        <div className="relative isolate">
++          {editing && (
++            <div className="absolute -top-2 right-2 z-20 flex gap-1 rounded-full border border-primary/40 bg-slate-950/95 p-1 shadow-lg">
++              <button
++                type="button"
++                title="Glisser pour deplacer"
++                aria-label="Glisser pour deplacer"
++                onPointerDown={(e) => startBlockDrag(e, si, bi)}
++                className="h-6 w-6 grid place-items-center rounded-md cursor-grab active:cursor-grabbing touch-none hover:bg-white/10 transition-colors"
++              >
++                <GripVertical className="h-3.5 w-3.5" />
++              </button>
++              <EditBtn title="Retirer" danger onClick={() => removeBlock(si, bi)}>
++                <Trash2 className="h-3.5 w-3.5" />
++              </EditBtn>
++            </div>
++          )}
++          <div
++            className={
++              editing
++                ? "rounded-2xl border border-dashed border-primary/40 bg-primary/[0.04] p-1 pt-6"
++                : ""
++            }
++          >
++            {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
++          </div>
++          {editing && (
+             <button
+               type="button"
+-              title="Glisser pour deplacer"
+-              aria-label="Glisser pour deplacer"
+-              onPointerDown={(e) => startBlockDrag(e, si, bi)}
+-              className="h-6 w-6 grid place-items-center rounded-md cursor-grab active:cursor-grabbing touch-none hover:bg-white/10 transition-colors"
++              title="Tirer pour redimensionner"
++              aria-label="Tirer pour redimensionner"
++              onPointerDown={(e) => startResize(e, si, bi)}
++              className="absolute -bottom-2 -right-2 z-40 h-6 w-6 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3),0_4px_12px_rgba(0,0,0,0.4)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
+             >
+-              <GripVertical className="h-3.5 w-3.5" />
++              <MoveDiagonal2 className="h-3 w-3 text-primary" />
+             </button>
+-            <EditBtn title="Retirer" danger onClick={() => removeBlock(si, bi)}>
+-              <Trash2 className="h-3.5 w-3.5" />
+-            </EditBtn>
+-          </div>
+-        )}
+-        {editing && (
+-          <button
+-            type="button"
+-            title="Tirer pour redimensionner"
+-            aria-label="Tirer pour redimensionner"
+-            onPointerDown={(e) => startResize(e, si, bi)}
+-            className="absolute -bottom-2.5 -right-2.5 z-40 h-6 w-6 grid place-items-center rounded-full border-2 border-primary bg-slate-950 shadow-[0_0_0_2px_rgba(255,107,74,0.3),0_4px_12px_rgba(0,0,0,0.4)] cursor-nw-resize touch-none hover:scale-125 active:scale-90 transition-transform"
+-          >
+-            <MoveDiagonal2 className="h-3 w-3 text-primary" />
+-          </button>
+-        )}
+-        <div
+-          className={
+-            editing
+-              ? "rounded-2xl border border-dashed border-primary/40 bg-primary/[0.04] p-1 pt-6"
+-              : ""
+-          }
+-        >
+-          {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
++          )}
+         </div>
+       </div>
+     );
