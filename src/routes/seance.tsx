@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { getTodayProgram, EXERCISE_SWAPS, type Exercise } from "@/lib/program";
+import { getTodayProgram, EXERCISE_SWAPS, parseAlternative, type Exercise } from "@/lib/program";
 import { planDays } from "@/lib/plan";
 import { SessionTypeBadge } from "@/routes/index";
 import {
@@ -97,7 +97,20 @@ function SeancePage() {
     actions.setProfile({ exerciseSwaps: next });
   };
   const nameOf = (ex: Exercise) => swaps[slotKey(ex)] ?? ex.name;
-
+  /** Calcule l'exercice réel après remplacement (swap ou alternative cardio). */
+  const effectiveExOf = (ex: Exercise): Exercise => {
+    const swappedName = swaps[slotKey(ex)];
+    if (!swappedName) return ex;
+    const altKey = `alt-${day.key}`;
+    if (swaps[altKey] && ex.name.toLowerCase().includes("course")) {
+      const parsed = parseAlternative(swaps[altKey]);
+      if (parsed) {
+        return { ...ex, kind: parsed.kind, target: parsed.target, targetMin: parsed.targetMin, targetMax: parsed.targetMax, name: swappedName };
+      }
+    }
+    return { ...ex, name: swappedName };
+  };
+  
   // Dernière perf + suggestion par exercice (recalculées à jour de l'historique)
   const exMeta = useMemo(
     () =>
@@ -167,15 +180,17 @@ function SeancePage() {
   const doFinish = (forceTags?: string[]) => {
     const finalTags = forceTags ?? pickedTags;
     const finalNotes = finalTags.length ? encodeSessionTags(finalTags, globalNotes) : globalNotes;
-    const exercises: ExerciseLog[] = allExercises.map((e) => ({
+    const exercises: ExerciseLog[] = allExercises.map((e) => {
+      const eff = effectiveExOf(e);
+      return {
       exId: e.id,
       name: nameOf(e),
-      targetMin: e.targetMin,
-      targetMax: e.targetMax,
-      kind: e.kind,
+      targetMin: eff.targetMin,
+      targetMax: eff.targetMax,
+      kind: eff.kind,
       sets: sets[e.id],
       notes: exNotes[e.id],
-    }));
+    };})
     const totalVolume = exercises.reduce(
       (a, e) =>
         a + e.sets.filter((s) => s.done).reduce((b, s) => b + (s.reps || 0) * (s.weight || 1), 0),

@@ -1,0 +1,56 @@
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 88e88ad..29ef33d 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -432,7 +432,7 @@ function Dashboard() {
+       case "nutrition":
+         return (
+           <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+-            <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent">
++            <div className="card-premium p-4 border border-lime-400/25 bg-gradient-to-b from-lime-400/[0.12] to-transparent flex flex-col">
+               <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+                 <Beef className="h-4 w-4 text-lime-400" /> Proteines
+               </div>
+@@ -632,13 +632,13 @@ function Dashboard() {
+             </div>
+           )}
+           <div
+-            className={`${heightCls} ${
++            className={`flex flex-col ${heightCls} ${
+               editing
+                 ? "rounded-2xl border border-dashed border-primary/40 bg-primary/[0.04] p-1 pt-6"
+                 : ""
+             }`}
+           >
+-            {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
++            <div className="flex-1">{content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}</div>
+           </div>
+           {editing && (
+             <>
+@@ -1199,7 +1199,7 @@ function MacroBlock({
+ }) {
+   const ratio = target > 0 ? Math.min(100, (value / target) * 100) : 0;
+   return (
+-    <div className={`card-premium p-4 border bg-gradient-to-b to-transparent ${borderCls}`}>
++    <div className={`card-premium p-4 border bg-gradient-to-b to-transparent flex flex-col ${borderCls}`}>
+       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+         {icon} {label}
+       </div>
+@@ -1226,7 +1226,7 @@ function HomeSkillsBlock() {
+   return (
+     <Link
+       to="/skills"
+-      className="card-premium p-4 block border border-amber-400/25 bg-gradient-to-b from-amber-400/[0.10] to-transparent h-full hover:border-amber-400/40 transition-colors"
++      className="card-premium p-4 block border border-amber-400/25 bg-gradient-to-b from-amber-400/[0.10] to-transparent h-full flex flex-col hover:border-amber-400/40 transition-colors"
+     >
+       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+         <Trophy className="h-4 w-4 text-amber-400" /> Mes skills
+@@ -1384,7 +1384,7 @@ function HomeMesuresBlock() {
+   return (
+     <Link
+       to="/mesures"
+-      className="card-premium p-4 block border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.10] to-transparent h-full hover:border-cyan-400/40 transition-colors"
++      className="card-premium p-4 block border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.10] to-transparent h-full flex flex-col hover:border-cyan-400/40 transition-colors"
+     >
+       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+         <Target className="h-4 w-4 text-cyan-400" /> Mes mesures

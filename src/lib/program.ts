@@ -275,6 +275,33 @@ export const PROGRESS_TESTS: ProgressTestType[] = [
  * Clé = nom exact de l'exercice du programme ; valeurs = alternatives proches
  * (même groupe musculaire, difficulté similaire ou régressive).
  */
+/** Parse une alternative textuelle en Exercise partiel pour remplacer le cardio.
+ *  Détecte les motifs : "min" → kind time, "km" → kind distance, sinon reps.
+ *  Ex: "Rameur 30-40 min steady" → { kind:"time", targetMin:30, targetMax:40, ... }
+ */
+export function parseAlternative(text: string): { kind: "reps" | "time" | "distance"; targetMin?: number; targetMax?: number; target: string } | null {
+  const lower = text.toLowerCase();
+  
+  // Détection "X-Y min" ou "X min" (temps)
+  const minMatch = lower.match(/(\d+)\s*-\s*(\d+)\s*min/i) || lower.match(/(\d+)\s*min/i);
+  if (minMatch) {
+    const min = parseInt(minMatch[1]);
+    const max = minMatch[2] ? parseInt(minMatch[2]) : min;
+    return { kind: "time", targetMin: min, targetMax: max, target: min === max ? `${min}s` : `${min}-${max}s` };
+  }
+  
+  // Détection "X-Y km" ou "X km" (distance)
+  const kmMatch = lower.match(/([\d.]+)\s*-\s*([\d.]+)\s*km/i) || lower.match(/([\d.]+)\s*km/i);
+  if (kmMatch) {
+    const d = parseFloat(kmMatch[1]);
+    const d2 = kmMatch[2] ? parseFloat(kmMatch[2]) : d;
+    return { kind: "distance", targetMin: d, targetMax: d2, target: d === d2 ? `${d} km` : `${d}-${d2} km` };
+  }
+  
+  // Cas générique : on garde le texte comme target
+  return { kind: "time", target: text };
+}
+
 export const EXERCISE_SWAPS: Record<string, string[]> = {
   "Pike push-up lesté": ["Pike push-up (poids du corps)", "Pompes déclinées"],
   "HSPU négatif mur": ["Pike push-up", "Pompes déclinées lentes"],

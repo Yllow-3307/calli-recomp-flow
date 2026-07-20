@@ -146,7 +146,7 @@ export function normalizeHomeLayout(raw: unknown): HomeSection[] {
   for (const s of raw as { id?: unknown; title?: unknown; blocks?: unknown }[]) {
     if (!s || !Array.isArray(s.blocks)) continue;
     const blocks: HomeBlockInstance[] = [];
-    for (const b of s.blocks as { kind?: unknown; span?: unknown; refId?: unknown }[]) {
+    for (const b of s.blocks as { kind?: unknown; span?: unknown; refId?: unknown; height?: unknown }[]) {
       const kind = String(b.kind) as HomeBlockKind;
       if (!KINDS.includes(kind)) continue;
       const refId = typeof b.refId === "string" && b.refId ? b.refId.slice(0, 40) : undefined;
