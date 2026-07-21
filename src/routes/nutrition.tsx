@@ -329,7 +329,7 @@ function NutritionPage() {
           </p>
           {meals.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1">
-              Aucun repas enregistré aujourd'hui.
+              <span className="hidden sm:inline">Aucun repas enregistré aujourd'hui.</span><span className="sm:hidden">Aucun repas aujourd'hui.</span>
             </p>
           ) : (
             <div className="space-y-2">

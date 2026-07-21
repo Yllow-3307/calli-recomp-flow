@@ -287,7 +287,7 @@ export function parseAlternative(text: string): { kind: "reps" | "time" | "dista
   if (minMatch) {
     const min = parseInt(minMatch[1]);
     const max = minMatch[2] ? parseInt(minMatch[2]) : min;
-    return { kind: "time", targetMin: min, targetMax: max, target: min === max ? `${min}s` : `${min}-${max}s` };
+    return { kind: "time", targetMin: min, targetMax: max, target: min === max ? `${min} min` : `${min}-${max} min` };
   }
   
   // Détection "X-Y km" ou "X km" (distance)

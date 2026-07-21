@@ -174,7 +174,7 @@ function ProgressionPage() {
                 Aucun test enregistré pour le moment
               </h3>
               <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                Commence à mesurer ta progression physique et tes records sur tes skills favoris.
+                <span className="hidden sm:inline">Commence à mesurer ta progression physique et tes records sur tes skills favoris</span><span className="sm:hidden">Mesure ta progression et tes records</span>.
               </p>
             </div>
             <Button
@@ -233,9 +233,9 @@ function ProgressionPage() {
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground mt-2 px-1">
-              Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
+              <span className="hidden sm:inline">Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
               échecs de suite → on recule d'un cran pour repartir propre.
-            </p>
+            </span><span className="sm:hidden">Haut fourchette + RPE≤8 → +1-2 reps / +5s</span></p>
           </section>
         )}
 

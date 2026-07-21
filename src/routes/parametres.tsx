@@ -1416,7 +1416,7 @@ function PushCard() {
         <h3 className="font-bold text-sm">Rappel push quotidien</h3>
       </div>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Reçois une notification push chaque jour si tu n'as pas encore fait ta séance. 
+        <span className="hidden sm:inline">Reçois une notification push chaque jour si tu n'as pas encore fait ta séance.</span><span className="sm:hidden">Notification push si séance manquée.</span> 
         100% gratuit, fonctionne même quand l'app est fermée (PWA installée).
       </p>
 

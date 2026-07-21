@@ -823,7 +823,7 @@ function Dashboard() {
               {sec.blocks.map((b, bi) => renderBlock(si, bi, b))}
               {editing && sec.blocks.length === 0 && (
                 <p className="text-[11px] text-muted-foreground/70 italic py-2">
-                  Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.
+                  <span className="hidden sm:inline">Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.</span><span className="sm:hidden">Sous-section vide — ajoute un bloc.</span>
                 </p>
               )}
             </div>
@@ -857,7 +857,7 @@ function Dashboard() {
           </div>
           {addableEntries.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">
-              Tous les blocs sont deja sur ton accueil 🎉
+              <span className="hidden sm:inline">Tous les blocs sont deja sur ton accueil 🎉</span><span className="sm:hidden">Tous les blocs sont là 🎉</span>
             </p>
           ) : (
             <div className="grid gap-2 pt-2">
@@ -1001,7 +1001,7 @@ function CycleEndCard({ profile }: { profile: Profile }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black text-gradient">Fin du cycle {cycle} 🎉</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨
+            <span className="hidden sm:inline">Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨</span><span className="sm:hidden">Régénère le plan → perfs ✨</span>
           </p>
         </div>
         <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -1494,7 +1494,7 @@ function MusiqueBlock() {
       ) : (
         <div className="mt-3 space-y-2">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Configure tes playlists dans Paramètres → Musique.
+            <span className="hidden sm:inline">Configure tes playlists dans Paramètres → Musique.</span><span className="sm:hidden">🎵 Non configurée</span>
           </p>
           <Link to="/parametres" className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all">
             <Music className="h-3.5 w-3.5" /> Configurer mes playlists
