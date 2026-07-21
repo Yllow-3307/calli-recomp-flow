@@ -135,11 +135,11 @@ export function PageShell({
   return (
     <div
       className={cn(
-        "min-h-screen max-w-md mx-auto pb-24 relative lg:m-0 lg:max-w-none lg:pl-20 xl:pl-64 lg:pb-10",
+        "min-h-screen max-w-md mx-auto pb-28 relative lg:m-0 lg:max-w-none lg:pl-20 xl:pl-64 lg:pb-12 min-w-0 overflow-x-hidden",
         className,
       )}
     >
-      <div className="lg:max-w-6xl lg:mx-auto lg:px-6">{children}</div>
+      <div className="lg:max-w-6xl lg:mx-auto lg:px-6 min-w-0">{children}</div>
     </div>
   );
 }

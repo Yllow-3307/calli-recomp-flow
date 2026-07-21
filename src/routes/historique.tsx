@@ -75,8 +75,7 @@ function HistoriquePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const actions = useAppActions();
-
-  // V11 : recherche & filtres
+  const state = useAppState();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("Toutes");
   const [tagFilter, setTagFilter] = useState<string>("");
@@ -94,42 +93,16 @@ function HistoriquePage() {
         setLoading(true);
         setError(null);
 
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session?.user) {
-          setError("Vous devez être connecté pour voir votre historique.");
-          setLoading(false);
-          return;
-        }
-
-        const userId = session.user.id;
-
-        const { data: workoutsData, error: workoutsError } = await supabase
-          .from("workout_sessions")
-          .select("*, exercise_logs(*)")
-          .eq("user_id", userId)
-          .order("date", { ascending: false });
-        if (workoutsError) throw workoutsError;
-
-        const { data: cardioData, error: cardioError } = await supabase
-          .from("cardio_logs")
-          .select("*")
-          .eq("user_id", userId)
-          .order("date", { ascending: false });
-        if (cardioError) throw cardioError;
-
-        const workoutItems: HistoryItem[] = (workoutsData || []).map((session) => {
+        // Mapper les séances locales (Zustand / local state) d'abord
+        const localWorkouts: HistoryItem[] = state.workouts.map((w) => {
           let setsPlanned = 0;
           let setsDone = 0;
-          (session.exercise_logs || []).forEach((log) => {
-            const sets = (log.sets as Array<{ done?: boolean }>) || [];
-            setsPlanned += sets.length;
-            setsDone += sets.filter((s) => s.done).length;
+          (w.exercises || []).forEach((e) => {
+            setsPlanned += e.sets.length;
+            setsDone += e.sets.filter((s) => s.done).length;
           });
-
           let category: "Push" | "Pull" | "Legs" | "Autre" = "Autre";
-          const titleLower = session.day_title.toLowerCase();
+          const titleLower = (w.dayTitle || "").toLowerCase();
           if (titleLower.includes("push")) category = "Push";
           else if (titleLower.includes("pull")) category = "Pull";
           else if (titleLower.includes("legs") || titleLower.includes("jambes")) category = "Legs";
@@ -140,18 +113,18 @@ function HistoriquePage() {
               ? "terminée"
               : "partielle";
 
-          const { tags, note: noteText } = parseSessionNotes(session.notes);
+          const { tags, note: noteText } = parseSessionNotes(w.notes ?? null);
 
           return {
             type: "workout" as const,
-            id: session.id,
-            date: session.date,
-            title: session.day_title || "Séance musculation",
+            id: w.id,
+            date: w.date,
+            title: w.dayTitle || "Séance musculation",
             category,
-            duration: session.duration,
-            rpe: session.rpe,
-            filmed: !!session.filmed,
-            notes: session.notes,
+            duration: w.duration,
+            rpe: w.rpe ?? null,
+            filmed: !!w.filmed,
+            notes: w.notes ?? null,
             setsPlanned,
             setsDone,
             status,
@@ -160,28 +133,123 @@ function HistoriquePage() {
           };
         });
 
-        const cardioItems: HistoryItem[] = (cardioData || []).map((log) => ({
+        const localCardios: HistoryItem[] = state.cardio.map((c) => ({
           type: "cardio" as const,
-          id: log.id,
-          date: log.date,
+          id: c.id,
+          date: c.date,
           title:
-            log.type === "course"
+            c.type === "course"
               ? "Running"
-              : log.type.charAt(0).toUpperCase() + log.type.slice(1),
-          cardioType: log.type,
-          distance: log.distance,
-          duration: log.duration,
-          pace: log.pace,
-          zone: log.zone,
+              : c.type.charAt(0).toUpperCase() + c.type.slice(1),
+          cardioType: c.type,
+          distance: c.distance ?? null,
+          duration: c.duration,
+          pace: c.pace ?? null,
+          zone: c.zone ?? null,
           notes: null,
           status: "terminée" as const,
           tags: [],
           noteText: "",
         }));
 
-        const combined = [...workoutItems, ...cardioItems].sort(
+        let remoteWorkouts: HistoryItem[] = [];
+        let remoteCardios: HistoryItem[] = [];
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const userId = session.user.id;
+
+            const { data: workoutsData } = await supabase
+              .from("workout_sessions")
+              .select("*, exercise_logs(*)")
+              .eq("user_id", userId)
+              .order("date", { ascending: false });
+
+            const { data: cardioData } = await supabase
+              .from("cardio_logs")
+              .select("*")
+              .eq("user_id", userId)
+              .order("date", { ascending: false });
+
+            if (workoutsData) {
+              remoteWorkouts = workoutsData.map((session) => {
+                let setsPlanned = 0;
+                let setsDone = 0;
+                (session.exercise_logs || []).forEach((log) => {
+                  const sets = (log.sets as Array<{ done?: boolean }>) || [];
+                  setsPlanned += sets.length;
+                  setsDone += sets.filter((s) => s.done).length;
+                });
+
+                let category: "Push" | "Pull" | "Legs" | "Autre" = "Autre";
+                const titleLower = session.day_title.toLowerCase();
+                if (titleLower.includes("push")) category = "Push";
+                else if (titleLower.includes("pull")) category = "Pull";
+                else if (titleLower.includes("legs") || titleLower.includes("jambes")) category = "Legs";
+
+                const ratio = setsPlanned > 0 ? setsDone / setsPlanned : 0;
+                const status: "terminée" | "partielle" =
+                  setsPlanned > 0 && (setsDone === setsPlanned || ratio >= 0.8)
+                    ? "terminée"
+                    : "partielle";
+
+                const { tags, note: noteText } = parseSessionNotes(session.notes);
+
+                return {
+                  type: "workout" as const,
+                  id: session.id,
+                  date: session.date,
+                  title: session.day_title || "Séance musculation",
+                  category,
+                  duration: session.duration,
+                  rpe: session.rpe,
+                  filmed: !!session.filmed,
+                  notes: session.notes,
+                  setsPlanned,
+                  setsDone,
+                  status,
+                  tags,
+                  noteText,
+                };
+              });
+            }
+
+            if (cardioData) {
+              remoteCardios = cardioData.map((log) => ({
+                type: "cardio" as const,
+                id: log.id,
+                date: log.date,
+                title:
+                  log.type === "course"
+                    ? "Running"
+                    : log.type.charAt(0).toUpperCase() + log.type.slice(1),
+                cardioType: log.type,
+                distance: log.distance,
+                duration: log.duration,
+                pace: log.pace,
+                zone: log.zone,
+                notes: null,
+                status: "terminée" as const,
+                tags: [],
+                noteText: "",
+              }));
+            }
+          }
+        } catch (netErr) {
+          console.warn("Réseau indisponible, affichage des séances locales:", netErr);
+        }
+
+        // Fusion sans doublons
+        const itemMap = new Map<string, HistoryItem>();
+        [...localWorkouts, ...localCardios, ...remoteWorkouts, ...remoteCardios].forEach((item) => {
+          itemMap.set(item.id, item);
+        });
+
+        const combined = Array.from(itemMap.values()).sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
+
         setItems(combined);
       } catch (err) {
         console.error("Erreur historique :", err);
@@ -191,7 +259,7 @@ function HistoriquePage() {
       }
     }
     fetchHistory();
-  }, []);
+  }, [state.workouts, state.cardio]);
 
   // Filtrage & tri
   const filtered = useMemo(() => {

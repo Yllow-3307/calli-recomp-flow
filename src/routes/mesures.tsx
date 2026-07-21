@@ -143,7 +143,7 @@ function MesuresPage() {
                 onChange={(v) => setForm({ ...form, weight: v })}
               />
               <LabeledInput
-                label="Taille (cm)"
+                label="Tour de taille (cm)"
                 value={form.waist}
                 onChange={(v) => setForm({ ...form, waist: v })}
               />
@@ -392,6 +392,7 @@ function PhotoSlotInput({
         ref={libRef}
         type="file"
         accept="image/*"
+        capture="environment"
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) uploadFile(f);

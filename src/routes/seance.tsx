@@ -821,11 +821,19 @@ function RestTimer({
 }) {
   const [left, setLeft] = useState(seconds);
   const [paused, setPaused] = useState(false);
+  const endTimeRef = useRef(Date.now() + seconds * 1000);
+
+  useEffect(() => {
+    endTimeRef.current = Date.now() + left * 1000;
+  }, [paused]);
 
   useEffect(() => {
     if (paused || left <= 0) return;
-    const t = setTimeout(() => setLeft((s) => s - 1), 1000);
-    return () => clearTimeout(t);
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+      setLeft(remaining);
+    }, 250);
+    return () => clearInterval(interval);
   }, [left, paused]);
 
   useEffect(() => {
@@ -835,6 +843,21 @@ function RestTimer({
       } catch {
         /* noop */
       }
+      try {
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch {
+        /* audio fallback error safe */
+      }
+
       if (autoNext) {
         const t = setTimeout(onClose, 1500);
         return () => clearTimeout(t);

@@ -446,7 +446,7 @@ function FavCard({
             setEditFat(fav.fat);
             setEditOpen(true);
           }}
-          className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all"
+          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all"
           aria-label="Modifier"
         >
           <Pencil className="h-3.5 w-3.5" />

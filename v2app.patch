@@ -1,0 +1,629 @@
+diff --git a/src/components/BottomNav.tsx b/src/components/BottomNav.tsx
+index 220be37..c87b9fc 100644
+--- a/src/components/BottomNav.tsx
++++ b/src/components/BottomNav.tsx
+@@ -135,11 +135,11 @@ export function PageShell({
+   return (
+     <div
+       className={cn(
+-        "min-h-screen max-w-md mx-auto pb-24 relative lg:m-0 lg:max-w-none lg:pl-20 xl:pl-64 lg:pb-10",
++        "min-h-screen max-w-md mx-auto pb-28 relative lg:m-0 lg:max-w-none lg:pl-20 xl:pl-64 lg:pb-12 min-w-0 overflow-x-hidden",
+         className,
+       )}
+     >
+-      <div className="lg:max-w-6xl lg:mx-auto lg:px-6">{children}</div>
++      <div className="lg:max-w-6xl lg:mx-auto lg:px-6 min-w-0">{children}</div>
+     </div>
+   );
+ }
+diff --git a/src/routes/connexion.tsx b/src/routes/connexion.tsx
+index 11fd3a8..f9e9106 100644
+--- a/src/routes/connexion.tsx
++++ b/src/routes/connexion.tsx
+@@ -7,21 +7,42 @@ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import { toast } from "sonner";
+-import { Lock, Mail, Dumbbell, Loader2 } from "lucide-react";
++import { Lock, Mail, Dumbbell, Loader2, Eye, EyeOff } from "lucide-react";
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++} from "@/components/ui/dialog";
+ 
+ export const Route = createFileRoute("/connexion")({
+   head: () => ({ meta: [{ title: "Connexion — Calli Recomp" }] }),
+   component: ConnexionPage,
+ });
+ 
++function translateAuthError(err: unknown): string {
++  if (err instanceof Error) {
++    const msg = err.message.toLowerCase();
++    if (msg.includes("invalid login credentials")) return "Identifiants incorrects. Vérifie ton e-mail et ton mot de passe.";
++    if (msg.includes("user already registered")) return "Un compte existe déjà avec cette adresse e-mail.";
++    if (msg.includes("rate limit exceeded") || msg.includes("too many requests")) return "Trop de tentatives. Patiente un instant avant de réessayer.";
++    if (msg.includes("email not confirmed")) return "Ton e-mail n'a pas encore été validé. Vérifie tes courriels.";
++    return err.message;
++  }
++  return "Une erreur est survenue lors de l'authentification.";
++}
++
+ function ConnexionPage() {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
++  const [showPassword, setShowPassword] = useState(false);
+   const [loading, setLoading] = useState(false);
++  const [forgotOpen, setForgotOpen] = useState(false);
++  const [resetEmail, setResetEmail] = useState("");
++  const [resetLoading, setResetLoading] = useState(false);
+   const navigate = useNavigate();
+ 
+   useEffect(() => {
+-    // Si l'utilisateur est déjà connecté, on le redirige vers l'accueil
+     supabase.auth.getSession().then(({ data: { session } }) => {
+       if (session) {
+         navigate({ to: "/" });
+@@ -48,9 +69,7 @@ function ConnexionPage() {
+       toast.success("Connexion réussie !");
+       navigate({ to: "/" });
+     } catch (err) {
+-      const message =
+-        err instanceof Error ? err.message : "Une erreur est survenue lors de la connexion.";
+-      toast.error(message);
++      toast.error(translateAuthError(err));
+     } finally {
+       setLoading(false);
+     }
+@@ -84,14 +103,35 @@ function ConnexionPage() {
+         toast.success("Inscription réussie ! Vérifie tes e-mails pour valider ton compte.");
+       }
+     } catch (err) {
+-      const message =
+-        err instanceof Error ? err.message : "Une erreur est survenue lors de l'inscription.";
+-      toast.error(message);
++      toast.error(translateAuthError(err));
+     } finally {
+       setLoading(false);
+     }
+   };
+ 
++  const handleResetPassword = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!resetEmail) {
++      toast.error("Veuillez indiquer votre adresse e-mail.");
++      return;
++    }
++
++    setResetLoading(true);
++    try {
++      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
++        redirectTo: `${window.location.origin}/parametres`,
++      });
++      if (error) throw error;
++      toast.success("E-mail de réinitialisation envoyé ! Vérifie ta boîte mail.");
++      setForgotOpen(false);
++      setResetEmail("");
++    } catch (err) {
++      toast.error(translateAuthError(err));
++    } finally {
++      setResetLoading(false);
++    }
++  };
++
+   return (
+     <PageShell>
+       <div className="flex flex-col items-center justify-center min-h-[85vh] px-5">
+@@ -140,18 +180,37 @@ function ConnexionPage() {
+                 </div>
+ 
+                 <div className="space-y-2">
+-                  <Label htmlFor="password-login">Mot de passe</Label>
++                  <div className="flex items-center justify-between">
++                    <Label htmlFor="password-login">Mot de passe</Label>
++                    <button
++                      type="button"
++                      onClick={() => {
++                        setResetEmail(email);
++                        setForgotOpen(true);
++                      }}
++                      className="text-xs text-primary hover:underline font-semibold"
++                    >
++                      Mot de passe oublié ?
++                    </button>
++                  </div>
+                   <div className="relative">
+                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                     <Input
+                       id="password-login"
+-                      type="password"
++                      type={showPassword ? "text" : "password"}
+                       autoComplete="current-password"
+                       disabled={loading}
+                       value={password}
+                       onChange={(e) => setPassword(e.target.value)}
+-                      className="pl-9 bg-input"
++                      className="pl-9 pr-10 bg-input"
+                     />
++                    <button
++                      type="button"
++                      onClick={() => setShowPassword(!showPassword)}
++                      className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
++                    >
++                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
++                    </button>
+                   </div>
+                 </div>
+ 
+@@ -188,13 +247,20 @@ function ConnexionPage() {
+                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                     <Input
+                       id="password-register"
+-                      type="password"
++                      type={showPassword ? "text" : "password"}
+                       autoComplete="new-password"
+                       disabled={loading}
+                       value={password}
+                       onChange={(e) => setPassword(e.target.value)}
+-                      className="pl-9 bg-input"
++                      className="pl-9 pr-10 bg-input"
+                     />
++                    <button
++                      type="button"
++                      onClick={() => setShowPassword(!showPassword)}
++                      className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
++                    >
++                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
++                    </button>
+                   </div>
+                 </div>
+ 
+@@ -204,6 +270,45 @@ function ConnexionPage() {
+               </form>
+             </TabsContent>
+           </Tabs>
++
++          <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
++            <DialogContent className="max-w-sm bg-slate-950 border-white/10">
++              <DialogHeader>
++                <DialogTitle className="font-black text-base text-white">
++                  Réinitialiser mon mot de passe
++                </DialogTitle>
++              </DialogHeader>
++              <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
++                <p className="text-xs text-muted-foreground leading-relaxed">
++                  Renseigne ton adresse e-mail. Tu recevras un lien sécurisé pour choisir un nouveau mot de passe.
++                </p>
++                <div className="space-y-2">
++                  <Label htmlFor="reset-email">E-mail</Label>
++                  <Input
++                    id="reset-email"
++                    type="email"
++                    placeholder="nom@exemple.com"
++                    value={resetEmail}
++                    onChange={(e) => setResetEmail(e.target.value)}
++                    className="bg-input"
++                  />
++                </div>
++                <div className="flex gap-2 pt-2">
++                  <Button
++                    type="button"
++                    variant="secondary"
++                    className="flex-1 text-xs"
++                    onClick={() => setForgotOpen(false)}
++                  >
++                    Annuler
++                  </Button>
++                  <Button type="submit" className="flex-1 btn-hero text-xs" disabled={resetLoading}>
++                    {resetLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Envoyer le lien"}
++                  </Button>
++                </div>
++              </form>
++            </DialogContent>
++          </Dialog>
+         </div>
+       </div>
+     </PageShell>
+diff --git a/src/routes/historique.tsx b/src/routes/historique.tsx
+index 04db9ed..2c8a10e 100644
+--- a/src/routes/historique.tsx
++++ b/src/routes/historique.tsx
+@@ -75,8 +75,7 @@ function HistoriquePage() {
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
+   const actions = useAppActions();
+-
+-  // V11 : recherche & filtres
++  const state = useAppState();
+   const [search, setSearch] = useState("");
+   const [typeFilter, setTypeFilter] = useState<string>("Toutes");
+   const [tagFilter, setTagFilter] = useState<string>("");
+@@ -94,42 +93,16 @@ function HistoriquePage() {
+         setLoading(true);
+         setError(null);
+ 
+-        const {
+-          data: { session },
+-        } = await supabase.auth.getSession();
+-        if (!session?.user) {
+-          setError("Vous devez être connecté pour voir votre historique.");
+-          setLoading(false);
+-          return;
+-        }
+-
+-        const userId = session.user.id;
+-
+-        const { data: workoutsData, error: workoutsError } = await supabase
+-          .from("workout_sessions")
+-          .select("*, exercise_logs(*)")
+-          .eq("user_id", userId)
+-          .order("date", { ascending: false });
+-        if (workoutsError) throw workoutsError;
+-
+-        const { data: cardioData, error: cardioError } = await supabase
+-          .from("cardio_logs")
+-          .select("*")
+-          .eq("user_id", userId)
+-          .order("date", { ascending: false });
+-        if (cardioError) throw cardioError;
+-
+-        const workoutItems: HistoryItem[] = (workoutsData || []).map((session) => {
++        // Mapper les séances locales (Zustand / local state) d'abord
++        const localWorkouts: HistoryItem[] = state.workouts.map((w) => {
+           let setsPlanned = 0;
+           let setsDone = 0;
+-          (session.exercise_logs || []).forEach((log) => {
+-            const sets = (log.sets as Array<{ done?: boolean }>) || [];
+-            setsPlanned += sets.length;
+-            setsDone += sets.filter((s) => s.done).length;
++          (w.exercises || []).forEach((e) => {
++            setsPlanned += e.sets.length;
++            setsDone += e.sets.filter((s) => s.done).length;
+           });
+-
+           let category: "Push" | "Pull" | "Legs" | "Autre" = "Autre";
+-          const titleLower = session.day_title.toLowerCase();
++          const titleLower = (w.dayTitle || "").toLowerCase();
+           if (titleLower.includes("push")) category = "Push";
+           else if (titleLower.includes("pull")) category = "Pull";
+           else if (titleLower.includes("legs") || titleLower.includes("jambes")) category = "Legs";
+@@ -140,18 +113,18 @@ function HistoriquePage() {
+               ? "terminée"
+               : "partielle";
+ 
+-          const { tags, note: noteText } = parseSessionNotes(session.notes);
++          const { tags, note: noteText } = parseSessionNotes(w.notes ?? null);
+ 
+           return {
+             type: "workout" as const,
+-            id: session.id,
+-            date: session.date,
+-            title: session.day_title || "Séance musculation",
++            id: w.id,
++            date: w.date,
++            title: w.dayTitle || "Séance musculation",
+             category,
+-            duration: session.duration,
+-            rpe: session.rpe,
+-            filmed: !!session.filmed,
+-            notes: session.notes,
++            duration: w.duration,
++            rpe: w.rpe ?? null,
++            filmed: !!w.filmed,
++            notes: w.notes ?? null,
+             setsPlanned,
+             setsDone,
+             status,
+@@ -160,28 +133,123 @@ function HistoriquePage() {
+           };
+         });
+ 
+-        const cardioItems: HistoryItem[] = (cardioData || []).map((log) => ({
++        const localCardios: HistoryItem[] = state.cardio.map((c) => ({
+           type: "cardio" as const,
+-          id: log.id,
+-          date: log.date,
++          id: c.id,
++          date: c.date,
+           title:
+-            log.type === "course"
++            c.type === "course"
+               ? "Running"
+-              : log.type.charAt(0).toUpperCase() + log.type.slice(1),
+-          cardioType: log.type,
+-          distance: log.distance,
+-          duration: log.duration,
+-          pace: log.pace,
+-          zone: log.zone,
++              : c.type.charAt(0).toUpperCase() + c.type.slice(1),
++          cardioType: c.type,
++          distance: c.distance ?? null,
++          duration: c.duration,
++          pace: c.pace ?? null,
++          zone: c.zone ?? null,
+           notes: null,
+           status: "terminée" as const,
+           tags: [],
+           noteText: "",
+         }));
+ 
+-        const combined = [...workoutItems, ...cardioItems].sort(
++        let remoteWorkouts: HistoryItem[] = [];
++        let remoteCardios: HistoryItem[] = [];
++
++        try {
++          const { data: { session } } = await supabase.auth.getSession();
++          if (session?.user) {
++            const userId = session.user.id;
++
++            const { data: workoutsData } = await supabase
++              .from("workout_sessions")
++              .select("*, exercise_logs(*)")
++              .eq("user_id", userId)
++              .order("date", { ascending: false });
++
++            const { data: cardioData } = await supabase
++              .from("cardio_logs")
++              .select("*")
++              .eq("user_id", userId)
++              .order("date", { ascending: false });
++
++            if (workoutsData) {
++              remoteWorkouts = workoutsData.map((session) => {
++                let setsPlanned = 0;
++                let setsDone = 0;
++                (session.exercise_logs || []).forEach((log) => {
++                  const sets = (log.sets as Array<{ done?: boolean }>) || [];
++                  setsPlanned += sets.length;
++                  setsDone += sets.filter((s) => s.done).length;
++                });
++
++                let category: "Push" | "Pull" | "Legs" | "Autre" = "Autre";
++                const titleLower = session.day_title.toLowerCase();
++                if (titleLower.includes("push")) category = "Push";
++                else if (titleLower.includes("pull")) category = "Pull";
++                else if (titleLower.includes("legs") || titleLower.includes("jambes")) category = "Legs";
++
++                const ratio = setsPlanned > 0 ? setsDone / setsPlanned : 0;
++                const status: "terminée" | "partielle" =
++                  setsPlanned > 0 && (setsDone === setsPlanned || ratio >= 0.8)
++                    ? "terminée"
++                    : "partielle";
++
++                const { tags, note: noteText } = parseSessionNotes(session.notes);
++
++                return {
++                  type: "workout" as const,
++                  id: session.id,
++                  date: session.date,
++                  title: session.day_title || "Séance musculation",
++                  category,
++                  duration: session.duration,
++                  rpe: session.rpe,
++                  filmed: !!session.filmed,
++                  notes: session.notes,
++                  setsPlanned,
++                  setsDone,
++                  status,
++                  tags,
++                  noteText,
++                };
++              });
++            }
++
++            if (cardioData) {
++              remoteCardios = cardioData.map((log) => ({
++                type: "cardio" as const,
++                id: log.id,
++                date: log.date,
++                title:
++                  log.type === "course"
++                    ? "Running"
++                    : log.type.charAt(0).toUpperCase() + log.type.slice(1),
++                cardioType: log.type,
++                distance: log.distance,
++                duration: log.duration,
++                pace: log.pace,
++                zone: log.zone,
++                notes: null,
++                status: "terminée" as const,
++                tags: [],
++                noteText: "",
++              }));
++            }
++          }
++        } catch (netErr) {
++          console.warn("Réseau indisponible, affichage des séances locales:", netErr);
++        }
++
++        // Fusion sans doublons
++        const itemMap = new Map<string, HistoryItem>();
++        [...localWorkouts, ...localCardios, ...remoteWorkouts, ...remoteCardios].forEach((item) => {
++          itemMap.set(item.id, item);
++        });
++
++        const combined = Array.from(itemMap.values()).sort(
+           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+         );
++
+         setItems(combined);
+       } catch (err) {
+         console.error("Erreur historique :", err);
+@@ -191,7 +259,7 @@ function HistoriquePage() {
+       }
+     }
+     fetchHistory();
+-  }, []);
++  }, [state.workouts, state.cardio]);
+ 
+   // Filtrage & tri
+   const filtered = useMemo(() => {
+diff --git a/src/routes/mesures.tsx b/src/routes/mesures.tsx
+index d10b393..2e47c3a 100644
+--- a/src/routes/mesures.tsx
++++ b/src/routes/mesures.tsx
+@@ -143,7 +143,7 @@ function MesuresPage() {
+                 onChange={(v) => setForm({ ...form, weight: v })}
+               />
+               <LabeledInput
+-                label="Taille (cm)"
++                label="Tour de taille (cm)"
+                 value={form.waist}
+                 onChange={(v) => setForm({ ...form, waist: v })}
+               />
+@@ -392,6 +392,7 @@ function PhotoSlotInput({
+         ref={libRef}
+         type="file"
+         accept="image/*"
++        capture="environment"
+         onChange={(e) => {
+           const f = e.target.files?.[0];
+           if (f) uploadFile(f);
+diff --git a/src/routes/nutrition.tsx b/src/routes/nutrition.tsx
+index 6f39d5b..5f5b9c1 100644
+--- a/src/routes/nutrition.tsx
++++ b/src/routes/nutrition.tsx
+@@ -446,7 +446,7 @@ function FavCard({
+             setEditFat(fav.fat);
+             setEditOpen(true);
+           }}
+-          className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all"
++          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all"
+           aria-label="Modifier"
+         >
+           <Pencil className="h-3.5 w-3.5" />
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index 04524da..8e958ce 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -29,6 +29,7 @@ import {
+   Sun,
+   Moon,
+   BellPlus,
++  Upload,
+ } from "lucide-react";
+ import { Switch } from "@/components/ui/switch";
+ import {
+@@ -687,15 +688,68 @@ function ExportDataCard() {
+   const state = useAppState();
+   const datasets = buildDatasets(state);
+ 
++  const handleJsonExport = () => {
++    const rawData = JSON.stringify(state, null, 2);
++    const blob = new Blob([rawData], { type: "application/json" });
++    const url = URL.createObjectURL(blob);
++    const a = document.createElement("a");
++    a.href = url;
++    a.download = `calli-recomp-backup-${new Date().toISOString().slice(0, 10)}.json`;
++    a.click();
++    URL.revokeObjectURL(url);
++    toast.success("Sauvegarde complète JSON téléchargée ✅");
++  };
++
++  const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
++    const file = e.target.files?.[0];
++    if (!file) return;
++    const reader = new FileReader();
++    reader.onload = (event) => {
++      try {
++        const parsed = JSON.parse(event.target?.result as string);
++        if (!parsed || typeof parsed !== "object" || !parsed.profile) {
++          throw new Error("Format JSON invalide");
++        }
++        localStorage.setItem("calli-recomp-v2", JSON.stringify(parsed));
++        toast.success("Sauvegarde restaurée ! Rechargement...");
++        setTimeout(() => window.location.reload(), 1000);
++      } catch (err) {
++        toast.error("Échec de la restauration : fichier JSON corrompu.");
++      }
++    };
++    reader.readAsText(file);
++  };
++
+   return (
+     <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+-      <h3 className="font-bold text-sm">📤 Exporter mes données</h3>
++      <h3 className="font-bold text-sm">📤 Exporter & Sauvegarder mes données</h3>
+       <p className="text-[11px] text-muted-foreground leading-relaxed">
+-        Fenêtre glissante des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> — à faire toutes les 2
+-        semaines, en même temps que ta pesée 😉 Le CSV s'importe tel quel dans Notion (base de
+-        données), Google Sheets ou Excel ; le Markdown se colle dans une page Notion.
++        Exportation CSV/MD des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> pour Excel, Notion ou Google Sheets, ou <b>Sauvegarde JSON complète</b> pour transférer/restaurer ton profil et ton historique.
+       </p>
+-      <div className="space-y-2">
++
++      <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2">
++        <p className="text-xs font-bold text-white">💾 Sauvegarde complète de l'application</p>
++        <div className="flex flex-wrap gap-2">
++          <Button
++            size="sm"
++            className="btn-hero h-8 text-xs gap-1"
++            onClick={handleJsonExport}
++          >
++            <FileDown className="h-3.5 w-3.5" /> Exporter JSON
++          </Button>
++          <label className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-bold text-white transition-colors border border-white/10 gap-1">
++            <Upload className="h-3.5 w-3.5" /> Restaurer JSON
++            <input
++              type="file"
++              accept=".json"
++              onChange={handleJsonImport}
++              className="hidden"
++            />
++          </label>
++        </div>
++      </div>
++
++      <div className="space-y-2 pt-1">
+         {datasets.map((ds) => (
+           <div key={ds.key} className="flex items-center gap-3">
+             <div className="flex-1 min-w-0">
+diff --git a/src/routes/seance.tsx b/src/routes/seance.tsx
+index 2e5a192..9314ee2 100644
+--- a/src/routes/seance.tsx
++++ b/src/routes/seance.tsx
+@@ -821,11 +821,19 @@ function RestTimer({
+ }) {
+   const [left, setLeft] = useState(seconds);
+   const [paused, setPaused] = useState(false);
++  const endTimeRef = useRef(Date.now() + seconds * 1000);
++
++  useEffect(() => {
++    endTimeRef.current = Date.now() + left * 1000;
++  }, [paused]);
+ 
+   useEffect(() => {
+     if (paused || left <= 0) return;
+-    const t = setTimeout(() => setLeft((s) => s - 1), 1000);
+-    return () => clearTimeout(t);
++    const interval = setInterval(() => {
++      const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
++      setLeft(remaining);
++    }, 250);
++    return () => clearInterval(interval);
+   }, [left, paused]);
+ 
+   useEffect(() => {
+@@ -835,6 +843,21 @@ function RestTimer({
+       } catch {
+         /* noop */
+       }
++      try {
++        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
++        const osc = ctx.createOscillator();
++        const gain = ctx.createGain();
++        osc.type = "sine";
++        osc.frequency.setValueAtTime(880, ctx.currentTime);
++        gain.gain.setValueAtTime(0.3, ctx.currentTime);
++        osc.connect(gain);
++        gain.connect(ctx.destination);
++        osc.start();
++        osc.stop(ctx.currentTime + 0.4);
++      } catch {
++        /* audio fallback error safe */
++      }
++
+       if (autoNext) {
+         const t = setTimeout(onClose, 1500);
+         return () => clearTimeout(t);

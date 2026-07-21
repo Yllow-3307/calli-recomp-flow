@@ -29,6 +29,7 @@ import {
   Sun,
   Moon,
   BellPlus,
+  Upload,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -687,15 +688,68 @@ function ExportDataCard() {
   const state = useAppState();
   const datasets = buildDatasets(state);
 
+  const handleJsonExport = () => {
+    const rawData = JSON.stringify(state, null, 2);
+    const blob = new Blob([rawData], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `calli-recomp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Sauvegarde complète JSON téléchargée ✅");
+  };
+
+  const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (!parsed || typeof parsed !== "object" || !parsed.profile) {
+          throw new Error("Format JSON invalide");
+        }
+        localStorage.setItem("calli-recomp-v2", JSON.stringify(parsed));
+        toast.success("Sauvegarde restaurée ! Rechargement...");
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (err) {
+        toast.error("Échec de la restauration : fichier JSON corrompu.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
-      <h3 className="font-bold text-sm">📤 Exporter mes données</h3>
+      <h3 className="font-bold text-sm">📤 Exporter & Sauvegarder mes données</h3>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Fenêtre glissante des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> — à faire toutes les 2
-        semaines, en même temps que ta pesée 😉 Le CSV s'importe tel quel dans Notion (base de
-        données), Google Sheets ou Excel ; le Markdown se colle dans une page Notion.
+        Exportation CSV/MD des <b>{EXPORT_WINDOW_DAYS} derniers jours</b> pour Excel, Notion ou Google Sheets, ou <b>Sauvegarde JSON complète</b> pour transférer/restaurer ton profil et ton historique.
       </p>
-      <div className="space-y-2">
+
+      <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2">
+        <p className="text-xs font-bold text-white">💾 Sauvegarde complète de l'application</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            className="btn-hero h-8 text-xs gap-1"
+            onClick={handleJsonExport}
+          >
+            <FileDown className="h-3.5 w-3.5" /> Exporter JSON
+          </Button>
+          <label className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-bold text-white transition-colors border border-white/10 gap-1">
+            <Upload className="h-3.5 w-3.5" /> Restaurer JSON
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleJsonImport}
+              className="hidden"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="space-y-2 pt-1">
         {datasets.map((ds) => (
           <div key={ds.key} className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
