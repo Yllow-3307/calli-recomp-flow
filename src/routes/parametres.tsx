@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { GOALS, goalDefOf } from "@/lib/plan";
+import { GOALS, goalDefOf, WEEKDAY_LABELS } from "@/lib/plan";
 import { NAV_CANDIDATES, MAX_NAV_PICKS, normalizeNavPicks } from "@/lib/nav-menu";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -91,6 +91,7 @@ export const Route = createFileRoute("/parametres")({
 function ParamsPage() {
   const state = useAppState();
   const { setProfile } = useAppActions();
+  const navigate = useNavigate();
 
   return (
     <PageShell>
@@ -180,24 +181,44 @@ function ParamsPage() {
 
             <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
               <h3 className="font-bold">Fréquence</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {[5, 6].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setProfile({ daysPerWeek: n as 5 | 6 })}
-                    className={`h-14 rounded-xl border font-bold transition ${
-                      state.profile.daysPerWeek === n
-                        ? "btn-hero border-transparent"
-                        : "bg-card border-border text-muted-foreground"
-                    }`}
-                  >
-                    {n} jours / semaine
-                  </button>
-                ))}
+              <div className="grid grid-cols-7 gap-1.5">
+                {WEEKDAY_LABELS.map((lbl, i) => {
+                  const active = (state.profile.trainingDays ?? []).includes(i);
+                  return (
+                    <button
+                      key={lbl}
+                      onClick={() => {
+                        const cur = state.profile.trainingDays ?? [];
+                        const next = active
+                          ? cur.length <= 3
+                            ? (toast.error("Minimum 3 jours d'entraînement"), cur)
+                            : cur.filter((d) => d !== i)
+                          : cur.length >= 6
+                            ? (toast.error(
+                                "Maximum 6 jours : garde au moins 1 jour de repos complet 🧘",
+                              ),
+                              cur)
+                            : [...cur, i].sort((a, b) => a - b);
+                        setProfile({
+                          trainingDays: next,
+                          daysPerWeek: next.length,
+                        });
+                      }}
+                      className={`py-2 rounded-lg text-[11px] font-bold border transition-all active:scale-90 ${
+                        active
+                          ? "btn-hero border-transparent"
+                          : "bg-white/5 border-white/10 text-muted-foreground"
+                      }`}
+                    >
+                      {lbl.slice(0, 1)}
+                      <span className="sr-only">{lbl}</span>
+                    </button>
+                  );
+                })}
               </div>
               <p className="text-xs text-muted-foreground">
-                En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les
-                Notes du programme.
+                {(state.profile.trainingDays ?? []).length} jour(s)/semaine. Touche les jours où tu
+                t'entraînes (3 à 6). Les autres deviennent du repos 🧘.
               </p>
             </div>
 
@@ -347,8 +368,18 @@ function ParamsPage() {
                 variant="secondary"
                 className="w-full text-destructive border border-destructive/30 bg-destructive/10 hover:bg-destructive/20"
                 onClick={() => {
-                  localStorage.removeItem("calli-recomp-v1");
-                  toast.success("Données réinitialisées. Recharge la page.");
+                  if (!confirm("Effacer TOUTES les données locales de cet appareil ?")) return;
+                  [
+                    "calli-recomp-v2",
+                    "calli-reminders-v1",
+                    "calli-theme",
+                    "weekly-recap-dismissed",
+                    "deleted-test-ids",
+                  ].forEach((k) => localStorage.removeItem(k));
+                  supabase.auth.signOut().then(() => {
+                    toast.success("Données réinitialisées.");
+                    navigate({ to: "/connexion" });
+                  });
                 }}
               >
                 Réinitialiser toutes les données

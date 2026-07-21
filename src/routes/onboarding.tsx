@@ -104,7 +104,7 @@ function OnboardingPage() {
     () => ({
       ...state.profile,
       goal,
-      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+      daysPerWeek: trainingDays.length,
       trainingDays,
       trainingTime,
       sessionDuration,
@@ -136,7 +136,7 @@ function OnboardingPage() {
   const finish = () => {
     const next: Partial<Profile> = {
       goal,
-      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+      daysPerWeek: trainingDays.length,
       trainingDays,
       trainingTime,
       sessionDuration,

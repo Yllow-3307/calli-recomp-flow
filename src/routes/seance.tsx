@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
 import { getTodayProgram, EXERCISE_SWAPS, parseAlternative, type Exercise } from "@/lib/program";
 import { planDays } from "@/lib/plan";
@@ -38,7 +38,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SESSION_TAGS, encodeSessionTags } from "@/lib/session-tags";
-import { createInitialState, currentExercise, currentBlock, nextExercise, type PlayerState, type PlayerPhase } from "@/lib/workout-player";
+import {
+  createInitialState,
+  currentExercise,
+  currentBlock,
+  nextExercise,
+  type PlayerState,
+  type PlayerPhase,
+} from "@/lib/workout-player";
 
 export const Route = createFileRoute("/seance")({
   head: () => ({ meta: [{ title: "Séance du jour — Calli Recomp" }] }),
@@ -84,6 +91,16 @@ function SeancePage() {
   const [elapsedStr, setElapsedStr] = useState("00:00");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Nettoyage du minuteur au démontage (évite la fuite mémoire / multi-intervalles)
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
   // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
   const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
   const [swaps, setSwaps] = useState<Record<string, string>>(
@@ -98,23 +115,37 @@ function SeancePage() {
   };
   const nameOf = (ex: Exercise) => swaps[slotKey(ex)] ?? ex.name;
   /** Calcule l'exercice réel après remplacement (swap ou alternative cardio). */
-  const effectiveExOf = (ex: Exercise): Exercise => {
-    const altKey = `alt-${day.key}`;
-    // Vérifier d'abord si une alternative cardio est active pour cet exo
-    if (swaps[altKey] && ex.name.toLowerCase().includes("course")) {
-      const parsed = parseAlternative(swaps[altKey]);
-      if (parsed) {
-        return { ...ex, kind: parsed.kind, target: parsed.target, targetMin: parsed.targetMin, targetMax: parsed.targetMax, name: swaps[slotKey(ex)] ?? ex.name };
+  const effectiveExOf = useCallback(
+    (ex: Exercise): Exercise => {
+      const slot = `${day.key}::${ex.id}`;
+      const altKey = `alt-${day.key}`;
+      // Vérifier d'abord si une alternative cardio est active pour cet exo
+      if (swaps[altKey] && ex.name.toLowerCase().includes("course")) {
+        const parsed = parseAlternative(swaps[altKey]);
+        if (parsed) {
+          return {
+            ...ex,
+            kind: parsed.kind,
+            target: parsed.target,
+            targetMin: parsed.targetMin,
+            targetMax: parsed.targetMax,
+            name: swaps[slot] ?? ex.name,
+          };
+        }
       }
-    }
-    // Sinon, appliquer le swap individuel par exercice (nom seulement)
-    const swappedName = swaps[slotKey(ex)];
-    if (swappedName) return { ...ex, name: swappedName };
-    return ex;
-  };
+      // Sinon, appliquer le swap individuel par exercice (nom seulement)
+      const swappedName = swaps[slot];
+      if (swappedName) return { ...ex, name: swappedName };
+      return ex;
+    },
+    [swaps, day.key],
+  );
   /** Exercices effectifs (après swaps/alternatives) pour l'affichage et la sauvegarde */
-  const effectiveExercises = useMemo(() => allExercises.map((ex) => effectiveExOf(ex)), [allExercises, swaps, day.key]);
-  
+  const effectiveExercises = useMemo(
+    () => allExercises.map((ex) => effectiveExOf(ex)),
+    [allExercises, effectiveExOf],
+  );
+
   // Dernière perf + suggestion par exercice (recalculées à jour de l'historique)
   const exMeta = useMemo(
     () =>
@@ -186,17 +217,21 @@ function SeancePage() {
     const finalNotes = finalTags.length ? encodeSessionTags(finalTags, globalNotes) : globalNotes;
     const exercises: ExerciseLog[] = effectiveExercises.map((e) => {
       return {
-      exId: e.id,
-      name: nameOf(e),
-      targetMin: e.targetMin,
-      targetMax: e.targetMax,
-      kind: e.kind,
-      sets: sets[e.id],
-      notes: exNotes[e.id],
-    };})
+        exId: e.id,
+        name: nameOf(e),
+        targetMin: e.targetMin,
+        targetMax: e.targetMax,
+        kind: e.kind,
+        sets: sets[e.id],
+        notes: exNotes[e.id],
+      };
+    });
     const totalVolume = exercises.reduce(
       (a, e) =>
-        a + e.sets.filter((s) => s.done).reduce((b, s) => b + (s.reps || 0) * (s.weight || 1), 0),
+        a +
+        e.sets
+          .filter((s) => s.done && typeof s.weight === "number" && s.weight > 0)
+          .reduce((b, s) => b + (s.reps || 0) * (s.weight as number), 0),
       0,
     );
     const successCount = exercises.filter((e) => {
@@ -269,7 +304,8 @@ function SeancePage() {
         <div className="card-premium p-4 sticky top-2 z-10 border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className="text-muted-foreground flex items-center gap-1.5">
-              <Activity className="h-4 w-4 text-primary" /> {player.started ? `⏱️ ${elapsedStr}` : "Progression séance"}
+              <Activity className="h-4 w-4 text-primary" />{" "}
+              {player.started ? `⏱️ ${elapsedStr}` : "Progression séance"}
             </span>
             <span className="font-extrabold text-primary">{progress}%</span>
           </div>
@@ -283,9 +319,7 @@ function SeancePage() {
             <span>
               {doneSets} / {totalSets} Séries complétées
             </span>
-            {player.started && (
-              <span className="text-primary font-extrabold">⏱️ {elapsedStr}</span>
-            )}
+            {player.started && <span className="text-primary font-extrabold">⏱️ {elapsedStr}</span>}
           </div>
         </div>
         <p className="hidden lg:block text-[10px] text-muted-foreground mt-2 text-right">
@@ -390,7 +424,8 @@ function SeancePage() {
                       : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {isActive ? "✓ " : "↺ "}{a}
+                  {isActive ? "✓ " : "↺ "}
+                  {a}
                 </button>
               );
             })}
@@ -438,7 +473,9 @@ function SeancePage() {
             </div>
             <div className="text-center">
               <h3 className="font-bold text-lg">Comment s'est passée ta séance ?</h3>
-              <p className="text-xs text-muted-foreground mt-1">Sélectionne les tags qui correspondent (optionnel)</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Sélectionne les tags qui correspondent (optionnel)
+              </p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
               {SESSION_TAGS.map((tag) => {
@@ -472,7 +509,9 @@ function SeancePage() {
               onClick={() => doFinish(pickedTags)}
               className="w-full h-11 btn-hero text-sm font-bold"
             >
-              {pickedTags.length > 0 ? `✅ Valider (${pickedTags.length} tag${pickedTags.length > 1 ? "s" : ""})` : "⏭️ Valider sans tag"}
+              {pickedTags.length > 0
+                ? `✅ Valider (${pickedTags.length} tag${pickedTags.length > 1 ? "s" : ""})`
+                : "⏭️ Valider sans tag"}
             </Button>
           </div>
         </div>
@@ -483,6 +522,7 @@ function SeancePage() {
           <Button
             onClick={() => {
               setPlayer({ ...player, started: true, phase: "exercise" });
+              if (timerRef.current) clearInterval(timerRef.current);
               timerRef.current = setInterval(() => {
                 setElapsedStr((prev) => {
                   const [m, s] = prev.split(":").map(Number);
@@ -609,11 +649,23 @@ function ExerciseCard({
                   🏃 {ex.target}
                 </span>
               ) : ex.kind === "time" ? (
-                <NumberField label="s" value={s.time} onChange={(v) => onSetChange(i, { time: v })} />
+                <NumberField
+                  label="s"
+                  value={s.time}
+                  onChange={(v) => onSetChange(i, { time: v })}
+                />
               ) : (
                 <>
-                  <NumberField label="reps" value={s.reps} onChange={(v) => onSetChange(i, { reps: v })} />
-                  <NumberField label="kg" value={s.weight} onChange={(v) => onSetChange(i, { weight: v })} optional />
+                  <NumberField
+                    label="reps"
+                    value={s.reps}
+                    onChange={(v) => onSetChange(i, { reps: v })}
+                  />
+                  <NumberField
+                    label="kg"
+                    value={s.weight}
+                    onChange={(v) => onSetChange(i, { weight: v })}
+                  />
                 </>
               )}
               <RpeMini value={s.rpe ?? 7} onChange={(v) => onSetChange(i, { rpe: v })} />
@@ -678,24 +730,50 @@ function ExerciseCard({
   );
 }
 
-function NumberField({ label, value, onChange }: { label: string; value?: number; onChange?: (v: number | undefined) => void; optional?: boolean }) {
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: number;
+  onChange?: (v: number | undefined) => void;
+}) {
+  const step = label === "kg" ? 0.5 : 1;
   return (
     <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg px-1.5 py-0.5">
       {onChange ? (
         <div className="flex items-center">
           <button
             type="button"
-            onClick={() => onChange((value ?? 0) > 0 ? value! - 1 : 0)}
+            onClick={() =>
+              onChange(
+                label === "kg"
+                  ? Math.round(((value ?? 0) - step) * 10) / 10
+                  : (value ?? 0) > 0
+                    ? value! - 1
+                    : 0,
+              )
+            }
             className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-l-md hover:bg-white/5 transition-colors"
           >
             −
           </button>
-          <span className="h-7 w-10 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums select-none">
-            {value ?? "—"}
-          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            step={step}
+            value={value ?? ""}
+            onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+            className="h-7 w-10 bg-transparent text-center text-xs font-bold text-white tabular-nums outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
           <button
             type="button"
-            onClick={() => onChange((value ?? 0) + 1)}
+            onClick={() =>
+              onChange(
+                label === "kg" ? Math.round(((value ?? 0) + step) * 10) / 10 : (value ?? 0) + 1,
+              )
+            }
             className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-r-md hover:bg-white/5 transition-colors"
           >
             +
@@ -754,7 +832,9 @@ function RestTimer({
     if (left === 0) {
       try {
         navigator.vibrate?.([200, 80, 200]);
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
       if (autoNext) {
         const t = setTimeout(onClose, 1500);
         return () => clearTimeout(t);

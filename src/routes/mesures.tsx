@@ -328,22 +328,37 @@ function PhotoSlotInput({
 
   const uploadFile = async (file: File) => {
     if (!file) return;
-    if (!navigator.onLine) { toast.error("Connexion requise."); return; }
+    if (!navigator.onLine) {
+      toast.error("Connexion requise.");
+      return;
+    }
     setUploading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { toast.error("Connecte-toi."); return; }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast.error("Connecte-toi.");
+        return;
+      }
       const b64 = await fileToCompressedBase64(file);
       const fileObj = base64ToFile(b64, `${Date.now()}-${slot}.jpg`);
       if (!fileObj) throw new Error("Conversion error");
-      const { data, error } = await supabase.storage.from("progress-photos")
+      const { data, error } = await supabase.storage
+        .from("progress-photos")
         .upload(`${session.user.id}/${Date.now()}-${slot}.jpg`, fileObj);
       if (error) throw error;
-      if (data?.path) { onChange(data.path); toast.success("Photo chargée !"); }
+      if (data?.path) {
+        onChange(data.path);
+        toast.success("Photo chargée !");
+      }
     } catch (err) {
       console.error("Upload error:", err);
       toast.error("Échec de l'envoi.");
-    } finally { setUploading(false); if (libRef.current) libRef.current.value = ""; }
+    } finally {
+      setUploading(false);
+      if (libRef.current) libRef.current.value = "";
+    }
   };
 
   return (
@@ -355,16 +370,34 @@ function PhotoSlotInput({
             <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
           </div>
         ) : value ? (
-          <SecureImage path={value} fallbackLabel={label} className="absolute inset-0 h-full w-full object-cover" />
+          <SecureImage
+            path={value}
+            fallbackLabel={label}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
         ) : (
-          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">{label}</span>
+          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">
+            {label}
+          </span>
         )}
-        <button type="button" onClick={() => libRef.current?.click()}
-          className="absolute bottom-0 inset-x-0 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1 z-10">
+        <button
+          type="button"
+          onClick={() => libRef.current?.click()}
+          className="absolute bottom-0 inset-x-0 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1 z-10"
+        >
           <Images className="h-3 w-3" /> Choisir une photo
         </button>
       </div>
-      <input ref={libRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
+      <input
+        ref={libRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) uploadFile(f);
+        }}
+        className="hidden"
+      />
     </div>
   );
 }

@@ -88,18 +88,24 @@ export default defineEventHandler(async (event) => {
           payload,
         );
         sent++;
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Si le endpoint est invalide (désabonné), supprimer la subscription
-        if (err?.statusCode === 410 || err?.statusCode === 404) {
+        const code =
+          (err as { statusCode?: number; message?: string }).statusCode ??
+          (typeof err === "object" && err && "status" in err
+            ? (err as { status: number }).status
+            : undefined);
+        if (code === 410 || code === 404) {
           await sb.from("push_subscriptions").delete().eq("id", sub.id);
         }
-        console.error("Erreur push pour", sub.user_id, err?.message);
+        console.error("Erreur push pour", sub.user_id, (err as { message?: string })?.message);
       }
     }
 
     return { ok: true, sent, total: subs.length };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Erreur cron push:", err);
-    return { ok: false, error: err.message };
+    const message = err instanceof Error ? err.message : "Erreur cron push";
+    return { ok: false, error: message };
   }
 });

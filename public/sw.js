@@ -13,7 +13,10 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE))
+      // Pré-cache tolérant : si une ressource manque, l'install du SW ne plante pas.
+      .then((cache) =>
+        Promise.allSettled(PRECACHE.map((url) => cache.add(url).catch(() => undefined))),
+      )
       .then(() => self.skipWaiting()),
   );
 });
@@ -42,9 +45,7 @@ self.addEventListener("push", (event) => {
       data: data.data || { url: "/" },
       vibrate: [200, 100, 200],
     };
-    event.waitUntil(
-      self.registration.showNotification(data.title || "Calli Recomp", options),
-    );
+    event.waitUntil(self.registration.showNotification(data.title || "Calli Recomp", options));
   } catch {
     // Fallback : message texte simple
     event.waitUntil(

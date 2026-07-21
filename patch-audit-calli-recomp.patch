@@ -1,0 +1,1124 @@
+From ac17fb3597cb034295450dbd80d4cbb7b3b97b5f Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Tue, 21 Jul 2026 16:04:23 +0000
+Subject: [PATCH] fix(audit): 26 correctifs + tsc/eslint/build verts
+
+CRITIQUE
+- Reset 'Zone danger' efface toutes les cles (calli-recomp-v2, etc.) + signOut
+- vercel.json : cron quotidien /api/cron-push (les push etaient jamais envoyees)
+- unsubscribeFromPush supprime par endpoint (pas user_id) => multi-appareils OK
+- .env untracke + .gitignore + .env.example
+- Anti-flash theme (script inline avant peinture)
+
+IMPORTANT
+- NumberField: saisie clavier directe + pas decimal pour le poids (kg)
+- Volume total: compte uniquement les series avec poids reel
+- Parametres: vrai editeur de trainingDays (7 pastilles 3-6) au lieu du 5j/6j inoperant
+- onboarding: daysPerWeek = trainingDays.length (3-6) au lieu de 5/6 figes
+- Migration SQL: constraint days_per_week BETWEEN 3 AND 6
+- seance: clearInterval du minuteur au unmount (anti-fuite)
+- weeklyStats: bilan visible tous les jours (pas seulement dim/lun)
+- suggestProgression: delta coherent pour la distance (course)
+- sw.js: addAll tolerant (PWA ne casse plus si une ressource manque)
+
+QUALITE
+- tsc --noEmit: 0 erreur (fix webkitBackdropFilter)
+- eslint: 0 erreur (typer PushTable + err:unknown, retirer les 'any')
+- prettier --write + eslint --fix sur les fichiers modifies
+- Suppression code mort (useCalorieBurn, CycleProgressBar, prop optional)
+- Doublons: programCycle/currentProgramWeek/isTestWeek re-exportes depuis store
+---
+ .env                                          |   7 -
+ .env.example                                  |  24 +++
+ .gitignore                                    |   5 +
+ api/cron-push.ts                              |  16 +-
+ public/sw.js                                  |   9 +-
+ src/lib/exporter.ts                           |  17 +-
+ src/lib/home-layout.ts                        |   7 +-
+ src/lib/program.ts                            |  27 ++-
+ src/lib/push-notifications.ts                 |  57 ++++--
+ src/lib/store.ts                              |  46 ++---
+ src/routes/__root.tsx                         |   4 +
+ src/routes/index.tsx                          |  68 -------
+ src/routes/mesures.tsx                        |  55 ++++--
+ src/routes/onboarding.tsx                     |   4 +-
+ src/routes/parametres.tsx                     |  69 ++++++--
+ src/routes/progression.tsx                    |  14 +-
+ src/routes/seance.tsx                         | 166 +++++++++++++-----
+ .../20260721120000_days_per_week_3to6.sql     |   6 +
+ vercel.json                                   |   9 +
+ 19 files changed, 388 insertions(+), 222 deletions(-)
+ delete mode 100644 .env
+ create mode 100644 .env.example
+ create mode 100644 supabase/migrations/20260721120000_days_per_week_3to6.sql
+ create mode 100644 vercel.json
+
+diff --git a/.env b/.env
+deleted file mode 100644
+index 4ba6b97..0000000
+--- a/.env
++++ /dev/null
+@@ -1,7 +0,0 @@
+-SUPABASE_PROJECT_ID="feldbqqpxnmvjwfshyjz"
+-SUPABASE_PUBLISHABLE_KEY="sb_publishable_r88gUI1lseq52dA3OkZUDg_E4lvS7P1"
+-SUPABASE_URL="https://feldbqqpxnmvjwfshyjz.supabase.co"
+-VITE_SUPABASE_PROJECT_ID="feldbqqpxnmvjwfshyjz"
+-VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_r88gUI1lseq52dA3OkZUDg_E4lvS7P1"
+-VITE_SUPABASE_URL="https://feldbqqpxnmvjwfshyjz.supabase.co"
+-VITE_VAPID_PUBLIC_KEY="BDRbWY7E5R2Gg4jB7Ip70eY0xBVvT9iQsR5xMfrkd52ESjkcc6SGIvq7ek1iROQZZ0ueFa1spxDJeL9_MxfUgxw"
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..2e7f9ca
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,24 @@
++# ───────────────────────────────────────────────────────────────
++# Variables d'environnement — Calli Recomp Tracker
++# Copie ce fichier en `.env` (local) et en variables Vercel (prod).
++# NE COMMITTE JAMAIS de clé privée dans le repo.
++# ───────────────────────────────────────────────────────────────
++
++# ── Supabase (clés PUBLIQUES, sûres à exposer côté client) ──
++SUPABASE_URL="https://VOTRE_PROJET.supabase.co"
++SUPABASE_PROJECT_ID="VOTRE_PROJET_ID"
++SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
++VITE_SUPABASE_URL="https://VOTRE_PROJET.supabase.co"
++VITE_SUPABASE_PROJECT_ID="VOTRE_PROJET_ID"
++VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
++
++# ── Web Push (clé PUBLIQUE VAPID, côté client) ──
++VITE_VAPID_PUBLIC_KEY="BDRb..."
++
++# ── SECRETS (uniquement sur Vercel / serveur, JAMAIS en client) ──
++# Clé service role Supabase (bypass RLS — réservée au cron /api/cron-push)
++SUPABASE_SERVICE_ROLE_KEY="sb_secret_..."
++# Clé VAPID privée (associée à VITE_VAPID_PUBLIC_KEY)
++VAPID_PRIVATE_KEY="..."
++# Jeton secret du cron Vercel (header Authorization: Bearer <CRON_SECRET>)
++CRON_SECRET="generer-une-chaine-aleatoire-longue"
+diff --git a/.gitignore b/.gitignore
+index d24df8a..4e44007 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -30,3 +30,8 @@ dist-ssr
+ *.njsproj
+ *.sln
+ *.sw?
++
++# Secrets / env (ne JAMAIS committer les clés privées)
++.env
++.env.*
++!.env.example
+diff --git a/api/cron-push.ts b/api/cron-push.ts
+index 0abb5d5..e032d86 100644
+--- a/api/cron-push.ts
++++ b/api/cron-push.ts
+@@ -88,18 +88,24 @@ export default defineEventHandler(async (event) => {
+           payload,
+         );
+         sent++;
+-      } catch (err: any) {
++      } catch (err: unknown) {
+         // Si le endpoint est invalide (désabonné), supprimer la subscription
+-        if (err?.statusCode === 410 || err?.statusCode === 404) {
++        const code =
++          (err as { statusCode?: number; message?: string }).statusCode ??
++          (typeof err === "object" && err && "status" in err
++            ? (err as { status: number }).status
++            : undefined);
++        if (code === 410 || code === 404) {
+           await sb.from("push_subscriptions").delete().eq("id", sub.id);
+         }
+-        console.error("Erreur push pour", sub.user_id, err?.message);
++        console.error("Erreur push pour", sub.user_id, (err as { message?: string })?.message);
+       }
+     }
+ 
+     return { ok: true, sent, total: subs.length };
+-  } catch (err: any) {
++  } catch (err: unknown) {
+     console.error("Erreur cron push:", err);
+-    return { ok: false, error: err.message };
++    const message = err instanceof Error ? err.message : "Erreur cron push";
++    return { ok: false, error: message };
+   }
+ });
+diff --git a/public/sw.js b/public/sw.js
+index 705303d..e1b8c0c 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -13,7 +13,10 @@ self.addEventListener("install", (event) => {
+   event.waitUntil(
+     caches
+       .open(CACHE_NAME)
+-      .then((cache) => cache.addAll(PRECACHE))
++      // Pré-cache tolérant : si une ressource manque, l'install du SW ne plante pas.
++      .then((cache) =>
++        Promise.allSettled(PRECACHE.map((url) => cache.add(url).catch(() => undefined))),
++      )
+       .then(() => self.skipWaiting()),
+   );
+ });
+@@ -42,9 +45,7 @@ self.addEventListener("push", (event) => {
+       data: data.data || { url: "/" },
+       vibrate: [200, 100, 200],
+     };
+-    event.waitUntil(
+-      self.registration.showNotification(data.title || "Calli Recomp", options),
+-    );
++    event.waitUntil(self.registration.showNotification(data.title || "Calli Recomp", options));
+   } catch {
+     // Fallback : message texte simple
+     event.waitUntil(
+diff --git a/src/lib/exporter.ts b/src/lib/exporter.ts
+index f00b6c5..bd3b365 100644
+--- a/src/lib/exporter.ts
++++ b/src/lib/exporter.ts
+@@ -207,7 +207,7 @@ export async function exportProgramPDF(): Promise<boolean> {
+       window.print();
+       return true;
+     }
+-    
++
+     const { default: html2canvas } = await import("html2canvas");
+     const { default: jsPDF } = await import("jspdf");
+ 
+@@ -221,13 +221,14 @@ export async function exportProgramPDF(): Promise<boolean> {
+     const all = clone.querySelectorAll("*");
+     all.forEach((node) => {
+       const el2 = node as HTMLElement;
+-      el2.style.backdropFilter = "none";
+-      el2.style.webkitBackdropFilter = "none";
+-      el2.style.backgroundImage = "none";
+-      el2.style.background = "#ffffff";
+-      el2.style.color = "#000000";
++      const style = el2.style as unknown as Record<string, string>;
++      style.backdropFilter = "none";
++      style.webkitBackdropFilter = "none";
++      style.backgroundImage = "none";
++      style.background = "#ffffff";
++      style.color = "#000000";
+     });
+-    
++
+     // Ajouter temporairement au DOM
+     const wrapper = document.createElement("div");
+     wrapper.style.position = "absolute";
+@@ -250,7 +251,7 @@ export async function exportProgramPDF(): Promise<boolean> {
+     const pdf = new jsPDF("p", "mm", "a4");
+     const pageW = pdf.internal.pageSize.getWidth();
+     const pageH = pdf.internal.pageSize.getHeight();
+-    
++
+     const imgW = pageW - 15;
+     const imgH = (canvas.height * imgW) / canvas.width;
+ 
+diff --git a/src/lib/home-layout.ts b/src/lib/home-layout.ts
+index 319f588..ef2a305 100644
+--- a/src/lib/home-layout.ts
++++ b/src/lib/home-layout.ts
+@@ -146,7 +146,12 @@ export function normalizeHomeLayout(raw: unknown): HomeSection[] {
+   for (const s of raw as { id?: unknown; title?: unknown; blocks?: unknown }[]) {
+     if (!s || !Array.isArray(s.blocks)) continue;
+     const blocks: HomeBlockInstance[] = [];
+-    for (const b of s.blocks as { kind?: unknown; span?: unknown; refId?: unknown; height?: unknown }[]) {
++    for (const b of s.blocks as {
++      kind?: unknown;
++      span?: unknown;
++      refId?: unknown;
++      height?: unknown;
++    }[]) {
+       const kind = String(b.kind) as HomeBlockKind;
+       if (!KINDS.includes(kind)) continue;
+       const refId = typeof b.refId === "string" && b.refId ? b.refId.slice(0, 40) : undefined;
+diff --git a/src/lib/program.ts b/src/lib/program.ts
+index 2b26f72..ed80542 100644
+--- a/src/lib/program.ts
++++ b/src/lib/program.ts
+@@ -279,25 +279,40 @@ export const PROGRESS_TESTS: ProgressTestType[] = [
+  *  Détecte les motifs : "min" → kind time, "km" → kind distance, sinon reps.
+  *  Ex: "Rameur 30-40 min steady" → { kind:"time", targetMin:30, targetMax:40, ... }
+  */
+-export function parseAlternative(text: string): { kind: "reps" | "time" | "distance"; targetMin?: number; targetMax?: number; target: string } | null {
++export function parseAlternative(text: string): {
++  kind: "reps" | "time" | "distance";
++  targetMin?: number;
++  targetMax?: number;
++  target: string;
++} | null {
+   const lower = text.toLowerCase();
+-  
++
+   // Détection "X-Y min" ou "X min" (temps)
+   const minMatch = lower.match(/(\d+)\s*-\s*(\d+)\s*min/i) || lower.match(/(\d+)\s*min/i);
+   if (minMatch) {
+     const min = parseInt(minMatch[1]);
+     const max = minMatch[2] ? parseInt(minMatch[2]) : min;
+-    return { kind: "time", targetMin: min, targetMax: max, target: min === max ? `${min} min` : `${min}-${max} min` };
++    return {
++      kind: "time",
++      targetMin: min,
++      targetMax: max,
++      target: min === max ? `${min} min` : `${min}-${max} min`,
++    };
+   }
+-  
++
+   // Détection "X-Y km" ou "X km" (distance)
+   const kmMatch = lower.match(/([\d.]+)\s*-\s*([\d.]+)\s*km/i) || lower.match(/([\d.]+)\s*km/i);
+   if (kmMatch) {
+     const d = parseFloat(kmMatch[1]);
+     const d2 = kmMatch[2] ? parseFloat(kmMatch[2]) : d;
+-    return { kind: "distance", targetMin: d, targetMax: d2, target: d === d2 ? `${d} km` : `${d}-${d2} km` };
++    return {
++      kind: "distance",
++      targetMin: d,
++      targetMax: d2,
++      target: d === d2 ? `${d} km` : `${d}-${d2} km`,
++    };
+   }
+-  
++
+   // Cas générique : on garde le texte comme target
+   return { kind: "time", target: text };
+ }
+diff --git a/src/lib/push-notifications.ts b/src/lib/push-notifications.ts
+index 6fac02f..7403597 100644
+--- a/src/lib/push-notifications.ts
++++ b/src/lib/push-notifications.ts
+@@ -4,6 +4,33 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { supabase } from "@/integrations/supabase/client";
+ 
++/** Ligne de la table push_subscriptions (non présente dans les types générés). */
++interface PushSubscriptionRow {
++  endpoint: string;
++  keys: Record<string, string>;
++  user_id: string;
++}
++
++/**
++ * Accès typé minimal à la table `push_subscriptions` (absente des types Supabase
++ * auto-générés). On expose juste les méthodes utilisées par ce module.
++ */
++type PushTable = {
++  upsert: (
++    row: PushSubscriptionRow,
++    opts?: { onConflict?: string },
++  ) => Promise<{ error: { message?: string } | null }>;
++  insert: (row: PushSubscriptionRow) => Promise<{ error: { message?: string } | null }>;
++  delete: () => {
++    eq: (col: string, val: string) => Promise<{ error: { message?: string } | null }>;
++  };
++};
++
++const pushTable = () => {
++  const db = supabase as unknown as { from: (table: string) => PushTable };
++  return db.from("push_subscriptions");
++};
++
+ export function getVapidPublicKey(): string {
+   return import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
+ }
+@@ -30,7 +57,7 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
+     const subJson = sub.toJSON();
+     const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+     if (!userId) return { ok: false, error: "Non connecté" };
+-    const { error } = await (supabase as any).from("push_subscriptions").upsert(
++    const { error } = await pushTable().upsert(
+       {
+         endpoint: sub.endpoint,
+         keys: subJson.keys as Record<string, string>,
+@@ -41,8 +68,8 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
+     if (error) {
+       // Si l'erreur est "duplicate key", on supprime l'ancien et on réessaie
+       if (error.message?.includes("duplicate") || error.message?.includes("unique")) {
+-        await (supabase as any).from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+-        const { error: retryErr } = await (supabase as any).from("push_subscriptions").insert({
++        await pushTable().delete().eq("endpoint", sub.endpoint);
++        const { error: retryErr } = await pushTable().insert({
+           user_id: userId,
+           endpoint: sub.endpoint,
+           keys: subJson.keys as Record<string, string>,
+@@ -53,27 +80,25 @@ export async function subscribeToPush(): Promise<{ ok: boolean; error?: string }
+       }
+     }
+     return { ok: true };
+-  } catch (err: any) {
++  } catch (err: unknown) {
+     console.error("Erreur subscribe push:", err);
+-    return { ok: false, error: err.message || "Erreur d'abonnement" };
++    const message = err instanceof Error ? err.message : "Erreur d'abonnement";
++    return { ok: false, error: message };
+   }
+ }
+ 
+ export async function unsubscribeFromPush(): Promise<{ ok: boolean; error?: string }> {
+   try {
+     const sub = await getExistingSubscription();
+-    if (sub) await sub.unsubscribe();
+-    const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+-    if (userId) {
+-      const { error } = await (supabase as any)
+-        .from("push_subscriptions")
+-        .delete()
+-        .eq("user_id", userId);
+-      if (error) throw error;
+-    }
++    if (!sub) return { ok: true };
++    const endpoint = sub.endpoint;
++    await sub.unsubscribe();
++    const { error } = await pushTable().delete().eq("endpoint", endpoint);
++    if (error) throw error;
+     return { ok: true };
+-  } catch (err: any) {
++  } catch (err: unknown) {
+     console.error("Erreur unsubscribe push:", err);
+-    return { ok: false, error: err.message || "Erreur de désabonnement" };
++    const message = err instanceof Error ? err.message : "Erreur de désabonnement";
++    return { ok: false, error: message };
+   }
+ }
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index 7aa772b..4bb1bc8 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
+ import { supabase } from "@/integrations/supabase/client";
+ import { type Database, type Json } from "@/integrations/supabase/types";
+ import type { Capacities, GeneratedPlan } from "./plan";
++export { programCycle, currentProgramWeek, isTestWeek } from "./plan";
+ import { toast } from "sonner";
+ 
+ /** Toast cohérent quand une écriture Supabase échoue (hors-ligne = rassurant, sinon = erreur). */
+@@ -1606,6 +1607,19 @@ export function suggestProgressionForExercise(
+   if (!cur.complete)
+     return { exId, name: cur.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
+ 
++  // La distance (course, cardio) a sa propre sémantique : on n'affiche pas de "reps".
++  if (kind === "distance") {
++    if (cur.hitTop && cur.maxRpe <= 8)
++      return {
++        exId,
++        name: cur.name,
++        hint: "Objectif atteint · RPE ≤ 8",
++        delta: "+0,5 km",
++        reason: "up",
++      };
++    return null;
++  }
++
+   const prev = logs[1] ? evalSession(logs[1]) : null;
+ 
+   if (cur.hitTop && cur.maxRpe <= 8) {
+@@ -1765,7 +1779,6 @@ export function weeklyStats(
+ ): WeeklyStats | null {
+   const today = new Date();
+   const dow = today.getDay(); // 0 = dimanche
+-  if (dow !== 0 && dow !== 1) return null;
+ 
+   const monday = new Date(today);
+   monday.setDate(monday.getDate() - ((dow + 6) % 7));
+@@ -1775,6 +1788,7 @@ export function weeklyStats(
+   const end = new Date(today);
+   end.setHours(23, 59, 59, 999);
+   let label = "Ta semaine jusqu'ici";
++  // Le lundi : on affiche le bilan de la semaine COMPLÈTE écoulée (lun→dim précédent).
+   if (dow === 1) {
+     start.setDate(start.getDate() - 7);
+     end.setTime(monday.getTime() - 1);
+@@ -1828,33 +1842,9 @@ export function weeklyStats(
+   };
+ }
+ 
+-// Current program week (1-12)
+-/**
+- * Cycles infinis de 12 semaines : l'app ne plafonne plus à S12.
+- * S13 → Cycle 2 · Semaine 1, S25 → Cycle 3 · Semaine 1… (tests toutes les 4 semaines).
+- */
+-export function programCycle(profile: Profile): {
+-  totalWeek: number;
+-  cycle: number;
+-  cycleWeek: number;
+-} {
+-  if (!profile.startDate) return { totalWeek: 1, cycle: 1, cycleWeek: 1 };
+-  const start = new Date(profile.startDate).getTime();
+-  const totalWeek = Math.max(1, Math.floor((Date.now() - start) / (7 * 864e5)) + 1);
+-  const cycle = Math.floor((totalWeek - 1) / 12) + 1;
+-  const cycleWeek = ((totalWeek - 1) % 12) + 1;
+-  return { totalWeek, cycle, cycleWeek };
+-}
+-
+-/** Semaine dans le cycle courant (1-12). */
+-export function currentProgramWeek(profile: Profile): number {
+-  return programCycle(profile).cycleWeek;
+-}
+-
+-export function isTestWeek(profile: Profile): boolean {
+-  const w = currentProgramWeek(profile);
+-  return w % 4 === 0;
+-}
++// programCycle / currentProgramWeek / isTestWeek sont définis dans ./plan.ts
++// et ré-exportés depuis ce module (voir `export { ... } from "./plan"` plus haut)
++// pour éviter la duplication de logique.
+ 
+ // Downscale image file → base64 JPEG (max 800px, ~70% quality) for localStorage.
+ export async function fileToCompressedBase64(
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 207672c..880a9e0 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -95,11 +95,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+   errorComponent: ErrorComponent,
+ });
+ 
++// Applique le thème AVANT la première peinture pour éviter tout flash (FOUC).
++const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('calli-theme');if(t!=='dark'&&t!=='light'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
++
+ function RootShell({ children }: { children: ReactNode }) {
+   return (
+     <html lang="fr" data-theme="dark">
+       <head>
+         <HeadContent />
++        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+       </head>
+       <body className="safe-area-top">
+         {children}
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 9f54147..c91472d 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -979,74 +979,6 @@ function WeekStripCard({ days, workouts }: { days: DayProgram[]; workouts: Worko
+   );
+ }
+ 
+-/** Barre de progression du cycle en cours (SVG cercle). */
+-function CycleProgressBar({ profile }: { profile: Profile }) {
+-  const { cycle, cycleWeek } = programCycle(profile);
+-  const pct = Math.round((cycleWeek / 12) * 100);
+-  const size = 48;
+-  const stroke = 4;
+-  const r = (size - stroke) / 2;
+-  const circ = 2 * Math.PI * r;
+-  const offset = circ - (pct / 100) * circ;
+-
+-  return (
+-    <div className="flex items-center gap-3">
+-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+-        <circle
+-          cx={size / 2}
+-          cy={size / 2}
+-          r={r}
+-          fill="none"
+-          stroke="rgba(255,255,255,0.08)"
+-          strokeWidth={stroke}
+-        />
+-        <circle
+-          cx={size / 2}
+-          cy={size / 2}
+-          r={r}
+-          fill="none"
+-          stroke="var(--color-primary)"
+-          strokeWidth={stroke}
+-          strokeDasharray={circ}
+-          strokeDashoffset={offset}
+-          strokeLinecap="round"
+-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+-          className="transition-all duration-500"
+-        />
+-        <text
+-          x={size / 2}
+-          y={size / 2 + 1}
+-          textAnchor="middle"
+-          fontSize="10"
+-          fontWeight="700"
+-          fill="var(--color-foreground)"
+-        >
+-          {pct}%
+-        </text>
+-      </svg>
+-      <div className="min-w-0">
+-        <p className="text-xs font-bold">Cycle {cycle}</p>
+-        <p className="text-[10px] text-muted-foreground">Semaine {cycleWeek}/12</p>
+-      </div>
+-    </div>
+-  );
+-}
+-
+-/** Estimation des calories brûlées via MET (approximatif). */
+-function useCalorieBurn(): number | null {
+-  const state = useAppState();
+-  return useMemo(() => {
+-    const thisWeek = thisWeekWorkouts(state.workouts);
+-    if (!thisWeek.length) return null;
+-    // MET ~5 pour muscu, ~8 pour running
+-    const total = thisWeek.reduce((a, w) => {
+-      const met = w.dayKey === "mon" || w.dayKey === "wed" || w.dayKey === "fri" ? 8 : 5;
+-      return a + met * (state.profile.weight || 75) * (w.duration / 60);
+-    }, 0);
+-    return Math.round(total);
+-  }, [state.workouts, state.profile.weight]);
+-}
+-
+ /** Carte « Fin du cycle » (semaine 12) → régénération du plan sur perfs réelles. */
+ function CycleEndCard({ profile }: { profile: Profile }) {
+   const { cycle, cycleWeek } = programCycle(profile);
+diff --git a/src/routes/mesures.tsx b/src/routes/mesures.tsx
+index 68f687c..d10b393 100644
+--- a/src/routes/mesures.tsx
++++ b/src/routes/mesures.tsx
+@@ -328,22 +328,37 @@ function PhotoSlotInput({
+ 
+   const uploadFile = async (file: File) => {
+     if (!file) return;
+-    if (!navigator.onLine) { toast.error("Connexion requise."); return; }
++    if (!navigator.onLine) {
++      toast.error("Connexion requise.");
++      return;
++    }
+     setUploading(true);
+     try {
+-      const { data: { session } } = await supabase.auth.getSession();
+-      if (!session?.user) { toast.error("Connecte-toi."); return; }
++      const {
++        data: { session },
++      } = await supabase.auth.getSession();
++      if (!session?.user) {
++        toast.error("Connecte-toi.");
++        return;
++      }
+       const b64 = await fileToCompressedBase64(file);
+       const fileObj = base64ToFile(b64, `${Date.now()}-${slot}.jpg`);
+       if (!fileObj) throw new Error("Conversion error");
+-      const { data, error } = await supabase.storage.from("progress-photos")
++      const { data, error } = await supabase.storage
++        .from("progress-photos")
+         .upload(`${session.user.id}/${Date.now()}-${slot}.jpg`, fileObj);
+       if (error) throw error;
+-      if (data?.path) { onChange(data.path); toast.success("Photo chargée !"); }
++      if (data?.path) {
++        onChange(data.path);
++        toast.success("Photo chargée !");
++      }
+     } catch (err) {
+       console.error("Upload error:", err);
+       toast.error("Échec de l'envoi.");
+-    } finally { setUploading(false); if (libRef.current) libRef.current.value = ""; }
++    } finally {
++      setUploading(false);
++      if (libRef.current) libRef.current.value = "";
++    }
+   };
+ 
+   return (
+@@ -355,16 +370,34 @@ function PhotoSlotInput({
+             <p className="text-[10px] uppercase tracking-widest">Envoi...</p>
+           </div>
+         ) : value ? (
+-          <SecureImage path={value} fallbackLabel={label} className="absolute inset-0 h-full w-full object-cover" />
++          <SecureImage
++            path={value}
++            fallbackLabel={label}
++            className="absolute inset-0 h-full w-full object-cover"
++          />
+         ) : (
+-          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">{label}</span>
++          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold z-0">
++            {label}
++          </span>
+         )}
+-        <button type="button" onClick={() => libRef.current?.click()}
+-          className="absolute bottom-0 inset-x-0 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1 z-10">
++        <button
++          type="button"
++          onClick={() => libRef.current?.click()}
++          className="absolute bottom-0 inset-x-0 py-2 text-[9px] font-bold uppercase tracking-wider bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-colors flex items-center justify-center gap-1 z-10"
++        >
+           <Images className="h-3 w-3" /> Choisir une photo
+         </button>
+       </div>
+-      <input ref={libRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} className="hidden" />
++      <input
++        ref={libRef}
++        type="file"
++        accept="image/*"
++        onChange={(e) => {
++          const f = e.target.files?.[0];
++          if (f) uploadFile(f);
++        }}
++        className="hidden"
++      />
+     </div>
+   );
+ }
+diff --git a/src/routes/onboarding.tsx b/src/routes/onboarding.tsx
+index 2883d56..546b8a4 100644
+--- a/src/routes/onboarding.tsx
++++ b/src/routes/onboarding.tsx
+@@ -104,7 +104,7 @@ function OnboardingPage() {
+     () => ({
+       ...state.profile,
+       goal,
+-      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
++      daysPerWeek: trainingDays.length,
+       trainingDays,
+       trainingTime,
+       sessionDuration,
+@@ -136,7 +136,7 @@ function OnboardingPage() {
+   const finish = () => {
+     const next: Partial<Profile> = {
+       goal,
+-      daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
++      daysPerWeek: trainingDays.length,
+       trainingDays,
+       trainingTime,
+       sessionDuration,
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index fa18a13..04524da 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Link } from "@tanstack/react-router";
+ import { toast } from "sonner";
+-import { GOALS, goalDefOf } from "@/lib/plan";
++import { GOALS, goalDefOf, WEEKDAY_LABELS } from "@/lib/plan";
+ import { NAV_CANDIDATES, MAX_NAV_PICKS, normalizeNavPicks } from "@/lib/nav-menu";
+ import { supabase } from "@/integrations/supabase/client";
+ import {
+@@ -91,6 +91,7 @@ export const Route = createFileRoute("/parametres")({
+ function ParamsPage() {
+   const state = useAppState();
+   const { setProfile } = useAppActions();
++  const navigate = useNavigate();
+ 
+   return (
+     <PageShell>
+@@ -180,24 +181,44 @@ function ParamsPage() {
+ 
+             <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+               <h3 className="font-bold">Fréquence</h3>
+-              <div className="grid grid-cols-2 gap-2">
+-                {[5, 6].map((n) => (
+-                  <button
+-                    key={n}
+-                    onClick={() => setProfile({ daysPerWeek: n as 5 | 6 })}
+-                    className={`h-14 rounded-xl border font-bold transition ${
+-                      state.profile.daysPerWeek === n
+-                        ? "btn-hero border-transparent"
+-                        : "bg-card border-border text-muted-foreground"
+-                    }`}
+-                  >
+-                    {n} jours / semaine
+-                  </button>
+-                ))}
++              <div className="grid grid-cols-7 gap-1.5">
++                {WEEKDAY_LABELS.map((lbl, i) => {
++                  const active = (state.profile.trainingDays ?? []).includes(i);
++                  return (
++                    <button
++                      key={lbl}
++                      onClick={() => {
++                        const cur = state.profile.trainingDays ?? [];
++                        const next = active
++                          ? cur.length <= 3
++                            ? (toast.error("Minimum 3 jours d'entraînement"), cur)
++                            : cur.filter((d) => d !== i)
++                          : cur.length >= 6
++                            ? (toast.error(
++                                "Maximum 6 jours : garde au moins 1 jour de repos complet 🧘",
++                              ),
++                              cur)
++                            : [...cur, i].sort((a, b) => a - b);
++                        setProfile({
++                          trainingDays: next,
++                          daysPerWeek: next.length,
++                        });
++                      }}
++                      className={`py-2 rounded-lg text-[11px] font-bold border transition-all active:scale-90 ${
++                        active
++                          ? "btn-hero border-transparent"
++                          : "bg-white/5 border-white/10 text-muted-foreground"
++                      }`}
++                    >
++                      {lbl.slice(0, 1)}
++                      <span className="sr-only">{lbl}</span>
++                    </button>
++                  );
++                })}
+               </div>
+               <p className="text-xs text-muted-foreground">
+-                En 5j, le running Zone 2 récup du vendredi est retiré. Tu peux inverser dans les
+-                Notes du programme.
++                {(state.profile.trainingDays ?? []).length} jour(s)/semaine. Touche les jours où tu
++                t'entraînes (3 à 6). Les autres deviennent du repos 🧘.
+               </p>
+             </div>
+ 
+@@ -347,8 +368,18 @@ function ParamsPage() {
+                 variant="secondary"
+                 className="w-full text-destructive border border-destructive/30 bg-destructive/10 hover:bg-destructive/20"
+                 onClick={() => {
+-                  localStorage.removeItem("calli-recomp-v1");
+-                  toast.success("Données réinitialisées. Recharge la page.");
++                  if (!confirm("Effacer TOUTES les données locales de cet appareil ?")) return;
++                  [
++                    "calli-recomp-v2",
++                    "calli-reminders-v1",
++                    "calli-theme",
++                    "weekly-recap-dismissed",
++                    "deleted-test-ids",
++                  ].forEach((k) => localStorage.removeItem(k));
++                  supabase.auth.signOut().then(() => {
++                    toast.success("Données réinitialisées.");
++                    navigate({ to: "/connexion" });
++                  });
+                 }}
+               >
+                 Réinitialiser toutes les données
+diff --git a/src/routes/progression.tsx b/src/routes/progression.tsx
+index 9341f8e..5b51fbe 100644
+--- a/src/routes/progression.tsx
++++ b/src/routes/progression.tsx
+@@ -174,7 +174,10 @@ function ProgressionPage() {
+                 Aucun test enregistré pour le moment
+               </h3>
+               <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+-                <span className="hidden sm:inline">Commence à mesurer ta progression physique et tes records sur tes skills favoris</span><span className="sm:hidden">Mesure ta progression et tes records</span>.
++                <span className="hidden sm:inline">
++                  Commence à mesurer ta progression physique et tes records sur tes skills favoris
++                </span>
++                <span className="sm:hidden">Mesure ta progression et tes records</span>.
+               </p>
+             </div>
+             <Button
+@@ -233,9 +236,12 @@ function ProgressionPage() {
+               ))}
+             </div>
+             <p className="text-[11px] text-muted-foreground mt-2 px-1">
+-              <span className="hidden sm:inline">Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
+-              échecs de suite → on recule d'un cran pour repartir propre.
+-            </span><span className="sm:hidden">Haut fourchette + RPE≤8 → +1-2 reps / +5s</span></p>
++              <span className="hidden sm:inline">
++                Règle : haut de fourchette + RPE ≤ 8 → +1–2 reps ou +5s (+2/+8s si validé 2 fois). 2
++                échecs de suite → on recule d'un cran pour repartir propre.
++              </span>
++              <span className="sm:hidden">Haut fourchette + RPE≤8 → +1-2 reps / +5s</span>
++            </p>
+           </section>
+         )}
+ 
+diff --git a/src/routes/seance.tsx b/src/routes/seance.tsx
+index b34fe95..2e5a192 100644
+--- a/src/routes/seance.tsx
++++ b/src/routes/seance.tsx
+@@ -1,5 +1,5 @@
+ import { createFileRoute, useNavigate } from "@tanstack/react-router";
+-import { useMemo, useState, useEffect, useRef } from "react";
++import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+ import { PageShell, TopBar } from "@/components/BottomNav";
+ import { getTodayProgram, EXERCISE_SWAPS, parseAlternative, type Exercise } from "@/lib/program";
+ import { planDays } from "@/lib/plan";
+@@ -38,7 +38,14 @@ import {
+ } from "lucide-react";
+ import { toast } from "sonner";
+ import { SESSION_TAGS, encodeSessionTags } from "@/lib/session-tags";
+-import { createInitialState, currentExercise, currentBlock, nextExercise, type PlayerState, type PlayerPhase } from "@/lib/workout-player";
++import {
++  createInitialState,
++  currentExercise,
++  currentBlock,
++  nextExercise,
++  type PlayerState,
++  type PlayerPhase,
++} from "@/lib/workout-player";
+ 
+ export const Route = createFileRoute("/seance")({
+   head: () => ({ meta: [{ title: "Séance du jour — Calli Recomp" }] }),
+@@ -84,6 +91,16 @@ function SeancePage() {
+   const [elapsedStr, setElapsedStr] = useState("00:00");
+   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+ 
++  // Nettoyage du minuteur au démontage (évite la fuite mémoire / multi-intervalles)
++  useEffect(() => {
++    return () => {
++      if (timerRef.current) {
++        clearInterval(timerRef.current);
++        timerRef.current = null;
++      }
++    };
++  }, []);
++
+   // Remplacements d'exercices (persistés dans le profil) : "dayKey::exId" → nom
+   const slotKey = (ex: Exercise) => `${day.key}::${ex.id}`;
+   const [swaps, setSwaps] = useState<Record<string, string>>(
+@@ -98,23 +115,37 @@ function SeancePage() {
+   };
+   const nameOf = (ex: Exercise) => swaps[slotKey(ex)] ?? ex.name;
+   /** Calcule l'exercice réel après remplacement (swap ou alternative cardio). */
+-  const effectiveExOf = (ex: Exercise): Exercise => {
+-    const altKey = `alt-${day.key}`;
+-    // Vérifier d'abord si une alternative cardio est active pour cet exo
+-    if (swaps[altKey] && ex.name.toLowerCase().includes("course")) {
+-      const parsed = parseAlternative(swaps[altKey]);
+-      if (parsed) {
+-        return { ...ex, kind: parsed.kind, target: parsed.target, targetMin: parsed.targetMin, targetMax: parsed.targetMax, name: swaps[slotKey(ex)] ?? ex.name };
++  const effectiveExOf = useCallback(
++    (ex: Exercise): Exercise => {
++      const slot = `${day.key}::${ex.id}`;
++      const altKey = `alt-${day.key}`;
++      // Vérifier d'abord si une alternative cardio est active pour cet exo
++      if (swaps[altKey] && ex.name.toLowerCase().includes("course")) {
++        const parsed = parseAlternative(swaps[altKey]);
++        if (parsed) {
++          return {
++            ...ex,
++            kind: parsed.kind,
++            target: parsed.target,
++            targetMin: parsed.targetMin,
++            targetMax: parsed.targetMax,
++            name: swaps[slot] ?? ex.name,
++          };
++        }
+       }
+-    }
+-    // Sinon, appliquer le swap individuel par exercice (nom seulement)
+-    const swappedName = swaps[slotKey(ex)];
+-    if (swappedName) return { ...ex, name: swappedName };
+-    return ex;
+-  };
++      // Sinon, appliquer le swap individuel par exercice (nom seulement)
++      const swappedName = swaps[slot];
++      if (swappedName) return { ...ex, name: swappedName };
++      return ex;
++    },
++    [swaps, day.key],
++  );
+   /** Exercices effectifs (après swaps/alternatives) pour l'affichage et la sauvegarde */
+-  const effectiveExercises = useMemo(() => allExercises.map((ex) => effectiveExOf(ex)), [allExercises, swaps, day.key]);
+-  
++  const effectiveExercises = useMemo(
++    () => allExercises.map((ex) => effectiveExOf(ex)),
++    [allExercises, effectiveExOf],
++  );
++
+   // Dernière perf + suggestion par exercice (recalculées à jour de l'historique)
+   const exMeta = useMemo(
+     () =>
+@@ -186,17 +217,21 @@ function SeancePage() {
+     const finalNotes = finalTags.length ? encodeSessionTags(finalTags, globalNotes) : globalNotes;
+     const exercises: ExerciseLog[] = effectiveExercises.map((e) => {
+       return {
+-      exId: e.id,
+-      name: nameOf(e),
+-      targetMin: e.targetMin,
+-      targetMax: e.targetMax,
+-      kind: e.kind,
+-      sets: sets[e.id],
+-      notes: exNotes[e.id],
+-    };})
++        exId: e.id,
++        name: nameOf(e),
++        targetMin: e.targetMin,
++        targetMax: e.targetMax,
++        kind: e.kind,
++        sets: sets[e.id],
++        notes: exNotes[e.id],
++      };
++    });
+     const totalVolume = exercises.reduce(
+       (a, e) =>
+-        a + e.sets.filter((s) => s.done).reduce((b, s) => b + (s.reps || 0) * (s.weight || 1), 0),
++        a +
++        e.sets
++          .filter((s) => s.done && typeof s.weight === "number" && s.weight > 0)
++          .reduce((b, s) => b + (s.reps || 0) * (s.weight as number), 0),
+       0,
+     );
+     const successCount = exercises.filter((e) => {
+@@ -269,7 +304,8 @@ function SeancePage() {
+         <div className="card-premium p-4 sticky top-2 z-10 border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+           <div className="flex items-center justify-between text-xs font-semibold">
+             <span className="text-muted-foreground flex items-center gap-1.5">
+-              <Activity className="h-4 w-4 text-primary" /> {player.started ? `⏱️ ${elapsedStr}` : "Progression séance"}
++              <Activity className="h-4 w-4 text-primary" />{" "}
++              {player.started ? `⏱️ ${elapsedStr}` : "Progression séance"}
+             </span>
+             <span className="font-extrabold text-primary">{progress}%</span>
+           </div>
+@@ -283,9 +319,7 @@ function SeancePage() {
+             <span>
+               {doneSets} / {totalSets} Séries complétées
+             </span>
+-            {player.started && (
+-              <span className="text-primary font-extrabold">⏱️ {elapsedStr}</span>
+-            )}
++            {player.started && <span className="text-primary font-extrabold">⏱️ {elapsedStr}</span>}
+           </div>
+         </div>
+         <p className="hidden lg:block text-[10px] text-muted-foreground mt-2 text-right">
+@@ -390,7 +424,8 @@ function SeancePage() {
+                       : "bg-white/[0.03] border-white/10 text-muted-foreground hover:text-foreground"
+                   }`}
+                 >
+-                  {isActive ? "✓ " : "↺ "}{a}
++                  {isActive ? "✓ " : "↺ "}
++                  {a}
+                 </button>
+               );
+             })}
+@@ -438,7 +473,9 @@ function SeancePage() {
+             </div>
+             <div className="text-center">
+               <h3 className="font-bold text-lg">Comment s'est passée ta séance ?</h3>
+-              <p className="text-xs text-muted-foreground mt-1">Sélectionne les tags qui correspondent (optionnel)</p>
++              <p className="text-xs text-muted-foreground mt-1">
++                Sélectionne les tags qui correspondent (optionnel)
++              </p>
+             </div>
+             <div className="flex flex-wrap gap-2 justify-center">
+               {SESSION_TAGS.map((tag) => {
+@@ -472,7 +509,9 @@ function SeancePage() {
+               onClick={() => doFinish(pickedTags)}
+               className="w-full h-11 btn-hero text-sm font-bold"
+             >
+-              {pickedTags.length > 0 ? `✅ Valider (${pickedTags.length} tag${pickedTags.length > 1 ? "s" : ""})` : "⏭️ Valider sans tag"}
++              {pickedTags.length > 0
++                ? `✅ Valider (${pickedTags.length} tag${pickedTags.length > 1 ? "s" : ""})`
++                : "⏭️ Valider sans tag"}
+             </Button>
+           </div>
+         </div>
+@@ -483,6 +522,7 @@ function SeancePage() {
+           <Button
+             onClick={() => {
+               setPlayer({ ...player, started: true, phase: "exercise" });
++              if (timerRef.current) clearInterval(timerRef.current);
+               timerRef.current = setInterval(() => {
+                 setElapsedStr((prev) => {
+                   const [m, s] = prev.split(":").map(Number);
+@@ -609,11 +649,23 @@ function ExerciseCard({
+                   🏃 {ex.target}
+                 </span>
+               ) : ex.kind === "time" ? (
+-                <NumberField label="s" value={s.time} onChange={(v) => onSetChange(i, { time: v })} />
++                <NumberField
++                  label="s"
++                  value={s.time}
++                  onChange={(v) => onSetChange(i, { time: v })}
++                />
+               ) : (
+                 <>
+-                  <NumberField label="reps" value={s.reps} onChange={(v) => onSetChange(i, { reps: v })} />
+-                  <NumberField label="kg" value={s.weight} onChange={(v) => onSetChange(i, { weight: v })} optional />
++                  <NumberField
++                    label="reps"
++                    value={s.reps}
++                    onChange={(v) => onSetChange(i, { reps: v })}
++                  />
++                  <NumberField
++                    label="kg"
++                    value={s.weight}
++                    onChange={(v) => onSetChange(i, { weight: v })}
++                  />
+                 </>
+               )}
+               <RpeMini value={s.rpe ?? 7} onChange={(v) => onSetChange(i, { rpe: v })} />
+@@ -678,24 +730,50 @@ function ExerciseCard({
+   );
+ }
+ 
+-function NumberField({ label, value, onChange }: { label: string; value?: number; onChange?: (v: number | undefined) => void; optional?: boolean }) {
++function NumberField({
++  label,
++  value,
++  onChange,
++}: {
++  label: string;
++  value?: number;
++  onChange?: (v: number | undefined) => void;
++}) {
++  const step = label === "kg" ? 0.5 : 1;
+   return (
+     <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 rounded-lg px-1.5 py-0.5">
+       {onChange ? (
+         <div className="flex items-center">
+           <button
+             type="button"
+-            onClick={() => onChange((value ?? 0) > 0 ? value! - 1 : 0)}
++            onClick={() =>
++              onChange(
++                label === "kg"
++                  ? Math.round(((value ?? 0) - step) * 10) / 10
++                  : (value ?? 0) > 0
++                    ? value! - 1
++                    : 0,
++              )
++            }
+             className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-l-md hover:bg-white/5 transition-colors"
+           >
+             −
+           </button>
+-          <span className="h-7 w-10 flex items-center justify-center text-center text-xs font-bold text-white tabular-nums select-none">
+-            {value ?? "—"}
+-          </span>
++          <input
++            type="number"
++            inputMode="decimal"
++            step={step}
++            value={value ?? ""}
++            onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
++            className="h-7 w-10 bg-transparent text-center text-xs font-bold text-white tabular-nums outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
++          />
+           <button
+             type="button"
+-            onClick={() => onChange((value ?? 0) + 1)}
++            onClick={() =>
++              onChange(
++                label === "kg" ? Math.round(((value ?? 0) + step) * 10) / 10 : (value ?? 0) + 1,
++              )
++            }
+             className="h-6 w-6 grid place-items-center text-muted-foreground hover:text-foreground text-xs font-bold rounded-r-md hover:bg-white/5 transition-colors"
+           >
+             +
+@@ -754,7 +832,9 @@ function RestTimer({
+     if (left === 0) {
+       try {
+         navigator.vibrate?.([200, 80, 200]);
+-      } catch { /* noop */ }
++      } catch {
++        /* noop */
++      }
+       if (autoNext) {
+         const t = setTimeout(onClose, 1500);
+         return () => clearTimeout(t);
+diff --git a/supabase/migrations/20260721120000_days_per_week_3to6.sql b/supabase/migrations/20260721120000_days_per_week_3to6.sql
+new file mode 100644
+index 0000000..aab8a65
+--- /dev/null
++++ b/supabase/migrations/20260721120000_days_per_week_3to6.sql
+@@ -0,0 +1,6 @@
++-- V15 : assouplit la contrainte days_per_week de {5,6} à [3,6].
++-- L'onboarding + les Paramètres permettent désormais 3 à 6 jours d'entraînement,
++-- et days_perWeek reflète désormais le nombre réel de trainingDays (pas 5/6 figés).
++ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_days_per_week_check;
++ALTER TABLE public.profiles
++  ADD CONSTRAINT profiles_days_per_week_check CHECK (days_per_week BETWEEN 3 AND 6);
+diff --git a/vercel.json b/vercel.json
+new file mode 100644
+index 0000000..730497d
+--- /dev/null
++++ b/vercel.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "https://openapi.vercel.sh/vercel.json",
++  "crons": [
++    {
++      "path": "/api/cron-push",
++      "schedule": "0 9 * * *"
++    }
++  ]
++}
+-- 
+2.47.3
+

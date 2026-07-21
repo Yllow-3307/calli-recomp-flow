@@ -279,25 +279,40 @@ export const PROGRESS_TESTS: ProgressTestType[] = [
  *  Détecte les motifs : "min" → kind time, "km" → kind distance, sinon reps.
  *  Ex: "Rameur 30-40 min steady" → { kind:"time", targetMin:30, targetMax:40, ... }
  */
-export function parseAlternative(text: string): { kind: "reps" | "time" | "distance"; targetMin?: number; targetMax?: number; target: string } | null {
+export function parseAlternative(text: string): {
+  kind: "reps" | "time" | "distance";
+  targetMin?: number;
+  targetMax?: number;
+  target: string;
+} | null {
   const lower = text.toLowerCase();
-  
+
   // Détection "X-Y min" ou "X min" (temps)
   const minMatch = lower.match(/(\d+)\s*-\s*(\d+)\s*min/i) || lower.match(/(\d+)\s*min/i);
   if (minMatch) {
     const min = parseInt(minMatch[1]);
     const max = minMatch[2] ? parseInt(minMatch[2]) : min;
-    return { kind: "time", targetMin: min, targetMax: max, target: min === max ? `${min} min` : `${min}-${max} min` };
+    return {
+      kind: "time",
+      targetMin: min,
+      targetMax: max,
+      target: min === max ? `${min} min` : `${min}-${max} min`,
+    };
   }
-  
+
   // Détection "X-Y km" ou "X km" (distance)
   const kmMatch = lower.match(/([\d.]+)\s*-\s*([\d.]+)\s*km/i) || lower.match(/([\d.]+)\s*km/i);
   if (kmMatch) {
     const d = parseFloat(kmMatch[1]);
     const d2 = kmMatch[2] ? parseFloat(kmMatch[2]) : d;
-    return { kind: "distance", targetMin: d, targetMax: d2, target: d === d2 ? `${d} km` : `${d}-${d2} km` };
+    return {
+      kind: "distance",
+      targetMin: d,
+      targetMax: d2,
+      target: d === d2 ? `${d} km` : `${d}-${d2} km`,
+    };
   }
-  
+
   // Cas générique : on garde le texte comme target
   return { kind: "time", target: text };
 }

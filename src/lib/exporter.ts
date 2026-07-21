@@ -207,7 +207,7 @@ export async function exportProgramPDF(): Promise<boolean> {
       window.print();
       return true;
     }
-    
+
     const { default: html2canvas } = await import("html2canvas");
     const { default: jsPDF } = await import("jspdf");
 
@@ -221,13 +221,14 @@ export async function exportProgramPDF(): Promise<boolean> {
     const all = clone.querySelectorAll("*");
     all.forEach((node) => {
       const el2 = node as HTMLElement;
-      el2.style.backdropFilter = "none";
-      el2.style.webkitBackdropFilter = "none";
-      el2.style.backgroundImage = "none";
-      el2.style.background = "#ffffff";
-      el2.style.color = "#000000";
+      const style = el2.style as unknown as Record<string, string>;
+      style.backdropFilter = "none";
+      style.webkitBackdropFilter = "none";
+      style.backgroundImage = "none";
+      style.background = "#ffffff";
+      style.color = "#000000";
     });
-    
+
     // Ajouter temporairement au DOM
     const wrapper = document.createElement("div");
     wrapper.style.position = "absolute";
@@ -250,7 +251,7 @@ export async function exportProgramPDF(): Promise<boolean> {
     const pdf = new jsPDF("p", "mm", "a4");
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    
+
     const imgW = pageW - 15;
     const imgH = (canvas.height * imgW) / canvas.width;
 

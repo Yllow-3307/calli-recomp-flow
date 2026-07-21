@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { type Database, type Json } from "@/integrations/supabase/types";
 import type { Capacities, GeneratedPlan } from "./plan";
+export { programCycle, currentProgramWeek, isTestWeek } from "./plan";
 import { toast } from "sonner";
 
 /** Toast cohérent quand une écriture Supabase échoue (hors-ligne = rassurant, sinon = erreur). */
@@ -1606,6 +1607,19 @@ export function suggestProgressionForExercise(
   if (!cur.complete)
     return { exId, name: cur.name, hint: "Séance incomplète", delta: "= idem", reason: "hold" };
 
+  // La distance (course, cardio) a sa propre sémantique : on n'affiche pas de "reps".
+  if (kind === "distance") {
+    if (cur.hitTop && cur.maxRpe <= 8)
+      return {
+        exId,
+        name: cur.name,
+        hint: "Objectif atteint · RPE ≤ 8",
+        delta: "+0,5 km",
+        reason: "up",
+      };
+    return null;
+  }
+
   const prev = logs[1] ? evalSession(logs[1]) : null;
 
   if (cur.hitTop && cur.maxRpe <= 8) {
@@ -1765,7 +1779,6 @@ export function weeklyStats(
 ): WeeklyStats | null {
   const today = new Date();
   const dow = today.getDay(); // 0 = dimanche
-  if (dow !== 0 && dow !== 1) return null;
 
   const monday = new Date(today);
   monday.setDate(monday.getDate() - ((dow + 6) % 7));
@@ -1775,6 +1788,7 @@ export function weeklyStats(
   const end = new Date(today);
   end.setHours(23, 59, 59, 999);
   let label = "Ta semaine jusqu'ici";
+  // Le lundi : on affiche le bilan de la semaine COMPLÈTE écoulée (lun→dim précédent).
   if (dow === 1) {
     start.setDate(start.getDate() - 7);
     end.setTime(monday.getTime() - 1);
@@ -1828,33 +1842,9 @@ export function weeklyStats(
   };
 }
 
-// Current program week (1-12)
-/**
- * Cycles infinis de 12 semaines : l'app ne plafonne plus à S12.
- * S13 → Cycle 2 · Semaine 1, S25 → Cycle 3 · Semaine 1… (tests toutes les 4 semaines).
- */
-export function programCycle(profile: Profile): {
-  totalWeek: number;
-  cycle: number;
-  cycleWeek: number;
-} {
-  if (!profile.startDate) return { totalWeek: 1, cycle: 1, cycleWeek: 1 };
-  const start = new Date(profile.startDate).getTime();
-  const totalWeek = Math.max(1, Math.floor((Date.now() - start) / (7 * 864e5)) + 1);
-  const cycle = Math.floor((totalWeek - 1) / 12) + 1;
-  const cycleWeek = ((totalWeek - 1) % 12) + 1;
-  return { totalWeek, cycle, cycleWeek };
-}
-
-/** Semaine dans le cycle courant (1-12). */
-export function currentProgramWeek(profile: Profile): number {
-  return programCycle(profile).cycleWeek;
-}
-
-export function isTestWeek(profile: Profile): boolean {
-  const w = currentProgramWeek(profile);
-  return w % 4 === 0;
-}
+// programCycle / currentProgramWeek / isTestWeek sont définis dans ./plan.ts
+// et ré-exportés depuis ce module (voir `export { ... } from "./plan"` plus haut)
+// pour éviter la duplication de logique.
 
 // Downscale image file → base64 JPEG (max 800px, ~70% quality) for localStorage.
 export async function fileToCompressedBase64(
