@@ -30,6 +30,8 @@ export type Database = {
           home_layout: Json;
           nav_menus: Json;
           music_playlists: Json;
+          training_time: "morning" | "evening" | null;
+          session_duration: number | null;
         };
         Insert: {
           id: string;
@@ -54,6 +56,8 @@ export type Database = {
           home_layout?: Json;
           nav_menus?: Json;
           music_playlists?: Json;
+          training_time?: "morning" | "evening" | null;
+          session_duration?: number | null;
         };
         Update: {
           id?: string;
@@ -78,6 +82,8 @@ export type Database = {
           home_layout?: Json;
           nav_menus?: Json;
           music_playlists?: Json;
+          training_time?: "morning" | "evening" | null;
+          session_duration?: number | null;
         };
         Relationships: [
           {

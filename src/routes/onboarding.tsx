@@ -14,6 +14,13 @@ import { PageShell } from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppActions, useAppState, type Profile } from "@/lib/store";
 import {
   GOALS,
@@ -24,6 +31,7 @@ import {
   computeNutrition,
   WEEKDAY_LABELS,
   capacitiesFromHistory,
+  getDeloadWeek,
   type Capacities,
   type GoalId,
 } from "@/lib/plan";
@@ -52,6 +60,12 @@ function OnboardingPage() {
       : state.profile.daysPerWeek === 5
         ? [0, 1, 2, 3, 4]
         : [0, 1, 2, 3, 4, 5],
+  );
+  const [trainingTime, setTrainingTime] = useState<"morning" | "evening">(
+    state.profile.trainingTime ?? "evening",
+  );
+  const [sessionDuration, setSessionDuration] = useState<number>(
+    state.profile.sessionDuration ?? 55,
   );
   const [sex, setSex] = useState<"homme" | "femme">(state.profile.sex ?? "homme");
   const [age, setAge] = useState(state.profile.age?.toString() ?? "");
@@ -92,6 +106,8 @@ function OnboardingPage() {
       goal,
       daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
       trainingDays,
+      trainingTime,
+      sessionDuration,
       level,
       sex,
       age: parseInt(age) || undefined,
@@ -99,7 +115,19 @@ function OnboardingPage() {
       height: parseFloat(height) || state.profile.height,
       capacities,
     }),
-    [state.profile, goal, trainingDays, level, sex, age, weight, height, capacities],
+    [
+      state.profile,
+      goal,
+      trainingDays,
+      trainingTime,
+      sessionDuration,
+      level,
+      sex,
+      age,
+      weight,
+      height,
+      capacities,
+    ],
   );
   const nutrition = useMemo(() => computeNutrition(previewProfile), [previewProfile]);
   const plan = useMemo(() => generatePlan(previewProfile), [previewProfile]);
@@ -110,6 +138,8 @@ function OnboardingPage() {
       goal,
       daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
       trainingDays,
+      trainingTime,
+      sessionDuration,
       level,
       sex,
       age: parseInt(age) || undefined,
@@ -210,6 +240,56 @@ function OnboardingPage() {
                 Touche les jours où tu t'entraînes (3 à 6). La séance reste à son jour habituel :
                 les autres deviennent repos 🧘.
               </p>
+            </div>
+
+            {/* Moment de la séance + durée cible */}
+            <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+              <h3 className="font-bold">Moment & durée</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setTrainingTime("morning")}
+                  className={`h-14 rounded-xl border font-bold transition ${
+                    trainingTime === "morning"
+                      ? "btn-hero border-transparent"
+                      : "bg-card border-border text-muted-foreground"
+                  }`}
+                >
+                  🌅 Matin
+                </button>
+                <button
+                  onClick={() => setTrainingTime("evening")}
+                  className={`h-14 rounded-xl border font-bold transition ${
+                    trainingTime === "evening"
+                      ? "btn-hero border-transparent"
+                      : "bg-card border-border text-muted-foreground"
+                  }`}
+                >
+                  🌙 Soir
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {trainingTime === "morning"
+                  ? "Séance à jeun : le moteur privilégie cardio/skill. Nutrition post-séance prioritaire."
+                  : "Séance en soirée: séances de force complètes. Repas pré-séance recommandé."}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-muted-foreground">Durée cible :</span>
+                <Select
+                  value={String(sessionDuration)}
+                  onValueChange={(v) => setSessionDuration(Number(v))}
+                >
+                  <SelectTrigger className="bg-input h-8 text-xs w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[30, 40, 45, 50, 55, 60, 70, 80].map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d} min
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         )}
@@ -367,6 +447,48 @@ function OnboardingPage() {
               )}
               .
             </p>
+
+            {/* Infos split + deload */}
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="card-premium p-3 border border-primary/20 bg-primary/[0.05]">
+                <p className="text-[10px] uppercase font-black tracking-wider text-primary">
+                  Split
+                </p>
+                <p className="text-sm font-bold mt-1 capitalize">
+                  {plan.splitId?.replace(/-/g, " ")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {trainingDays.length} jours/semaine
+                </p>
+              </div>
+              <div className="card-premium p-3 border border-blue-400/20 bg-blue-400/[0.05]">
+                <p className="text-[10px] uppercase font-black tracking-wider text-blue-300">
+                  Deload
+                </p>
+                {plan.isDeload ? (
+                  <p className="text-sm font-bold mt-1 text-blue-300">Semaine active</p>
+                ) : (
+                  <p className="text-sm font-bold mt-1">
+                    {level === "débutant" ? "Non (débutant)" : `S${getDeloadWeek(level)}`}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {level === "débutant" ? "Récupération naturelle" : "Volume -50% / intensité -30%"}
+                </p>
+              </div>
+            </div>
+
+            {/* Timing nutritionnel */}
+            <div className="card-premium p-3 mt-3 border border-cyan-400/20 bg-cyan-400/[0.05]">
+              <p className="text-[10px] uppercase font-black tracking-wider text-cyan-300 flex items-center gap-1">
+                {trainingTime === "morning" ? "🌅 À jeun" : "🌙 En soirée"} — Timing
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                {trainingTime === "morning"
+                  ? "Séance à jeun : hydrate-toi avant, repas protéiné rapide après."
+                  : "Repas léger 1-2h avant, récupération nocturne optimisée."}
+              </p>
+            </div>
 
             {/* Semaine */}
             <div className="card-premium p-4">

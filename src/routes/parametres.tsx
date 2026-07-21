@@ -75,7 +75,13 @@ import {
   notificationsSupported,
   type ReminderSettings,
 } from "@/lib/reminders";
-import { isPushSupported as isPushSupportedBrowser, getExistingSubscription, subscribeToPush, unsubscribeFromPush, getVapidPublicKey } from "@/lib/push-notifications";
+import {
+  isPushSupported as isPushSupportedBrowser,
+  getExistingSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+  getVapidPublicKey,
+} from "@/lib/push-notifications";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
@@ -134,6 +140,37 @@ function ParamsPage() {
                     {GOALS.map((g) => (
                       <SelectItem key={g.id} value={g.id}>
                         {g.emoji} {g.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+              <Row label="Moment séance">
+                <Select
+                  value={state.profile.trainingTime ?? "evening"}
+                  onValueChange={(v) => setProfile({ trainingTime: v as "morning" | "evening" })}
+                >
+                  <SelectTrigger className="bg-input w-36 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="morning">🌅 Matin (à jeun)</SelectItem>
+                    <SelectItem value="evening">🌙 Soir</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Row>
+              <Row label="Durée cible">
+                <Select
+                  value={String(state.profile.sessionDuration ?? 55)}
+                  onValueChange={(v) => setProfile({ sessionDuration: Number(v) })}
+                >
+                  <SelectTrigger className="bg-input w-28 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[30, 40, 45, 50, 55, 60, 70, 80].map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d} min
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1416,14 +1453,17 @@ function PushCard() {
         <h3 className="font-bold text-sm">Rappel push quotidien</h3>
       </div>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        <span className="hidden sm:inline">Reçois une notification push chaque jour si tu n'as pas encore fait ta séance.</span><span className="sm:hidden">Notification push si séance manquée.</span> 
+        <span className="hidden sm:inline">
+          Reçois une notification push chaque jour si tu n'as pas encore fait ta séance.
+        </span>
+        <span className="sm:hidden">Notification push si séance manquée.</span>
         100% gratuit, fonctionne même quand l'app est fermée (PWA installée).
       </p>
 
       {!supported ? (
         <p className="text-[11px] text-amber-300">
-          ⚠️ Ce navigateur ne supporte pas les notifications push. 
-          Installe l'app (menu ⋮ → Installer) ou utilise Chrome/Edge sur Android.
+          ⚠️ Ce navigateur ne supporte pas les notifications push. Installe l'app (menu ⋮ →
+          Installer) ou utilise Chrome/Edge sur Android.
         </p>
       ) : !vapidKey ? (
         <p className="text-[11px] text-amber-300">
@@ -1444,7 +1484,8 @@ function PushCard() {
         >
           {busy ? (
             <span className="flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {subscribed ? "Désabonnement…" : "Abonnement…"}
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
+              {subscribed ? "Désabonnement…" : "Abonnement…"}
             </span>
           ) : subscribed ? (
             "🔕 Désactiver les notifications push"
@@ -1526,8 +1567,8 @@ function ThemeCard() {
 function MusicCard() {
   const state = useAppState();
   const { setProfile } = useAppActions();
-  const playlists = Array.isArray(state.profile.musicPlaylists) 
-    ? state.profile.musicPlaylists as { id: string; label: string; url: string }[]
+  const playlists = Array.isArray(state.profile.musicPlaylists)
+    ? (state.profile.musicPlaylists as { id: string; label: string; url: string }[])
     : [];
 
   // Migration ancien format (Record<string, string>) vers nouveau format (array)
@@ -1537,11 +1578,30 @@ function MusicCard() {
     if (raw && typeof raw === "object") {
       const migrated: { id: string; label: string; url: string }[] = [];
       for (const [k, v] of Object.entries(raw as Record<string, string>)) {
-        if (v) migrated.push({ id: k, label: k === "running" ? "Course 🏃" : k === "push" ? "Push 💪" : k === "pull" ? "Pull 🎯" : k === "legs" ? "Legs 🦵" : k, url: v });
+        if (v)
+          migrated.push({
+            id: k,
+            label:
+              k === "running"
+                ? "Course 🏃"
+                : k === "push"
+                  ? "Push 💪"
+                  : k === "pull"
+                    ? "Pull 🎯"
+                    : k === "legs"
+                      ? "Legs 🦵"
+                      : k,
+            url: v,
+          });
       }
       return migrated;
     }
-    return [{ id: "push", label: "Push 💪", url: "" }, { id: "pull", label: "Pull 🎯", url: "" }, { id: "legs", label: "Legs 🦵", url: "" }, { id: "running", label: "Course 🏃", url: "" }];
+    return [
+      { id: "push", label: "Push 💪", url: "" },
+      { id: "pull", label: "Pull 🎯", url: "" },
+      { id: "legs", label: "Legs 🦵", url: "" },
+      { id: "running", label: "Course 🏃", url: "" },
+    ];
   });
 
   const save = () => {
@@ -1569,8 +1629,8 @@ function MusicCard() {
         <h3 className="font-bold text-sm">Playlists sport</h3>
       </div>
       <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Ajoute des liens <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b>. 
-        Le bon lien s'affichera dans le bloc Musique selon la séance du jour.
+        Ajoute des liens <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b>. Le bon lien
+        s'affichera dans le bloc Musique selon la séance du jour.
       </p>
 
       <div className="space-y-2.5">
@@ -1602,8 +1662,12 @@ function MusicCard() {
         ))}
       </div>
 
-      <Button size="sm" variant="secondary" onClick={addItem}
-        className="w-full h-9 border border-dashed border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20 text-xs font-bold">
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={addItem}
+        className="w-full h-9 border border-dashed border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20 text-xs font-bold"
+      >
         ➕ Ajouter une playlist
       </Button>
       <Button size="sm" onClick={save} className="w-full h-9 btn-hero text-xs font-bold">

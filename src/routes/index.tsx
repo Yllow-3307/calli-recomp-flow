@@ -28,6 +28,8 @@ import {
   planDays,
   plannedSessionsPerWeek,
   WEEKDAY_LABELS,
+  isDeloadWeek,
+  getDeloadWeek,
   type GeneratedNutrition,
 } from "@/lib/plan";
 import {
@@ -145,6 +147,8 @@ function Dashboard() {
   const daysGoal = plannedSessionsPerWeek(state.profile);
   const showTestBanner = isTestWeek(state.profile);
   const week = currentProgramWeek(state.profile);
+  const showDeloadBanner = isDeloadWeek(state.profile, week);
+  const deloadWeek = getDeloadWeek(state.profile.level);
   const weekDays = planDays(state.profile);
   // Bilan hebdo (dimanche = semaine en cours, lundi = semaine écoulée)
   const recap = useMemo(() => weeklyStats(state), [state]);
@@ -231,7 +235,15 @@ function Dashboard() {
 
   // ---- Redimensionnement fluide continu (Pointer Events, pas de snap) ----
   // ---- Redimensionnement style Apple : 3 poignées, fluide, hauteur + largeur ----
-  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; si: number; bi: number; mode: "corner" | "bottom" | "right" } | null>(null);
+  const resizeRef = useRef<{
+    startX: number;
+    startY: number;
+    origW: number;
+    origH: number;
+    si: number;
+    bi: number;
+    mode: "corner" | "bottom" | "right";
+  } | null>(null);
   const setBlockSpan = (si: number, bi: number, span: 1 | 2 | 3) => {
     const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
     if (!next[si]?.blocks[bi]) return;
@@ -244,11 +256,24 @@ function Dashboard() {
     next[si].blocks[bi].height = height;
     applyLayout(next);
   };
-  const startResize = (e: React.PointerEvent, si: number, bi: number, mode: "corner" | "bottom" | "right") => {
+  const startResize = (
+    e: React.PointerEvent,
+    si: number,
+    bi: number,
+    mode: "corner" | "bottom" | "right",
+  ) => {
     e.preventDefault();
     const cur = layoutRef.current[si]?.blocks[bi];
     if (!cur) return;
-    resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: cur.span, origH: cur.height, si, bi, mode };
+    resizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origW: cur.span,
+      origH: cur.height,
+      si,
+      bi,
+      mode,
+    };
     const onMove = (ev: PointerEvent) => {
       const r = resizeRef.current;
       if (!r) return;
@@ -260,10 +285,16 @@ function Dashboard() {
       if (r.mode === "corner" || r.mode === "bottom") {
         const dy = ev.clientY - r.startY;
         const newH = Math.min(4, Math.max(1, r.origH + Math.round(dy / 60))) as 1 | 2 | 3 | 4;
-        if (layoutRef.current[r.si]?.blocks[r.bi]?.height !== newH) setBlockHeight(r.si, r.bi, newH);
+        if (layoutRef.current[r.si]?.blocks[r.bi]?.height !== newH)
+          setBlockHeight(r.si, r.bi, newH);
       }
     };
-    const onUp = () => { resizeRef.current = null; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -366,7 +397,12 @@ function Dashboard() {
   const blockContent = (si: number, bi: number, b: HomeBlockInstance) => {
     switch (b.kind) {
       case "cycle":
-        return <CycleEndCard profile={state.profile} />;
+        return (
+          <>
+            <CycleEndCard profile={state.profile} />
+            {showDeloadBanner && <DeloadBanner week={week} deloadWeek={deloadWeek} />}
+          </>
+        );
       case "testsBanner":
         return showTestBanner ? (
           <div>
@@ -588,7 +624,14 @@ function Dashboard() {
     const content = blockContent(si, bi, b);
     if (!editing && content === null) return null;
     const spanCls = b.span === 3 ? "lg:col-span-3" : b.span === 2 ? "lg:col-span-2" : "";
-    const heightCls = b.height === 4 ? "lg:row-span-4 min-h-[28rem]" : b.height === 3 ? "lg:row-span-3 min-h-[22rem]" : b.height === 2 ? "lg:row-span-2 min-h-[16rem]" : "min-h-[10rem]";
+    const heightCls =
+      b.height === 4
+        ? "lg:row-span-4 min-h-[28rem]"
+        : b.height === 3
+          ? "lg:row-span-3 min-h-[22rem]"
+          : b.height === 2
+            ? "lg:row-span-2 min-h-[16rem]"
+            : "min-h-[10rem]";
     const isDragged = drag?.from.si === si && drag?.from.bi === bi;
     const isDropTarget = editing && drag?.over?.si === si && drag?.over?.bi === bi && !isDragged;
     return (
@@ -638,7 +681,9 @@ function Dashboard() {
                 : ""
             }`}
           >
-            <div className="flex-1">{content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}</div>
+            <div className="flex-1">
+              {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
+            </div>
           </div>
           {editing && (
             <>
@@ -823,7 +868,10 @@ function Dashboard() {
               {sec.blocks.map((b, bi) => renderBlock(si, bi, b))}
               {editing && sec.blocks.length === 0 && (
                 <p className="text-[11px] text-muted-foreground/70 italic py-2">
-                  <span className="hidden sm:inline">Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.</span><span className="sm:hidden">Sous-section vide — ajoute un bloc.</span>
+                  <span className="hidden sm:inline">
+                    Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.
+                  </span>
+                  <span className="sm:hidden">Sous-section vide — ajoute un bloc.</span>
                 </p>
               )}
             </div>
@@ -857,7 +905,8 @@ function Dashboard() {
           </div>
           {addableEntries.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">
-              <span className="hidden sm:inline">Tous les blocs sont deja sur ton accueil 🎉</span><span className="sm:hidden">Tous les blocs sont là 🎉</span>
+              <span className="hidden sm:inline">Tous les blocs sont deja sur ton accueil 🎉</span>
+              <span className="sm:hidden">Tous les blocs sont là 🎉</span>
             </p>
           ) : (
             <div className="grid gap-2 pt-2">
@@ -943,7 +992,14 @@ function CycleProgressBar({ profile }: { profile: Profile }) {
   return (
     <div className="flex items-center gap-3">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={stroke}
+        />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -957,7 +1013,14 @@ function CycleProgressBar({ profile }: { profile: Profile }) {
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
           className="transition-all duration-500"
         />
-        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--color-foreground)">
+        <text
+          x={size / 2}
+          y={size / 2 + 1}
+          textAnchor="middle"
+          fontSize="10"
+          fontWeight="700"
+          fill="var(--color-foreground)"
+        >
           {pct}%
         </text>
       </svg>
@@ -1001,11 +1064,34 @@ function CycleEndCard({ profile }: { profile: Profile }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-black text-gradient">Fin du cycle {cycle} 🎉</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            <span className="hidden sm:inline">Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨</span><span className="sm:hidden">Régénère le plan → perfs ✨</span>
+            <span className="hidden sm:inline">
+              Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨
+            </span>
+            <span className="sm:hidden">Régénère le plan → perfs ✨</span>
           </p>
         </div>
         <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </Link>
+    </div>
+  );
+}
+
+/** Bannière de semaine de deload — volume réduit automatiquement. */
+function DeloadBanner({ week, deloadWeek }: { week: number; deloadWeek: number | null }) {
+  return (
+    <div className="card-premium p-4 border-l-4 border-l-blue-400/40 bg-gradient-to-b from-blue-400/[0.10] to-transparent">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 grid place-items-center rounded-full bg-blue-400/10 shrink-0">
+          <span className="text-xl">🧘</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-blue-300">Semaine de Deload — S{week}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+            Volume réduit de 50% sur les séries, intensité -30%. L'objectif est la récupération :
+            garde la technique, écoute ton corps.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1199,7 +1285,9 @@ function MacroBlock({
 }) {
   const ratio = target > 0 ? Math.min(100, (value / target) * 100) : 0;
   return (
-    <div className={`card-premium p-4 border bg-gradient-to-b to-transparent flex flex-col ${borderCls}`}>
+    <div
+      className={`card-premium p-4 border bg-gradient-to-b to-transparent flex flex-col ${borderCls}`}
+    >
       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
         {icon} {label}
       </div>
@@ -1424,18 +1512,18 @@ function MusiqueBlock() {
   const state = useAppState();
   const today = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
   const raw = state.profile.musicPlaylists;
-  const playlists = Array.isArray(raw) 
-    ? raw as { id: string; label: string; url: string }[]
-    : [];
+  const playlists = Array.isArray(raw) ? (raw as { id: string; label: string; url: string }[]) : [];
   // Fallback ancien format
   const tType = today.type;
   const sessionType: string =
     tType === "running" ? "running" : tType === "rest" || tType === "recovery" ? "recovery" : tType;
 
   // Trouver la playlist qui correspond le mieux
-  const match = playlists.length > 0
-    ? playlists.find((p) => p.label.toLowerCase().includes(tType) || p.id === tType) || playlists[0]
-    : null;
+  const match =
+    playlists.length > 0
+      ? playlists.find((p) => p.label.toLowerCase().includes(tType) || p.id === tType) ||
+        playlists[0]
+      : null;
   const url = match?.url || "";
 
   const appName = url.includes("spotify")
@@ -1460,7 +1548,10 @@ function MusiqueBlock() {
       {playlists.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {playlists.map((p) => (
-            <span key={p.id} className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${p.url ? "bg-pink-500/10 border-pink-500/20 text-pink-200" : "bg-white/5 border-white/10 text-muted-foreground"}`}>
+            <span
+              key={p.id}
+              className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${p.url ? "bg-pink-500/10 border-pink-500/20 text-pink-200" : "bg-white/5 border-white/10 text-muted-foreground"}`}
+            >
               {p.label} {p.url ? "🔗" : "⛔"}
             </span>
           ))}
@@ -1487,16 +1578,25 @@ function MusiqueBlock() {
             </span>
             <span className="text-[10px] opacity-70">↗</span>
           </a>
-          <Link to="/parametres" className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors">
+          <Link
+            to="/parametres"
+            className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors"
+          >
             Changer de playlist dans Paramètres
           </Link>
         </div>
       ) : (
         <div className="mt-3 space-y-2">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            <span className="hidden sm:inline">Configure tes playlists dans Paramètres → Musique.</span><span className="sm:hidden">🎵 Non configurée</span>
+            <span className="hidden sm:inline">
+              Configure tes playlists dans Paramètres → Musique.
+            </span>
+            <span className="sm:hidden">🎵 Non configurée</span>
           </p>
-          <Link to="/parametres" className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all">
+          <Link
+            to="/parametres"
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all"
+          >
             <Music className="h-3.5 w-3.5" /> Configurer mes playlists
           </Link>
         </div>

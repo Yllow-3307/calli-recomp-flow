@@ -1,7 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageShell, TopBar } from "@/components/BottomNav";
-import { planDays, nutritionTargets, TIER_INFO, goalDefOf } from "@/lib/plan";
+import {
+  planDays,
+  nutritionTargets,
+  TIER_INFO,
+  goalDefOf,
+  isDeloadWeek,
+  getDeloadWeek,
+} from "@/lib/plan";
 import { useAppState, programCycle } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { SessionTypeBadge } from "@/routes/index";
@@ -23,6 +30,9 @@ function ProgrammePage() {
   const isCustomPlan = !!state.profile.plan;
   const nut = nutritionTargets(state.profile);
   const tierLabel = state.profile.plan ? TIER_INFO[state.profile.plan.tier].label : "Standard";
+  const showDeload = isDeloadWeek(state.profile, cycleWeek);
+  const deloadWeek = getDeloadWeek(state.profile.level);
+  const splitLabel = state.profile.plan?.splitId ?? "standard";
 
   const handlePDF = async () => {
     setPdfBusy(true);
@@ -36,8 +46,26 @@ function ProgrammePage() {
     <PageShell>
       <TopBar
         title="Programme"
-        subtitle={`${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, semaine ${cycleWeek}/12`}
+        subtitle={
+          `${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, S${cycleWeek}/12` +
+          (showDeload ? ` • 🧘 Deload` : "") +
+          (state.profile.plan?.splitId ? ` • ${state.profile.plan.splitId}` : "")
+        }
       />
+
+      {showDeload && (
+        <div className="px-5 mb-3">
+          <div className="card-premium p-3 border-l-4 border-l-blue-400/40 bg-gradient-to-b from-blue-400/[0.10] to-transparent">
+            <p className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+              🧘 Semaine de Deload S{cycleWeek} — Volume réduit de 50%, intensité -30%.
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Objectif : récupération active. Garde la technique, écoute ton corps. Le deload est
+              programmé automatiquement à S{deloadWeek} pour un niveau {state.profile.level}.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="px-5 mb-3 flex justify-end gap-2 print:hidden">
         <Button

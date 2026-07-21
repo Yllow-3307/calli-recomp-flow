@@ -37,6 +37,8 @@ export interface Profile {
   capacities?: Capacities; // capacités (déclarées ou déduites des perfs réelles)
   plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
   trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
+  trainingTime?: "morning" | "evening"; // moment de la séance (influence timing nutritionnel)
+  sessionDuration?: number; // durée cible par séance en minutes
   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
   notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
@@ -142,6 +144,8 @@ const DEFAULT_STATE: AppState = {
     level: "intermédiaire",
     onboarded: false,
     startDate: new Date().toISOString(),
+    trainingTime: "evening",
+    sessionDuration: 55,
   },
   workouts: [],
   cardio: [],
@@ -262,6 +266,14 @@ export function useAppActions() {
             trainingDays: Array.isArray(data.training_days)
               ? (data.training_days as number[])
               : s.profile.trainingDays,
+            trainingTime:
+              (data.training_time as "morning" | "evening" | null) ??
+              s.profile.trainingTime ??
+              "evening",
+            sessionDuration:
+              typeof data.session_duration === "number"
+                ? data.session_duration
+                : (s.profile.sessionDuration ?? 55),
             exerciseSwaps:
               (data.exercise_swaps as Record<string, string> | null) ?? s.profile.exerciseSwaps,
             favoriteMeals: Array.isArray(data.favorite_meals)
@@ -276,8 +288,7 @@ export function useAppActions() {
             navMenus: Array.isArray(data.nav_menus)
               ? (data.nav_menus as string[])
               : s.profile.navMenus,
-            musicPlaylists:
-              data.music_playlists ?? s.profile.musicPlaylists,
+            musicPlaylists: data.music_playlists ?? s.profile.musicPlaylists,
           },
         }));
       }
@@ -322,6 +333,14 @@ export function useAppActions() {
           trainingDays: Array.isArray(profileData.training_days)
             ? (profileData.training_days as number[])
             : currentProfile.trainingDays,
+          trainingTime:
+            (profileData.training_time as "morning" | "evening" | null) ??
+            currentProfile.trainingTime ??
+            "evening",
+          sessionDuration:
+            typeof profileData.session_duration === "number"
+              ? profileData.session_duration
+              : (currentProfile.sessionDuration ?? 55),
           exerciseSwaps:
             (profileData.exercise_swaps as Record<string, string> | null) ??
             currentProfile.exerciseSwaps,
@@ -338,9 +357,7 @@ export function useAppActions() {
           navMenus: Array.isArray(profileData.nav_menus)
             ? (profileData.nav_menus as string[])
             : currentProfile.navMenus,
-          musicPlaylists:
-            profileData.music_playlists ??
-            currentProfile.musicPlaylists,
+          musicPlaylists: profileData.music_playlists ?? currentProfile.musicPlaylists,
         };
       } else {
         const mappedProfile = {
@@ -357,6 +374,8 @@ export function useAppActions() {
           capacities: (currentProfile.capacities ?? {}) as unknown as Json,
           plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
           training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
+          training_time: currentProfile.trainingTime ?? "evening",
+          session_duration: currentProfile.sessionDuration ?? 55,
           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
           notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
@@ -878,9 +897,13 @@ export function useAppActions() {
         metrics: mergedMetrics,
         tests: (() => {
           try {
-            const deletedSet = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[]);
+            const deletedSet = new Set(
+              JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[],
+            );
             return mergedTests.filter((t) => !deletedSet.has(t.id));
-          } catch { return mergedTests; }
+          } catch {
+            return mergedTests;
+          }
         })(),
         water: mergedWater,
         workouts: mergedWorkouts.sort(
@@ -896,7 +919,9 @@ export function useAppActions() {
         const stored = JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[];
         const stillPending = stored.filter((id) => remoteIds.has(id));
         localStorage.setItem("deleted-test-ids", JSON.stringify(stillPending));
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
 
       toast.success("Données synchronisées avec Supabase !");
     } catch (err) {
@@ -934,6 +959,8 @@ export function useAppActions() {
               capacities: (profileToSync.capacities ?? {}) as unknown as Json,
               plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
               training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
+              training_time: profileToSync.trainingTime ?? "evening",
+              session_duration: profileToSync.sessionDuration ?? 55,
               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
               notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
@@ -1234,7 +1261,9 @@ export function useAppActions() {
         const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
         deleted.add(id);
         localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
 
       setState((s) => ({ ...s, tests: s.tests.filter((x) => x.id !== id) }));
 
@@ -1258,7 +1287,9 @@ export function useAppActions() {
               const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
               deleted.delete(id);
               localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
-            } catch { /* noop */ }
+            } catch {
+              /* noop */
+            }
           }
         } catch (err) {
           console.error("Erreur de suppression du test dans Supabase :", err);

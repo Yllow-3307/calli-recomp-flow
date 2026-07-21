@@ -1,0 +1,3764 @@
+diff --git a/docs/ARCHITECTURE_ADAPTIVE.md b/docs/ARCHITECTURE_ADAPTIVE.md
+new file mode 100644
+index 0000000..5d3db1f
+--- /dev/null
++++ b/docs/ARCHITECTURE_ADAPTIVE.md
+@@ -0,0 +1,208 @@
++# Architecture du Programme Adaptatif — Calli Recomp
++
++## Vue d'ensemble
++
++L'application utilise un **moteur de décision à 5 modules d'entrée** qui génère un programme
++personnalisé (séances + nutrition) de manière 100% déterministe — aucune IA payante nécessaire.
++
++```
++┌─────────────┐  ┌──────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────┐
++│ 1. Profil   │  │ 2. Niveau│  │ 3. Dispo     │  │ 4. Équipement│  │ 5. Objectif│
++│ BMR/TDEE    │  │ Tier 1-3 │  │ Split + Vol  │  │ Filtrage     │  │ kcal/Macros│
++└──────┬──────┘  └────┬─────┘  └──────┬───────┘  └──────┬───────┘  └────┬─────┘
++       │              │               │                 │               │
++       └──────────────┴───────────────┴─────────────────┴───────────────┘
++                                       │
++                              ┌────────┴────────┐
++                              │ Moteur de décision│
++                              │ (8 étapes)       │
++                              └────────┬────────┘
++                                       │
++                              ┌────────┴────────┐
++                              │ Programme final │
++                              │ (séances + nutr)│
++                              └─────────────────┘
++```
++
++---
++
++## Module 1 — Profil (calcul physiologique)
++
++### Formule : Mifflin-St Jeor (la plus fiable)
++
++- **Homme** : BMR = 10×poids(kg) + 6.25×taille(cm) − 5×âge + 5
++- **Femme** : BMR = 10×poids(kg) + 6.25×taille(cm) − 5×âge − 161
++
++### TDEE = BMR × facteur d'activité
++
++Le facteur est **nuancé** (niveau × volume hebdo) :
++
++| Niveau         | 2-3j | 4j  | 5j  | 6j  |
++|----------------|------|-----|-----|-----|
++| Débutant       | 1.3  | 1.4 | 1.4 | 1.5 |
++| Intermédiaire  | 1.4  | 1.5 | 1.6 | 1.6 |
++| Avancé         | 1.5  | 1.6 | 1.7 | 1.7 |
++
++### Garde-fous santé
++
++- **Plancher absolu** : 1500 kcal/j (hommes), 1200 kcal/j (femmes)
++- **Plancher relatif** : BMR × 0.7 (protège les morphologies petites/tailles)
++- **Plancher final** = max(plancher absolu, plancher relatif)
++
++**Fichier** : `src/lib/plan.ts` → `computeMaintenance()`, `computeBMR()`, `computeNutrition()`
++
++---
++
++## Module 2 — Niveau (débutant / intermédiaire / avancé)
++
++### Palier de difficulté (Tier 1-3)
++
++Le palier est calculé à partir du **niveau déclaré** + **capacités déclarées ou perfs réelles** :
++
++```
++Score = niveau (1-3) + capacités (0-10 → 1-3)
++Tier = round((niveau + capacités) / 2), clampé 1-3
++```
++
++| Tier | Label       | Facteur | Description                          |
++|------|-------------|---------|--------------------------------------|
++| 1    | Fondations  | ×0.7    | Fourchettes allégées, technique      |
++| 2    | Progression | ×1.0    | Fourchettes standards                |
++| 3    | Avancé      | ×1.3    | Fourchettes renforcées               |
++
++### Progression & Deload
++
++| Niveau         | Durée bloc | Deload | Progression           |
++|----------------|------------|--------|-----------------------|
++| Débutant       | 8 semaines | Non    | Linéaire (chaque séance) |
++| Intermédiaire  | 10-12 sem  | S6     | Par cycle 2-3 semaines |
++| Avancé         | 12+ sem    | S4     | Ondulée / blocs       |
++
++**Deload** : volume -50% (sets), intensité -30% (reps/time), exercices plus légers.
++
++**Fichier** : `src/lib/plan.ts` → `computeTier()`, `isDeloadWeek()`, `getDeloadWeek()`
++
++---
++
++## Module 3 — Disponibilité
++
++### Sélection du split
++
++| Jours/semaine | Split                | Volume     | Niveau adapté         |
++|---------------|----------------------|------------|-----------------------|
++| 2-3           | Full Body            | Low        | Tous                  |
++| 4             | Upper/Lower          | Moderate   | Tous                  |
++| 5             | PPL + Skills         | High       | Intermédiaire+        |
++| 6             | Split complet        | High       | Intermédiaire+        |
++
++> ⚠️ Débutant avec 5-6 jours → Upper/Lower (volume plus modéré)
++
++### Moment de la séance (matin/soir)
++
++- **Matin** → séance à jeun : nutrition post-séance prioritaire
++- **Soir** → repas pré-séance recommandé
++
++Le moment influence le **timing nutritionnel** (pas la structure du split).
++
++### Mapping jours
++
++Les jours du split sont **mappés** vers les jours sélectionnés par l'utilisateur :
++```
++Split [Lun, Mar, Jeu, Sam] → User [Mar, Mer, Jeu, Ven]
++→ Mar=Push, Mer=Pull, Jeu=Legs, Ven=Skills
++```
++
++**Fichier** : `src/lib/splits.ts` → `selectSplit()`, `getTrainingPattern()`
++
++---
++
++## Module 4 — Équipement
++
++### Pool d'exercices taggés
++
++Chaque exercice est taggé par :
++- **Catégorie** : push, pull, legs, core, cardio, skill
++- **Groupes musculaires** : pectoraux, dos, épaules, etc.
++- **Équipement** : bodyweight, pullup-bar, rings, bands, dumbbells, trx, rower, pool, bike
++- **Difficulté** : 1 (débutant), 2 (intermédiaire), 3 (avancé)
++
++### Filtrage
++
++Un exercice est disponible si l'utilisateur possède **au moins un** des équipements requis.
++`bodyweight` est toujours disponible.
++
++**Fichier** : `src/lib/exercise-pool.ts` → `EXERCISE_POOL`, `isExerciseAvailable()`, `filterByEquipment()`
++
++---
++
++## Module 5 — Objectif
++
++| Objectif | Ajustement kcal | Protéines (g/kg) | Cardio | Volume musculaire |
++|----------|----------------|-------------------|--------|-------------------|
++| Recomp   | -8%            | 1.8-2.2           | Modéré | Modéré            |
++| Sèche    | -18%           | 2.0-2.2           | Élevé  | Modéré            |
++| Muscle   | +10%           | 1.6-2.0           | Faible | Élevé             |
++| Skills   | -5%            | 1.8-2.2           | Faible | Modéré            |
++
++### Calcul des macros
++
++- **Protéines** : fourchette g/kg selon objectif
++- **Lipides** : ~0.9 g/kg (sol hormonal)
++- **Glucides** : calories restantes / 4
++
++**Fichier** : `src/lib/plan.ts` → `GOALS`, `computeNutrition()`
++
++---
++
++## Moteur de décision (8 étapes)
++
++1. **Calculer BMR → TDEE** (profil + activité du module 3)
++2. **Ajuster kcal + macros** selon objectif (avec garde-fous santé)
++3. **Déterminer split + fréquence** selon dispo + niveau
++4. **Filtrer pool d'exercices** selon équipement
++5. **Sélectionner exercices** selon niveau + objectif + split
++6. **Calculer volume/intensité/repos** selon niveau + objectif
++7. **Déterminer durée du bloc** (8-12+ semaines) + deload programmé
++8. **Générer le programme final** (séances + nutrition)
++
++**Fichier** : `src/lib/plan.ts` → `generatePlan()`, `generateDynamicDays()`
++
++---
++
++## Fichiers clés
++
++| Fichier | Rôle |
++|---------|------|
++| `src/lib/exercise-pool.ts` | Base de données d'exercices taggés (70+ exercices) |
++| `src/lib/splits.ts` | Templates de splits dynamiques (full body, upper/lower, PPL) |
++| `src/lib/plan.ts` | Moteur de génération (nutrition, split, exercices, deload) |
++| `src/lib/program.ts` | Seed de référence + EXERCISE_SWAPS + SKILLS_GUIDE |
++| `src/lib/store.ts` | Store applicatif + synchronisation Supabase |
++| `src/routes/onboarding.tsx` | Wizard 4 étapes (objectif → corps → capacités → plan) |
++| `src/routes/parametres.tsx` | Réglages profil, équipement, timing, notifications |
++| `supabase/migrations/20260721000001_profile_adaptive.sql` | Nouveaux champs profil |
++
++---
++
++## Migration depuis l'ancien système
++
++L'ancien système utilisait un **seed JSON fixe** (`programme_seed.json`) avec 7 jours codés en dur.
++Le nouveau système **génère dynamiquement** le programme à partir du pool d'exercices.
++
++### Compatibilité ascendante
++
++- Les anciens plans stockés (version 1) continuent de fonctionner via `planDays()`
++- La régénération via `/onboarding` crée un plan version 2 (dynamique)
++- Le seed `PROGRAM` reste comme fallback si le plan n'est pas disponible
++
++### Ce qui a changé
++
++| Ancien | Nouveau |
++|--------|---------|
++| Seed JSON fixe (7 jours) | Génération dynamique (split + pool) |
++| Facteur activité 1.5 fixe | Nuancé (niveau × volume) |
++| Plancher 1200 kcal fixe | max(1500H/1200F, BMR×0.7) |
++| Pas de deload | Deload programmé (S6 intermédiaire, S4 avancé) |
++| Pas de timing | Matin/Soir → conseils nutrition |
++| Équipement cosmétique | Filtrage automatique des exercices |
++| 5-6 jours seulement | 2-6 jours avec mapping dynamique |
+diff --git a/package-lock.json b/package-lock.json
+index e8cd5b2..8b752ca 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -2096,6 +2096,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2112,6 +2113,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2128,6 +2130,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2144,6 +2147,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2160,6 +2164,7 @@
+       "cpu": [
+         "arm"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2176,6 +2181,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2192,6 +2198,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2208,6 +2215,7 @@
+       "cpu": [
+         "ppc64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2224,6 +2232,7 @@
+       "cpu": [
+         "s390x"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2240,6 +2249,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2256,6 +2266,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2272,6 +2283,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2288,6 +2300,7 @@
+       "cpu": [
+         "wasm32"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "dependencies": {
+@@ -2306,6 +2319,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2322,6 +2336,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -5730,6 +5745,18 @@
+         }
+       }
+     },
++    "node_modules/nitro/node_modules/lru-cache": {
++      "version": "11.5.2",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
++      "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "optional": true,
++      "peer": true,
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
+     "node_modules/nitro/node_modules/unstorage": {
+       "version": "2.0.0-alpha.7",
+       "resolved": "https://registry.npmjs.org/unstorage/-/unstorage-2.0.0-alpha.7.tgz",
+diff --git a/src/integrations/supabase/types.ts b/src/integrations/supabase/types.ts
+index 60a11e2..1b8e049 100644
+--- a/src/integrations/supabase/types.ts
++++ b/src/integrations/supabase/types.ts
+@@ -30,6 +30,8 @@ export type Database = {
+           home_layout: Json;
+           nav_menus: Json;
+           music_playlists: Json;
++          training_time: "morning" | "evening" | null;
++          session_duration: number | null;
+         };
+         Insert: {
+           id: string;
+@@ -54,6 +56,8 @@ export type Database = {
+           home_layout?: Json;
+           nav_menus?: Json;
+           music_playlists?: Json;
++          training_time?: "morning" | "evening" | null;
++          session_duration?: number | null;
+         };
+         Update: {
+           id?: string;
+@@ -78,6 +82,8 @@ export type Database = {
+           home_layout?: Json;
+           nav_menus?: Json;
+           music_playlists?: Json;
++          training_time?: "morning" | "evening" | null;
++          session_duration?: number | null;
+         };
+         Relationships: [
+           {
+diff --git a/src/lib/exercise-pool.ts b/src/lib/exercise-pool.ts
+new file mode 100644
+index 0000000..f5af48b
+--- /dev/null
++++ b/src/lib/exercise-pool.ts
+@@ -0,0 +1,1080 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Pool d'exercices taggés — Calli Recomp
++// Chaque exercice est taggé par :
++//   - catégorie (push/pull/legs/core/cardio/skill)
++//   - groupes musculaires ciblés
++//   - équipement requis (au minimum)
++//   - difficulté (1=débutant, 2=intermédiaire, 3=avancé)
++// Le moteur de génération filtre ce pool selon l'équipement disponible,
++// le niveau, l'objectif et le split choisi.
++// ─────────────────────────────────────────────────────────────────────────────
++
++export type ExerciseCategory = "push" | "pull" | "legs" | "core" | "cardio" | "skill";
++export type EquipmentTag =
++  | "bodyweight" // poids du corps
++  | "pullup-bar" // barre de traction
++  | "rings" // anneaux
++  | "bands" // élastiques
++  | "dumbbells" // haltères
++  | "trx" // sangle TRX
++  | "rower" // rameur
++  | "pool" // piscine
++  | "bike" // vélo
++  | "none"; // aucun (repos, étirements)
++
++export interface ExerciseTemplate {
++  id: string;
++  name: string;
++  category: ExerciseCategory;
++  muscleGroups: string[];
++  /** Équipement minimum nécessaire — un exercice est disponible si l'utilisateur possède AU MOINS UN de ces tags */
++  equipment: EquipmentTag[];
++  difficulty: 1 | 2 | 3;
++  kind: "reps" | "time" | "distance";
++  /** Fourchette de reps ou de temps recommandée (débutant → avancé) */
++  defaultSets: number;
++  defaultTargetMin: number;
++  defaultTargetMax: number;
++  defaultRest: number; // secondes
++  progression: string;
++  /** IDs d'exercices alternatifs (même catégorie, difficulté similaire ou régressive) */
++  alternatives: string[];
++}
++
++/**
++ * Un exercice est "disponible" si l'utilisateur possède au moins un des équipements
++ * requis. "bodyweight" est toujours disponible (on n'a jamais besoin d'équipement
++ * pour les exercices de poids du corps).
++ */
++export function isExerciseAvailable(ex: ExerciseTemplate, userEquipment: EquipmentTag[]): boolean {
++  if (ex.equipment.length === 0 || ex.equipment.includes("none")) return true;
++  return ex.equipment.some((eq) => eq === "bodyweight" || userEquipment.includes(eq));
++}
++
++/**
++ * Filtre le pool d'exercices selon l'équipement disponible.
++ * Garde les exercices "bodyweight" et "none" (toujours disponibles).
++ */
++export function filterByEquipment(
++  exercises: ExerciseTemplate[],
++  userEquipment: EquipmentTag[],
++): ExerciseTemplate[] {
++  return exercises.filter((ex) => isExerciseAvailable(ex, userEquipment));
++}
++
++/**
++ * Filtre par catégorie musculaire.
++ */
++export function filterByCategory(
++  exercises: ExerciseTemplate[],
++  category: ExerciseCategory,
++): ExerciseTemplate[] {
++  return exercises.filter((ex) => ex.category === category);
++}
++
++/**
++ * Filtre par groupe musculaire ciblé.
++ */
++export function filterByMuscleGroup(
++  exercises: ExerciseTemplate[],
++  muscle: string,
++): ExerciseTemplate[] {
++  return exercises.filter((ex) => ex.muscleGroups.includes(muscle));
++}
++
++/**
++ * Filtre par niveau de difficulté (garde les exercices à ou en dessous du niveau).
++ */
++export function filterByDifficulty(
++  exercises: ExerciseTemplate[],
++  maxDifficulty: 1 | 2 | 3,
++): ExerciseTemplate[] {
++  return exercises.filter((ex) => ex.difficulty <= maxDifficulty);
++}
++
++/**
++ * Sélectionne un exercice aléatoire parmi les options, en évitant les doublons.
++ */
++export function selectExercises(
++  pool: ExerciseTemplate[],
++  count: number,
++  usedIds: Set<string> = new Set(),
++): ExerciseTemplate[] {
++  const available = pool.filter((ex) => !usedIds.has(ex.id));
++  const selected: ExerciseTemplate[] = [];
++  const shuffled = [...available].sort(() => Math.random() - 0.5);
++
++  for (const ex of shuffled) {
++    if (selected.length >= count) break;
++    if (!usedIds.has(ex.id)) {
++      selected.push(ex);
++      usedIds.add(ex.id);
++    }
++  }
++  return selected;
++}
++
++// ─────────────────────────────────────────────────────────────────────────────
++// Pool complet des exercices
++// ─────────────────────────────────────────────────────────────────────────────
++
++export const EXERCISE_POOL: ExerciseTemplate[] = [
++  // ── PUSH : ÉPAULES ──
++  {
++    id: "pike-pushup",
++    name: "Pike push-up",
++    category: "push",
++    muscleGroups: ["épaules", "triceps"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers pike push-up lesté, puis HSPU",
++    alternatives: ["pike-pushup-weighted", "hspu-negative-wall"],
++  },
++  {
++    id: "pike-pushup-weighted",
++    name: "Pike push-up lesté",
++    category: "push",
++    muscleGroups: ["épaules", "triceps"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 6,
++    defaultTargetMax: 12,
++    defaultRest: 90,
++    progression: "Vers HSPU mur",
++    alternatives: ["pike-pushup", "hspu-negative-wall"],
++  },
++  {
++    id: "hspu-negative-wall",
++    name: "HSPU négatif mur",
++    category: "push",
++    muscleGroups: ["épaules", "triceps"],
++    equipment: ["bodyweight", "pullup-bar"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 90,
++    progression: "Vers HSPU au mur",
++    alternatives: ["hspu-wall", "pike-pushup"],
++  },
++  {
++    id: "hspu-wall",
++    name: "HSPU au mur",
++    category: "push",
++    muscleGroups: ["épaules", "triceps"],
++    equipment: ["bodyweight"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 4,
++    defaultTargetMax: 8,
++    defaultRest: 120,
++    progression: "Vers HSPU libre",
++    alternatives: ["hspu-negative-wall", "pike-pushup-weighted"],
++  },
++  {
++    id: "handstand-free",
++    name: "Handstand libre",
++    category: "skill",
++    muscleGroups: ["épaules", "core"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 5,
++    defaultTargetMin: 5,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers handstand libre contrôlé",
++    alternatives: ["handstand-wall"],
++  },
++  {
++    id: "handstand-wall",
++    name: "Handstand au mur",
++    category: "skill",
++    muscleGroups: ["épaules", "core"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 5,
++    defaultTargetMin: 15,
++    defaultTargetMax: 45,
++    defaultRest: 60,
++    progression: "Vers handstand libre",
++    alternatives: ["handstand-free", "wall-walk"],
++  },
++
++  // ── PUSH : POITRINE ──
++  {
++    id: "pushup-standard",
++    name: "Pompes standard",
++    category: "push",
++    muscleGroups: ["poitrine", "épaules", "triceps"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 60,
++    progression: "Vers pompes déclinées, puis archer",
++    alternatives: ["pushup-decline", "pushup-archer"],
++  },
++  {
++    id: "pushup-decline",
++    name: "Pompes déclinées",
++    category: "push",
++    muscleGroups: ["poitrine", "épaules", "triceps"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers pompes archer",
++    alternatives: ["pushup-standard", "pushup-archer"],
++  },
++  {
++    id: "pushup-archer",
++    name: "Pompes archer",
++    category: "push",
++    muscleGroups: ["poitrine", "épaules", "triceps"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 6,
++    defaultTargetMax: 10,
++    defaultRest: 90,
++    progression: "Vers pompes archer profondes",
++    alternatives: ["pushup-decline", "pushup-standard"],
++  },
++  {
++    id: "pushup-diamond",
++    name: "Pompes diamant",
++    category: "push",
++    muscleGroups: ["triceps", "poitrine"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 6,
++    defaultTargetMax: 12,
++    defaultRest: 60,
++    progression: "Vers dips lestés",
++    alternatives: ["dips", "pushup-standard"],
++  },
++
++  // ── PUSH : TRICEPS ──
++  {
++    id: "dips",
++    name: "Dips",
++    category: "push",
++    muscleGroups: ["triceps", "épaules", "poitrine"],
++    equipment: ["bodyweight", "rings", "pullup-bar", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 6,
++    defaultTargetMax: 12,
++    defaultRest: 90,
++    progression: "Vers dips lestés ou profonds",
++    alternatives: ["dips-chairs", "pushup-diamond"],
++  },
++  {
++    id: "dips-chairs",
++    name: "Dips entre deux chaises",
++    category: "push",
++    muscleGroups: ["triceps", "épaules", "poitrine"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers dips",
++    alternatives: ["dips", "pushup-diamond"],
++  },
++
++  // ── PULL : DOS/TIRAGE ──
++  {
++    id: "pullups-strict",
++    name: "Tractions strictes",
++    category: "pull",
++    muscleGroups: ["dos", "biceps", "avant-bras"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 5,
++    defaultTargetMax: 10,
++    defaultRest: 90,
++    progression: "Vers chest-to-bar, puis explosives",
++    alternatives: ["pullups-negative", "australian-pullups"],
++  },
++  {
++    id: "pullups-negative",
++    name: "Tractions négatives",
++    category: "pull",
++    muscleGroups: ["dos", "biceps", "avant-bras"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 90,
++    progression: "Vers tractions strictes",
++    alternatives: ["pullups-strict", "australian-pullups"],
++  },
++  {
++    id: "australian-pullups",
++    name: "Rows inversés / Australian pull-ups",
++    category: "pull",
++    muscleGroups: ["dos", "biceps"],
++    equipment: ["bodyweight", "pullup-bar", "rings", "bands"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 90,
++    progression: "Vers tractions ou Australian sous table",
++    alternatives: ["pullups-negative", "pullups-strict"],
++  },
++  {
++    id: "chinups-supinated",
++    name: "Chin-ups / tractions supinées",
++    category: "pull",
++    muscleGroups: ["dos", "biceps"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 5,
++    defaultTargetMax: 10,
++    defaultRest: 90,
++    progression: "Vers tractions supinées explosives",
++    alternatives: ["pullups-strict", "chinups-negative"],
++  },
++  {
++    id: "chest-to-bar",
++    name: "Chest-to-bar",
++    category: "pull",
++    muscleGroups: ["dos", "biceps"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 90,
++    progression: "Vers muscle-up",
++    alternatives: ["pullups-explosive", "pullups-strict"],
++  },
++  {
++    id: "pullups-explosive",
++    name: "Tractions explosives",
++    category: "pull",
++    muscleGroups: ["dos", "biceps"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 120,
++    progression: "Vers muscle-up",
++    alternatives: ["chest-to-bar", "pullups-strict"],
++  },
++  {
++    id: "muscleup-transition-band",
++    name: "Transition muscle-up bande",
++    category: "skill",
++    muscleGroups: ["dos", "épaules", "triceps", "biceps"],
++    equipment: ["pullup-bar", "bands"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 90,
++    progression: "Vers muscle-up libre",
++    alternatives: ["pullups-explosive", "transition-floor"],
++  },
++  {
++    id: "transition-floor",
++    name: "Transition allongé au sol",
++    category: "skill",
++    muscleGroups: ["dos", "épaules", "triceps", "biceps"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 5,
++    defaultTargetMax: 10,
++    defaultRest: 60,
++    progression: "Vers muscle-up bande",
++    alternatives: ["muscleup-transition-band", "pullups-explosive"],
++  },
++
++  // ── PULL : L-SIT & CORE HANGING ──
++  {
++    id: "leg-raises-hanging",
++    name: "Relevés de jambes suspendus",
++    category: "pull",
++    muscleGroups: ["abdos", "obliques", "iliens"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers toes-to-bar",
++    alternatives: ["knee-raises", "leg-raises-floor"],
++  },
++  {
++    id: "knee-raises",
++    name: "Relevés de genoux suspendus",
++    category: "pull",
++    muscleGroups: ["abdos", "obliques"],
++    equipment: ["pullup-bar", "rings"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers relevés de jambes",
++    alternatives: ["leg-raises-hanging", "leg-raises-floor"],
++  },
++  {
++    id: "leg-raises-floor",
++    name: "Relevés de jambes au sol",
++    category: "core",
++    muscleGroups: ["abdos", "obliques", "iliens"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 60,
++    progression: "Vers relevés suspendus",
++    alternatives: ["knee-raises", "leg-raises-hanging"],
++  },
++
++  // ── SKILLS AVANCÉS ──
++  {
++    id: "tuck-flag",
++    name: "Tuck flag",
++    category: "skill",
++    muscleGroups: ["obliques", "abdos", "épaules"],
++    equipment: ["pullup-bar", "rings", "bodyweight"],
++    difficulty: 3,
++    kind: "time",
++    defaultSets: 5,
++    defaultTargetMin: 5,
++    defaultTargetMax: 20,
++    defaultRest: 120,
++    progression: "Vers advanced tuck, puis full flag",
++    alternatives: ["tuck-flag-one-leg", "side-plank"],
++  },
++  {
++    id: "tuck-flag-one-leg",
++    name: "Tuck flag une jambe tendue",
++    category: "skill",
++    muscleGroups: ["obliques", "abdos", "épaules"],
++    equipment: ["pullup-bar", "bodyweight"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 4,
++    defaultTargetMin: 5,
++    defaultTargetMax: 15,
++    defaultRest: 120,
++    progression: "Vers tuck flag",
++    alternatives: ["tuck-flag", "side-plank"],
++  },
++  {
++    id: "dragon-flag",
++    name: "Dragon flag",
++    category: "skill",
++    muscleGroups: ["abdos", "épaules", "ischios"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 3,
++    defaultTargetMax: 8,
++    defaultRest: 90,
++    progression: "Vers dragon flag jambes fléchies",
++    alternatives: ["dragon-flag-bent", "leg-raises-hanging"],
++  },
++  {
++    id: "dragon-flag-bent",
++    name: "Dragon flag jambes fléchies",
++    category: "skill",
++    muscleGroups: ["abdos", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 90,
++    progression: "Vers dragon flag full",
++    alternatives: ["dragon-flag", "leg-raises-floor"],
++  },
++  {
++    id: "lsit-progression",
++    name: "L-sit progression",
++    category: "skill",
++    muscleGroups: ["abdos", "épaules", "iliens"],
++    equipment: ["bodyweight", "pullup-bar", "rings"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 5,
++    defaultTargetMax: 25,
++    defaultRest: 90,
++    progression: "Vers L-sit tenu",
++    alternatives: ["lsit-tuck", "leg-raises-hanging"],
++  },
++  {
++    id: "lsit-tuck",
++    name: "L-sit jambes fléchies (tuck)",
++    category: "skill",
++    muscleGroups: ["abdos", "épaules", "iliens"],
++    equipment: ["bodyweight", "pullup-bar", "rings"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 30,
++    defaultRest: 60,
++    progression: "Vers L-sit progression",
++    alternatives: ["lsit-progression", "knee-raises"],
++  },
++
++  // ── LEGS ──
++  {
++    id: "squats-bodyweight",
++    name: "Squats poids du corps / jump squats",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "mollets"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 12,
++    defaultTargetMax: 20,
++    defaultRest: 90,
++    progression: "Vers squats lents (tempo 3-1-3)",
++    alternatives: ["squats-slow", "bulgarian-split"],
++  },
++  {
++    id: "squats-slow",
++    name: "Squats lents (tempo 3-1-3)",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 15,
++    defaultRest: 90,
++    progression: "Vers squats avec haltères",
++    alternatives: ["squats-bodyweight", "bulgarian-split"],
++  },
++  {
++    id: "bulgarian-split",
++    name: "Bulgarian split squats",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 8,
++    defaultTargetMax: 12,
++    defaultRest: 90,
++    progression: "Vers fentes marchées",
++    alternatives: ["lunges-reverse", "squats-bodyweight"],
++  },
++  {
++    id: "lunges-reverse",
++    name: "Fentes arrière",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 15,
++    defaultRest: 60,
++    progression: "Vers Bulgarian split",
++    alternatives: ["bulgarian-split", "squats-bodyweight"],
++  },
++  {
++    id: "lunges-walking",
++    name: "Fentes marchées ou inversées",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 10,
++    defaultTargetMax: 12,
++    defaultRest: 90,
++    progression: "Vers fentes avec charge",
++    alternatives: ["bulgarian-split", "lunges-reverse"],
++  },
++  {
++    id: "pistol-squat",
++    name: "Pistol squat progression",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 3,
++    defaultTargetMax: 6,
++    defaultRest: 120,
++    progression: "Vers pistol squat libre",
++    alternatives: ["pistol-box", "squats-bodyweight"],
++  },
++  {
++    id: "pistol-box",
++    name: "Pistol squat vers une chaise",
++    category: "legs",
++    muscleGroups: ["quadriceps", "ischios", "fessiers"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 5,
++    defaultTargetMax: 8,
++    defaultRest: 90,
++    progression: "Vers pistol squat libre",
++    alternatives: ["pistol-squat", "squats-bodyweight"],
++  },
++  {
++    id: "hip-thrust",
++    name: "Pont fessier / Hip thrusts",
++    category: "legs",
++    muscleGroups: ["fessiers", "ischios", "abdos"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 12,
++    defaultTargetMax: 15,
++    defaultRest: 90,
++    progression: "Vers hip thrust lesté",
++    alternatives: ["hip-thrust-single", "glute-bridge"],
++  },
++  {
++    id: "hip-thrust-single",
++    name: "Pont fessier une jambe",
++    category: "legs",
++    muscleGroups: ["fessiers", "ischios"],
++    equipment: ["bodyweight"],
++    difficulty: 3,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 12,
++    defaultRest: 90,
++    progression: "Vers hip thrust two-leg",
++    alternatives: ["hip-thrust", "glute-bridge"],
++  },
++  {
++    id: "calf-raises",
++    name: "Élevés de mollets",
++    category: "legs",
++    muscleGroups: ["mollets"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 15,
++    defaultTargetMax: 25,
++    defaultRest: 60,
++    progression: "Vers élevés sur marche",
++    alternatives: ["calf-raises-step", "jump-rope"],
++  },
++  {
++    id: "calf-raises-step",
++    name: "Mollets sur une marche",
++    category: "legs",
++    muscleGroups: ["mollets"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "reps",
++    defaultSets: 4,
++    defaultTargetMin: 12,
++    defaultTargetMax: 20,
++    defaultRest: 60,
++    progression: "Vers élevés chargés",
++    alternatives: ["calf-raises", "jump-rope"],
++  },
++
++  // ── CORE ──
++  {
++    id: "hollow-body-hold",
++    name: "Hollow body hold",
++    category: "core",
++    muscleGroups: ["abdos", "épaules", "iliens"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 20,
++    defaultTargetMax: 45,
++    defaultRest: 60,
++    progression: "Vers hollow body jambes tendues",
++    alternatives: ["hollow-body-bent", "dead-bug"],
++  },
++  {
++    id: "hollow-body-bent",
++    name: "Hollow body jambes fléchies",
++    category: "core",
++    muscleGroups: ["abdos", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 20,
++    defaultTargetMax: 40,
++    defaultRest: 60,
++    progression: "Vers hollow body hold",
++    alternatives: ["hollow-body-hold", "dead-bug"],
++  },
++  {
++    id: "dead-bug",
++    name: "Dead bug",
++    category: "core",
++    muscleGroups: ["abdos", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 8,
++    defaultTargetMax: 12,
++    defaultRest: 60,
++    progression: "Vers hollow body",
++    alternatives: ["hollow-body-bent", "hollow-body-hold"],
++  },
++  {
++    id: "plank",
++    name: "Planche",
++    category: "core",
++    muscleGroups: ["abdos", "épaules", "iliens"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 30,
++    defaultTargetMax: 60,
++    defaultRest: 60,
++    progression: "Vers planche latérale lestée",
++    alternatives: ["plank-knee", "plank-shoulder-taps"],
++  },
++  {
++    id: "plank-knee",
++    name: "Planche sur les genoux",
++    category: "core",
++    muscleGroups: ["abdos", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 30,
++    defaultTargetMax: 60,
++    defaultRest: 45,
++    progression: "Vers planche classique",
++    alternatives: ["plank", "dead-bug"],
++  },
++  {
++    id: "plank-shoulder-taps",
++    name: "Planche touchés d'épaules",
++    category: "core",
++    muscleGroups: ["abdos", "épaules"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "reps",
++    defaultSets: 3,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 45,
++    progression: "Vers planche latérale",
++    alternatives: ["plank", "plank-knee"],
++  },
++  {
++    id: "side-plank",
++    name: "Planche latérale",
++    category: "core",
++    muscleGroups: ["obliques", "abdos"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 20,
++    defaultTargetMax: 45,
++    defaultRest: 45,
++    progression: "Vers planche latérale lestée",
++    alternatives: ["side-plank-knee", "tuck-flag"],
++  },
++  {
++    id: "side-plank-knee",
++    name: "Planche latérale genoux",
++    category: "core",
++    muscleGroups: ["obliques", "abdos"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 20,
++    defaultTargetMax: 40,
++    defaultRest: 45,
++    progression: "Vers planche latérale",
++    alternatives: ["side-plank", "tuck-flag"],
++  },
++  {
++    id: "side-plank-weighted",
++    name: "Planche latérale lestée",
++    category: "core",
++    muscleGroups: ["obliques", "abdos"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 4,
++    defaultTargetMin: 30,
++    defaultTargetMax: 55,
++    defaultRest: 60,
++    progression: "Vers tuck flag",
++    alternatives: ["side-plank", "tuck-flag"],
++  },
++  {
++    id: "plank-weighted-combo",
++    name: "Planche + planche latérale lestée",
++    category: "core",
++    muscleGroups: ["abdos", "obliques", "épaules"],
++    equipment: ["bodyweight", "dumbbells"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 30,
++    defaultTargetMax: 55,
++    defaultRest: 60,
++    progression: "Vers planche latérale lestée",
++    alternatives: ["plank", "side-plank-weighted"],
++  },
++  {
++    id: "mountain-climbers",
++    name: "Mountain climbers",
++    category: "core",
++    muscleGroups: ["abdos", "épaules", "quadriceps"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 30,
++    defaultTargetMax: 45,
++    defaultRest: 60,
++    progression: "Vers mountain climbers lents",
++    alternatives: ["plank-shoulder-taps", "dead-bug"],
++  },
++  {
++    id: "mountain-climbers-slow",
++    name: "Mountain climbers lents",
++    category: "core",
++    muscleGroups: ["abdos", "épaules", "quadriceps"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 3,
++    defaultTargetMin: 30,
++    defaultTargetMax: 45,
++    defaultRest: 60,
++    progression: "Contrôle qualité avant vitesse",
++    alternatives: ["mountain-climbers", "plank"],
++  },
++
++  // ── CARDIO ──
++  {
++    id: "running-zone2",
++    name: "Course Zone 2",
++    category: "cardio",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "mollets", "cardio"],
++    equipment: ["bodyweight"],
++    difficulty: 1,
++    kind: "distance",
++    defaultSets: 1,
++    defaultTargetMin: 5,
++    defaultTargetMax: 8,
++    defaultRest: 0,
++    progression: "+1 km toutes les 1-2 semaines",
++    alternatives: ["rowing-zone2", "bike-zone2"],
++  },
++  {
++    id: "running-intervals",
++    name: "Course fractionné",
++    category: "cardio",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "mollets", "cardio"],
++    equipment: ["bodyweight"],
++    difficulty: 2,
++    kind: "distance",
++    defaultSets: 1,
++    defaultTargetMin: 5,
++    defaultTargetMax: 8,
++    defaultRest: 0,
++    progression: "Augmenter le nombre d'intervalles",
++    alternatives: ["rowing-hiit", "bike-hiit"],
++  },
++  {
++    id: "rowing-zone2",
++    name: "Rameur Zone 2",
++    category: "cardio",
++    muscleGroups: ["dos", "épaules", "bras", "cardio"],
++    equipment: ["rower"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 20,
++    defaultTargetMax: 40,
++    defaultRest: 0,
++    progression: "+5 min toutes les 2 semaines",
++    alternatives: ["running-zone2", "bike-zone2"],
++  },
++  {
++    id: "rowing-hiit",
++    name: "Rameur HIIT",
++    category: "cardio",
++    muscleGroups: ["dos", "épaules", "bras", "cardio"],
++    equipment: ["rower"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 0,
++    progression: "+1 intervalle toutes les 2 semaines",
++    alternatives: ["running-intervals", "bike-hiit"],
++  },
++  {
++    id: "bike-zone2",
++    name: "Vélo Zone 2",
++    category: "cardio",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "mollets", "cardio"],
++    equipment: ["bike"],
++    difficulty: 1,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 20,
++    defaultTargetMax: 40,
++    defaultRest: 0,
++    progression: "+5 min toutes les 2 semaines",
++    alternatives: ["running-zone2", "rowing-zone2"],
++  },
++  {
++    id: "bike-hiit",
++    name: "Vélo HIIT",
++    category: "cardio",
++    muscleGroups: ["quadriceps", "ischios", "fessiers", "mollets", "cardio"],
++    equipment: ["bike"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 0,
++    progression: "+1 intervalle toutes les 2 semaines",
++    alternatives: ["running-intervals", "rowing-hiit"],
++  },
++  {
++    id: "pool-crawl",
++    name: "Piscine crawl",
++    category: "cardio",
++    muscleGroups: ["dos", "épaules", "bras", "jambes", "cardio"],
++    equipment: ["pool"],
++    difficulty: 2,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 20,
++    defaultTargetMax: 40,
++    defaultRest: 0,
++    progression: "+5 min toutes les 2 semaines",
++    alternatives: ["running-zone2", "rowing-zone2"],
++  },
++  {
++    id: "pool-intervals",
++    name: "Piscine intervalles",
++    category: "cardio",
++    muscleGroups: ["dos", "épaules", "bras", "jambes", "cardio"],
++    equipment: ["pool"],
++    difficulty: 3,
++    kind: "time",
++    defaultSets: 1,
++    defaultTargetMin: 10,
++    defaultTargetMax: 20,
++    defaultRest: 0,
++    progression: "+1 intervalle toutes les 2 semaines",
++    alternatives: ["running-intervals", "rowing-hiit"],
++  },
++];
++
++/**
++ * Regroupe les exercices par catégorie pour un accès rapide.
++ */
++export const EXERCISES_BY_CATEGORY: Record<ExerciseCategory, ExerciseTemplate[]> = {
++  push: EXERCISE_POOL.filter((e) => e.category === "push"),
++  pull: EXERCISE_POOL.filter((e) => e.category === "pull"),
++  legs: EXERCISE_POOL.filter((e) => e.category === "legs"),
++  core: EXERCISE_POOL.filter((e) => e.category === "core"),
++  cardio: EXERCISE_POOL.filter((e) => e.category === "cardio"),
++  skill: EXERCISE_POOL.filter((e) => e.category === "skill"),
++};
++
++/**
++ * Mappe les équipements du profil (format texte) vers les tags du pool.
++ * Les équipements non reconnus sont ignorés (l'utilisateur garde le bodyweight).
++ */
++export const EQUIPMENT_MAP: Record<string, EquipmentTag[]> = {
++  "Barre traction": ["pullup-bar"],
++  Anneaux: ["rings"],
++  Haltères: ["dumbbells"],
++  Élastiques: ["bands"],
++  "Sangle TRX": ["trx"],
++  Rameur: ["rower"],
++  Piscine: ["pool"],
++  Vélo: ["bike"],
++  "Vélo route/VTT": ["bike"],
++};
++
++/**
++ * Convertit la liste d'équipements textuels du profil en tags du pool.
++ * "bodyweight" est toujours inclus (poids du corps = toujours disponible).
++ */
++export function profileEquipmentToTags(equipment: string[]): EquipmentTag[] {
++  const tags: EquipmentTag[] = ["bodyweight"];
++  for (const eq of equipment) {
++    const mapped = EQUIPMENT_MAP[eq];
++    if (mapped) tags.push(...mapped);
++  }
++  return [...new Set(tags)];
++}
+diff --git a/src/lib/plan.ts b/src/lib/plan.ts
+index 952d6e0..d6a304d 100644
+--- a/src/lib/plan.ts
++++ b/src/lib/plan.ts
+@@ -1,11 +1,34 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ // Moteur de génération de plan personnalisé — Calli Recomp
+ // Règles 100% déterministes (aucune IA payante nécessaire) :
+-//   objectif + capacités déclarées + niveau  →  fourchettes adaptées + cibles
+-//   nutrition / hydratation calculées (Mifflin-St Jeor).
++//   objectif + capacités déclarées + niveau + disponibilité + équipement
++//   → fourchettes adaptées + cibles nutrition + split dynamique + deload.
++//
++// Architecture en 5 modules d'entrée → moteur de décision (8 étapes) :
++//   1. Profil (BMR/TDEE Mifflin-St Jeor)
++//   2. Niveau (débutant/intermédiaire/avancé → palier)
++//   3. Disponibilité (jours × durée → split + volume)
++//   4. Équipement (filtrage du pool d'exercices)
++//   5. Objectif (ajustement kcal/macros/volume)
+ // ─────────────────────────────────────────────────────────────────────────────
+ import type { Profile, ProgressTest, WorkoutLog } from "./store";
+ import { PROGRAM, type DayProgram, type Exercise } from "./program";
++import {
++  EXERCISE_POOL,
++  isExerciseAvailable,
++  profileEquipmentToTags,
++  type ExerciseTemplate,
++  type EquipmentTag,
++} from "./exercise-pool";
++import {
++  selectSplit,
++  dayFocusToType,
++  dayFocusEmoji,
++  dayFocusTitle,
++  type SplitTemplate,
++  type SplitDayTemplate,
++  type DayFocus,
++} from "./splits";
+ 
+ // ── Objectifs ────────────────────────────────────────────────────────────────
+ 
+@@ -19,6 +42,10 @@ export interface GoalDef {
+   /** ajustement calorique vs maintien (ex. -0.15 = -15%) */
+   kcalAdjust: number;
+   proteinPerKg: [number, number];
++  /** intensité cardio par objectif */
++  cardioIntensity: "low" | "moderate" | "high";
++  /** volume musculaire par objectif */
++  muscleVolume: "low" | "moderate" | "high";
+ }
+ 
+ export const GOALS: GoalDef[] = [
+@@ -29,6 +56,8 @@ export const GOALS: GoalDef[] = [
+     description: "Perdre du gras en prenant du muscle. Léger déficit.",
+     kcalAdjust: -0.08,
+     proteinPerKg: [1.8, 2.2],
++    cardioIntensity: "moderate",
++    muscleVolume: "moderate",
+   },
+   {
+     id: "seche",
+@@ -37,6 +66,8 @@ export const GOALS: GoalDef[] = [
+     description: "Sécher un max en préservant le muscle.",
+     kcalAdjust: -0.18,
+     proteinPerKg: [2.0, 2.2],
++    cardioIntensity: "high",
++    muscleVolume: "moderate",
+   },
+   {
+     id: "muscle",
+@@ -45,6 +76,8 @@ export const GOALS: GoalDef[] = [
+     description: "Construire du volume en mangeant un peu plus.",
+     kcalAdjust: 0.1,
+     proteinPerKg: [1.6, 2.0],
++    cardioIntensity: "low",
++    muscleVolume: "high",
+   },
+   {
+     id: "skills",
+@@ -53,6 +86,8 @@ export const GOALS: GoalDef[] = [
+     description: "Priorité aux figures : handstand, muscle-up, flags…",
+     kcalAdjust: -0.05,
+     proteinPerKg: [1.8, 2.2],
++    cardioIntensity: "low",
++    muscleVolume: "moderate",
+   },
+ ];
+ 
+@@ -126,8 +161,56 @@ export function computeTier(level: Profile["level"], cap?: Capacities): Tier {
+   return Math.max(1, Math.min(3, Math.round((levelScore + capTier) / 2))) as Tier;
+ }
+ 
++// ── Facteur d'activité (nuancé : niveau × volume hebdo) ──────────────────────
++//
++// Le facteur TDEE est dérivé du NIVEAU (débutant/intermédiaire/avancé)
++// ET du VOLUME (jours d'entraînement par semaine).
++//
++// | Niveau         | 2-3j | 4j  | 5j  | 6j  |
++// |----------------|------|-----|-----|-----|
++// | Débutant       | 1.3  | 1.4 | 1.4 | 1.5 |
++// | Intermédiaire  | 1.4  | 1.5 | 1.6 | 1.6 |
++// | Avancé         | 1.5  | 1.6 | 1.7 | 1.7 |
++// ─────────────────────────────────────────────────────────────────────────────
++
++const ACTIVITY_FACTORS: Record<string, number> = {
++  débutant_2: 1.3,
++  débutant_3: 1.3,
++  débutant_4: 1.4,
++  débutant_5: 1.4,
++  débutant_6: 1.5,
++  intermédiaire_2: 1.4,
++  intermédiaire_3: 1.4,
++  intermédiaire_4: 1.5,
++  intermédiaire_5: 1.6,
++  intermédiaire_6: 1.6,
++  avancé_2: 1.5,
++  avancé_3: 1.5,
++  avancé_4: 1.6,
++  avancé_5: 1.7,
++  avancé_6: 1.7,
++};
++
++/**
++ * Retourne le facteur d'activité TDEE basé sur le niveau et le volume hebdo.
++ * Le volume est dérivé du nombre de jours d'entraînement (3-6).
++ */
++export function getActivityFactor(level: Profile["level"], daysPerWeek: number): number {
++  const days = Math.max(2, Math.min(6, daysPerWeek));
++  const key = `${level}_${days}`;
++  return ACTIVITY_FACTORS[key] ?? 1.5;
++}
++
+ // ── Nutrition & hydratation personnalisées ───────────────────────────────────
+ 
++export interface NutritionTiming {
++  /** true si séance à jeun (matin) */
++  fasted: boolean;
++  preWorkout: string;
++  postWorkout: string;
++  mealTiming: string;
++}
++
+ export interface GeneratedNutrition {
+   goalId: GoalId;
+   kcalTarget: number;
+@@ -137,27 +220,64 @@ export interface GeneratedNutrition {
+   fatTarget: number;
+   waterL: number;
+   maintenance: number;
++  bmr: number;
++  timing: NutritionTiming;
+ }
+ 
+-/** Métabolisme de base × activité (Mifflin-St Jeor, facteur 1.5 = sport quasi quotidien). */
++/**
++ * Calcul du métabolisme de base (Mifflin-St Jeor) × facteur d'activité.
++ * Le facteur est nuancé : niveau × volume hebdo (module 1 + module 3).
++ */
+ export function computeMaintenance(
+-  p: Pick<Profile, "weight" | "height"> & Partial<Pick<Profile, "age" | "sex">>,
++  p: Pick<Profile, "weight" | "height" | "level" | "daysPerWeek"> &
++    Partial<Pick<Profile, "age" | "sex">>,
+ ): number {
+   const sexAdj = (p.sex ?? "homme") === "homme" ? 5 : -161;
+   const bmr = 10 * p.weight + 6.25 * p.height - 5 * (p.age ?? 30) + sexAdj;
+-  return Math.round(bmr * 1.5);
++  const factor = getActivityFactor(p.level, p.daysPerWeek || 3);
++  return Math.round(bmr * factor);
++}
++
++/**
++ * Calcul du BMR seul (Mifflin-St Jeor) — utilisé pour le plancher calorique relatif.
++ */
++export function computeBMR(
++  p: Pick<Profile, "weight" | "height"> & Partial<Pick<Profile, "age" | "sex">>,
++): number {
++  const sexAdj = (p.sex ?? "homme") === "homme" ? 5 : -161;
++  return Math.round(10 * p.weight + 6.25 * p.height - 5 * (p.age ?? 30) + sexAdj);
+ }
+ 
++/**
++ * Cibles affichées partout dans l'app.
++ * Toujours recalculées (fonction déterministe du profil) : elles se mettent
++ * donc à jour automatiquement quand le poids change via les pesées.
++ *
++ * Garde-fous santé :
++ * - Plancher absolu : 1500 kcal/j pour les hommes, 1200 kcal/j pour les femmes
++ * - Plancher relatif : BMR × 0.7 (protège les personnes de petite taille)
++ * - Le plancher final = max(plancher absolu, plancher relatif)
++ */
+ export function computeNutrition(p: Profile): GeneratedNutrition {
+   const goal = goalDefOf(p.goal);
++  const bmr = computeBMR(p);
+   const maintenance = computeMaintenance(p);
+-  const kcalTarget = Math.max(1200, Math.round((maintenance * (1 + goal.kcalAdjust)) / 10) * 10);
++
++  // Planchers caloriques de sécurité (garde-fou santé)
++  const absoluteFloor = p.sex === "femme" ? 1200 : 1500;
++  const relativeFloor = Math.round(bmr * 0.7);
++  const calorieFloor = Math.max(absoluteFloor, relativeFloor);
++
++  const rawTarget = Math.round((maintenance * (1 + goal.kcalAdjust)) / 10) * 10;
++  const kcalTarget = Math.max(calorieFloor, rawTarget);
++
+   const proteinMin = Math.round(p.weight * goal.proteinPerKg[0]);
+   const proteinMax = Math.round(p.weight * goal.proteinPerKg[1]);
+   const proteinMid = (proteinMin + proteinMax) / 2;
+   // Lipides : ~0.9 g/kg (sol hormonal), glucides = calories restantes.
+   const fatTarget = Math.max(40, Math.round(p.weight * 0.9));
+   const carbsTarget = Math.max(60, Math.round((kcalTarget - proteinMid * 4 - fatTarget * 9) / 4));
++
+   return {
+     goalId: goal.id,
+     kcalTarget,
+@@ -167,6 +287,32 @@ export function computeNutrition(p: Profile): GeneratedNutrition {
+     fatTarget,
+     waterL: Math.max(2, Math.min(4.5, Math.round(p.weight * 0.035 * 2) / 2)),
+     maintenance,
++    bmr,
++    timing: nutritionTiming(p.trainingTime),
++  };
++}
++
++/**
++ * Timing nutritionnel basé sur le moment de la séance (matin/soir).
++ * Le matin à jeun → conseils spécifiques (hydratation, post-séance rapide).
++ * Le soir → repas pré-séance + récupération nocturne.
++ */
++export function nutritionTiming(trainingTime?: "morning" | "evening"): NutritionTiming {
++  if (trainingTime === "morning") {
++    return {
++      fasted: true,
++      preWorkout:
++        "Séance à jeun : hydrate-toi bien (500 ml d'eau) avant de commencer. Pas de caféine excessif.",
++      postWorkout: "Repas protéiné dans les 30-60 min après séance (ex: shake whey + banane).",
++      mealTiming: "Petit-déjeuner post-séance = ton repas principal du matin. Dîner léger le soir.",
++    };
++  }
++  return {
++    fasted: false,
++    preWorkout:
++      "Repas léger 1-2h avant l'entraînement (ex: banane + yaourt grec ou toast complet).",
++    postWorkout: "Repas protéiné dans les 30-60 min après séance (ex: poulet + riz + légumes).",
++    mealTiming: "Déjeuner = repas principal. Dîner = récupération (protéines + glucides lents).",
+   };
+ }
+ 
+@@ -179,17 +325,75 @@ export function nutritionTargets(p: Profile): GeneratedNutrition {
+   return computeNutrition(p);
+ }
+ 
++// ── Deload programmé ─────────────────────────────────────────────────────────
++//
++// Le deload est automatique selon le niveau :
++// - Débutant : 8 semaines, pas de deload (récupération naturelle)
++// - Intermédiaire : 10-12 semaines, deload à la semaine 6-7
++// - Avancé : 12+ semaines, deload à la semaine 4-5
++//
++// Pendant une semaine de deload :
++// - Volume (sets) réduit de ~50%
++// - Intensité (reps/time) réduite de ~30%
++// - Exercices lourds remplacés par des variantes plus légères
++// ─────────────────────────────────────────────────────────────────────────────
++
++export function getDeloadWeek(level: Profile["level"]): number | null {
++  if (level === "débutant") return null; // pas de deload
++  if (level === "intermédiaire") return 6; // deload à S6
++  if (level === "avancé") return 4; // deload à S4
++  return null;
++}
++
++/**
++ * Vérifie si la semaine courante est une semaine de deload.
++ * Utilise le cycle 12 semaines (cycleWeek 1-12).
++ */
++export function isDeloadWeek(profile: Pick<Profile, "level" | "startDate">, week: number): boolean {
++  const deloadWeek = getDeloadWeek(profile.level);
++  if (!deloadWeek) return false;
++  // Le deload dure 1 semaine, à la semaine définie
++  return week === deloadWeek;
++}
++
++/**
++ * Facteur de réduction pour le deload :
++ * - Sets : 50% (minimum 1)
++ * - Reps/time : 70% (conserver la technique, réduire le volume)
++ */
++export const DELADD_FACTOR = 0.7;
++export const DELADD_SETS_FACTOR = 0.5;
++
+ // ── Plan généré (fourchettes adaptées au palier) ─────────────────────────────
+ 
+ /** Conserve le suffixe d'origine ("s", " reps", " reps/jambe"…). */
+-function scaleExercise(ex: Exercise, factor: number): Exercise {
+-  if (ex.kind === "distance" || factor === 1) return { ...ex };
++function scaleExercise(ex: Exercise, factor: number, isDeload = false): Exercise {
++  if (ex.kind === "distance" || (factor === 1 && !isDeload)) return { ...ex };
++
+   const scaled: Exercise = { ...ex };
+   const floor = ex.kind === "time" ? 5 : 1;
+-  if (ex.targetMin !== undefined)
+-    scaled.targetMin = Math.max(floor, Math.round(ex.targetMin * factor));
+-  if (ex.targetMax !== undefined)
+-    scaled.targetMax = Math.max((scaled.targetMin ?? floor) + 1, Math.round(ex.targetMax * factor));
++
++  if (isDeload) {
++    // Deload : réduire les reps/time de 30%, sets de 50%
++    if (ex.targetMin !== undefined)
++      scaled.targetMin = Math.max(floor, Math.round(ex.targetMin * DELADD_FACTOR));
++    if (ex.targetMax !== undefined)
++      scaled.targetMax = Math.max(
++        (scaled.targetMin ?? floor) + 1,
++        Math.round(ex.targetMax * DELADD_FACTOR),
++      );
++    scaled.sets = Math.max(1, Math.round(ex.sets * DELADD_SETS_FACTOR));
++  } else {
++    // Progression normale
++    if (ex.targetMin !== undefined)
++      scaled.targetMin = Math.max(floor, Math.round(ex.targetMin * factor));
++    if (ex.targetMax !== undefined)
++      scaled.targetMax = Math.max(
++        (scaled.targetMin ?? floor) + 1,
++        Math.round(ex.targetMax * factor),
++      );
++  }
++
+   const suffix = ex.target.replace(/^[\d\s–-]+/, "");
+   const fmt =
+     scaled.targetMin !== undefined && scaled.targetMax !== undefined
+@@ -201,35 +405,332 @@ function scaleExercise(ex: Exercise, factor: number): Exercise {
+   return scaled;
+ }
+ 
+-function scaleDay(day: DayProgram, factor: number): DayProgram {
++function scaleDay(day: DayProgram, factor: number, isDeload = false): DayProgram {
+   return {
+     ...day,
+     blocks: day.blocks.map((b) => ({
+       ...b,
+-      items: b.items.map((ex) => scaleExercise(ex, factor)),
++      items: b.items.map((ex) => scaleExercise(ex, factor, isDeload)),
+     })),
+   };
+ }
+ 
++// ── Génération dynamique à partir du pool d'exercices ─────────────────────────
++
++const WEEKDAY_NAMES = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
++const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
++
++const DEFAULT_WARMUPS: Record<DayFocus, string[]> = {
++  push: [
++    "Jumping jacks ou high knees 30-60s",
++    "cercles bras + rotations épaules",
++    "10 pompes légères",
++  ],
++  pull: [
++    "Jumping jacks ou high knees 30-60s",
++    "cercles bras + rotations épaules",
++    "10 squats légers",
++  ],
++  legs: [
++    "Jumping jacks ou high knees 30-60s",
++    "balancements jambes + fentes dynamiques",
++    "10 squats légers",
++  ],
++  core: ["5 min marche/jog léger", "mobilisations hanches/mollets"],
++  cardio: ["5 min marche/jog léger", "mobilisations hanches/mollets"],
++  skill: [
++    "Jumping jacks ou high knees 30-60s",
++    "cercles bras + rotations épaules",
++    "10 squats légers",
++  ],
++  "full-body": [
++    "Jumping jacks ou high knees 30-60s",
++    "cercles bras + rotations épaules",
++    "10 squats légers",
++    "10 pompes légères",
++  ],
++  rest: [],
++  recovery: [],
++};
++
++const REST_INSTRUCTIONS = [
++  "Récupération prioritaire — écoute ton corps",
++  "Marche légère optionnelle 20-30 min",
++  "Étirements + mobilité 10-15 min : poitrice, épaules, ischios, hanches",
++];
++
++/**
++ * Convertit un ExerciseTemplate en Exercise (format DayProgram).
++ * Applique le facteur de palier et le deload.
++ */
++function templateToExercise(ex: ExerciseTemplate, tier: Tier, isDeload = false): Exercise {
++  const factor = TIER_INFO[tier].factor;
++  const effectiveFactor = isDeload ? DELADD_FACTOR : factor;
++
++  let min: number | undefined;
++  let max: number | undefined;
++
++  if (ex.kind === "time") {
++    min = Math.max(5, Math.round(ex.defaultTargetMin * effectiveFactor));
++    max = Math.max(min + 1, Math.round(ex.defaultTargetMax * effectiveFactor));
++  } else if (ex.kind === "distance") {
++    min = Math.round(ex.defaultTargetMin * effectiveFactor);
++    max = Math.max(min, Math.round(ex.defaultTargetMax * effectiveFactor));
++  } else {
++    min = Math.max(1, Math.round(ex.defaultTargetMin * effectiveFactor));
++    max = Math.max(min + 1, Math.round(ex.defaultTargetMax * effectiveFactor));
++  }
++
++  const suffix = ex.kind === "time" ? "s" : ex.kind === "distance" ? " km" : " reps";
++  const target = min === max ? `${min}${suffix}` : `${min}-${max}${suffix}`;
++
++  const sets = isDeload
++    ? Math.max(1, Math.round(ex.defaultSets * DELADD_SETS_FACTOR))
++    : Math.round(ex.defaultSets * (tier === 1 ? 0.85 : tier === 3 ? 1.15 : 1));
++
++  return {
++    id: ex.id,
++    name: ex.name,
++    sets,
++    target,
++    targetMin: min,
++    targetMax: max,
++    rest: ex.defaultRest,
++    kind: ex.kind,
++    note: ex.progression,
++  };
++}
++
++/**
++ * Sélectionne des exercices pour un jour de split donnée.
++ * Filtre par catégorie, équipement, difficulté, puis sélectionne aléatoirement.
++ */
++function selectExercisesForDay(
++  dayTemplate: {
++    focus: DayFocus;
++    exerciseCount: Partial<Record<"push" | "pull" | "legs" | "core" | "skill", number>>;
++  },
++  userEquipment: EquipmentTag[],
++  tier: Tier,
++  isDeload: boolean,
++  usedIds: Set<string>,
++): Exercise[] {
++  const exercises: Exercise[] = [];
++
++  for (const [category, count] of Object.entries(dayTemplate.exerciseCount)) {
++    if (!count || count === 0) continue;
++
++    // Filtrer le pool par catégorie + équipement + difficulté
++    let pool = EXERCISE_POOL.filter((ex) => ex.category === category);
++    pool = pool.filter((ex) => isExerciseAvailable(ex, userEquipment));
++
++    // Difficulté max : tier + 1 (permet d'aller un cran au-delà)
++    const maxDifficulty = Math.min(3, tier + 1);
++    pool = pool.filter((ex) => ex.difficulty <= maxDifficulty);
++
++    // En deload, privilégier les exercices de difficulté inférieure
++    if (isDeload) {
++      pool = pool.filter((ex) => ex.difficulty <= tier);
++    }
++
++    // Sélectionner les exercices
++    const selected = selectExercisesFromPool(pool, count, usedIds);
++    exercises.push(...selected.map((ex) => templateToExercise(ex, tier, isDeload)));
++  }
++
++  return exercises;
++}
++
++/**
++ * Sélectionne N exercices du pool, en évitant les doublons.
++ * Priorise la variété (muscle groups différents).
++ */
++function selectExercisesFromPool(
++  pool: ExerciseTemplate[],
++  count: number,
++  usedIds: Set<string>,
++): ExerciseTemplate[] {
++  const available = pool.filter((ex) => !usedIds.has(ex.id));
++  if (available.length === 0) return [];
++
++  // Mélange et sélectionne
++  const shuffled = [...available].sort(() => Math.random() - 0.5);
++  const selected = shuffled.slice(0, Math.min(count, available.length));
++
++  selected.forEach((ex) => usedIds.add(ex.id));
++  return selected;
++}
++
++/**
++ * Génère les 7 jours de programme dynamiquement à partir du split + pool d'exercices.
++ *
++ * Le split définit un pattern de jours d'entraînement (ex: [0,1,3,5]).
++ * Les jours d'entraînement de l'utilisateur peuvent différer (ex: [1,2,3,4]).
++ * On mappe donc les jours du split vers les jours de l'utilisateur :
++ *   split [Mon, Tue, Thu, Sat] → user [Tue, Wed, Thu, Fri]
++ *   → Tue=Push, Wed=Pull, Thu=Legs, Fri=Skills
++ */
++export function generateDynamicDays(
++  profile: Profile,
++  tier: Tier,
++  split: SplitTemplate,
++  trainingDays: number[],
++  week: number,
++): DayProgram[] {
++  const userEquipment = profileEquipmentToTags(profile.equipment);
++  const deload = isDeloadWeek(profile, week);
++  const days: DayProgram[] = [];
++
++  // Jours d'entraînement du split (triés) et de l'utilisateur (triés)
++  const splitTrainingDays = split.days.map((d) => d.dayIndex).sort((a, b) => a - b);
++  const userTrainingDays = [...trainingDays].sort((a, b) => a - b);
++
++  // Mapping : split dayIndex → user dayIndex
++  const dayMapping: Map<number, number> = new Map();
++  for (let i = 0; i < Math.min(splitTrainingDays.length, userTrainingDays.length); i++) {
++    dayMapping.set(splitTrainingDays[i], userTrainingDays[i]);
++  }
++
++  for (let i = 0; i < 7; i++) {
++    // Trouver le split day qui mappe vers ce jour utilisateur
++    let splitDay: SplitDayTemplate | undefined;
++    for (const [splitIdx, userIdx] of dayMapping.entries()) {
++      if (userIdx === i) {
++        splitDay = split.days.find((d) => d.dayIndex === splitIdx);
++        break;
++      }
++    }
++
++    const isTrainingDay = trainingDays.includes(i);
++
++    if (!splitDay || !isTrainingDay) {
++      // Jour de repos
++      days.push({
++        key: WEEKDAY_KEYS[i],
++        day: WEEKDAY_NAMES[i],
++        title: "Repos / récupération",
++        type: "rest",
++        emoji: "🧘",
++        summary: "Jour off choisi : marche légère, mobilité douce, hydratation.",
++        duration: 20,
++        warmup: [],
++        blocks: [
++          {
++            title: "Consignes",
++            items: REST_INSTRUCTIONS.map((name, j) => ({
++              id: `rest-${WEEKDAY_KEYS[i]}-${j}`,
++              name,
++              sets: 0,
++              target: "—",
++              rest: 0,
++              kind: "reps" as const,
++            })),
++          },
++        ],
++      });
++      continue;
++    }
++
++    // Jour d'entraînement — sélectionner les exercices
++    const usedIds = new Set<string>();
++    const exercises = selectExercisesForDay(splitDay, userEquipment, tier, deload, usedIds);
++
++    // Ajouter le cardio si spécifié
++    if (splitDay.cardio && splitDay.cardio !== "none") {
++      const cardioPool = EXERCISE_POOL.filter(
++        (ex) => ex.category === "cardio" && isExerciseAvailable(ex, userEquipment),
++      );
++
++      // Filtrer par type de cardio
++      let cardioFiltered = cardioPool;
++      if (splitDay.cardio === "zone2") {
++        cardioFiltered = cardioPool.filter(
++          (ex) =>
++            ex.name.toLowerCase().includes("zone 2") || ex.name.toLowerCase().includes("steady"),
++        );
++      } else if (splitDay.cardio === "intervals") {
++        cardioFiltered = cardioPool.filter(
++          (ex) =>
++            ex.name.toLowerCase().includes("fractionné") || ex.name.toLowerCase().includes("hiit"),
++        );
++      }
++
++      if (cardioFiltered.length > 0) {
++        const cardioEx = cardioFiltered[Math.floor(Math.random() * cardioFiltered.length)];
++        exercises.unshift(templateToExercise(cardioEx, tier, deload));
++      }
++    }
++
++    // Durée ajustée pour le deload
++    const duration = Math.round(splitDay.durationMin * (deload ? 0.7 : 1));
++
++    days.push({
++      key: WEEKDAY_KEYS[i],
++      day: WEEKDAY_NAMES[i],
++      title: deload ? `Deload — ${dayFocusTitle(splitDay.focus)}` : dayFocusTitle(splitDay.focus),
++      type: dayFocusToType(splitDay.focus),
++      emoji: deload ? "🧘" : dayFocusEmoji(splitDay.focus),
++      summary: deload
++        ? `Semaine de récupération — volume réduit (${splitDay.primaryMuscles.join(", ")})`
++        : splitDay.primaryMuscles.join(" · "),
++      duration,
++      warmup: DEFAULT_WARMUPS[splitDay.focus] ?? DEFAULT_WARMUPS.push,
++      blocks: [
++        {
++          title: "Bloc principal",
++          items: exercises,
++        },
++      ],
++      alternatives: deload
++        ? ["Réduire le volume si fatigue persistante", "Maintenir la technique"]
++        : undefined,
++    });
++  }
++
++  return days;
++}
++
++// ── Plan généré ──────────────────────────────────────────────────────────────
++
+ export interface GeneratedPlan {
+-  version: 1;
++  version: number;
+   generatedAt: string;
+   goalId: GoalId;
+   tier: Tier;
+   nutrition: GeneratedNutrition;
+   days: DayProgram[];
++  splitId: string;
++  isDeload?: boolean;
++  trainingTime?: "morning" | "evening";
+ }
+ 
++/**
++ * Génère le plan complet du profil :
++ * 1. Calcul BMR → TDEE (profil + activité)
++ * 2. Ajustement kcal + macros selon objectif (avec garde-fous santé)
++ * 3. Détermination du split selon disponibilité + niveau
++ * 4. Filtrage du pool d'exercices selon équipement
++ * 5. Sélection des exercices selon niveau + objectif + split
++ * 6. Calcul du volume/intensité/repos selon niveau + objectif
++ * 7. Détermination de la durée du bloc (8-12+ semaines)
++ * 8. Génération du programme final (séances + nutrition)
++ */
+ export function generatePlan(p: Profile): GeneratedPlan {
+   const tier = computeTier(p.level, p.capacities);
+-  const factor = TIER_INFO[tier].factor;
++  const trainingDays = p.trainingDays ?? DEFAULT_TRAINING_DAYS;
++  const split = selectSplit(trainingDays.length, p.level);
++  const week = currentProgramWeek(p);
++
+   return {
+-    version: 1,
++    version: 2,
+     generatedAt: new Date().toISOString(),
+     goalId: normalizeGoal(p.goal),
+     tier,
+     nutrition: computeNutrition(p),
+-    days: PROGRAM.map((d) => scaleDay(d, factor)),
++    days: generateDynamicDays(p, tier, split, trainingDays, week),
++    splitId: split.id,
++    isDeload: isDeloadWeek(p, week),
++    trainingTime: p.trainingTime,
+   };
+ }
+ 
+@@ -239,12 +740,6 @@ export function generatePlan(p: Profile): GeneratedPlan {
+ export const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
+ export const DEFAULT_TRAINING_DAYS = [0, 1, 2, 3, 4, 5]; // Lun → Sam (6 jours)
+ 
+-const REST_INSTRUCTIONS = [
+-  "Récupération prioritaire — écoute ton corps",
+-  "Marche légère optionnelle 20-30 min",
+-  "Étirements + mobilité 10-15 min : poitrine, épaules, ischios, hanches",
+-];
+-
+ /**
+  * Transforme en repos les jours non cochés dans les préférences.
+  * Le contenu des séances reste à son jour habituel (pas de déplacement) :
+@@ -281,17 +776,32 @@ export function applyTrainingDays(days: DayProgram[], trainingDays?: number[]):
+   });
+ }
+ 
+-/** Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard),
+- *  avec les jours non choisis transformés en repos. */
+-export function planDays(p?: Pick<Profile, "plan" | "trainingDays"> | null): DayProgram[] {
++/**
++ * Les 7 jours du plan de l'utilisateur (généré si dispo, sinon seed standard),
++ * avec les jours non choisis transformés en repos + deload appliqué si applicable.
++ */
++export function planDays(
++  p?: Pick<Profile, "plan" | "trainingDays" | "level" | "startDate"> | null,
++): DayProgram[] {
+   const days = p?.plan?.days;
+   const base = Array.isArray(days) && days.length === 7 ? days : PROGRAM;
+-  return applyTrainingDays(base, p?.trainingDays);
++  const withTrainingDays = applyTrainingDays(base, p?.trainingDays);
++
++  // Appliquer le deload si la semaine courante est une semaine de deload
++  if (p && p.level && p.startDate) {
++    const week = currentProgramWeek(p);
++    if (isDeloadWeek(p, week)) {
++      const tier = computeTier(p.level);
++      return withTrainingDays.map((d) => (d.type === "rest" ? d : scaleDay(d, 1, true)));
++    }
++  }
++
++  return withTrainingDays;
+ }
+ 
+ /** Nombre de séances réellement planifiées dans la semaine (hors repos). */
+ export function plannedSessionsPerWeek(
+-  p: Pick<Profile, "plan" | "trainingDays" | "daysPerWeek">,
++  p: Pick<Profile, "plan" | "trainingDays" | "daysPerWeek" | "level" | "startDate">,
+ ): number {
+   const planned = planDays(p).filter((d) => d.type !== "rest").length;
+   return planned > 0 ? planned : p.daysPerWeek || 6;
+@@ -346,3 +856,44 @@ export function capacitiesFromHistory(
+   });
+   return { capacities, fromReal };
+ }
++
++// ── Cycle & semaine de programme ─────────────────────────────────────────────
++
++/**
++ * Cycles infinis de 12 semaines : l'app ne plafonne plus à S12.
++ * S13 → Cycle 2 · Semaine 1, S25 → Cycle 3 · Semaine 1… (tests toutes les 4 semaines).
++ */
++export function programCycle(profile: Pick<Profile, "startDate">): {
++  totalWeek: number;
++  cycle: number;
++  cycleWeek: number;
++} {
++  if (!profile.startDate) return { totalWeek: 1, cycle: 1, cycleWeek: 1 };
++  const start = new Date(profile.startDate).getTime();
++  const totalWeek = Math.max(1, Math.floor((Date.now() - start) / (7 * 864e5)) + 1);
++  const cycle = Math.floor((totalWeek - 1) / 12) + 1;
++  const cycleWeek = ((totalWeek - 1) % 12) + 1;
++  return { totalWeek, cycle, cycleWeek };
++}
++
++/** Semaine dans le cycle courant (1-12). */
++export function currentProgramWeek(profile: Pick<Profile, "startDate">): number {
++  return programCycle(profile).cycleWeek;
++}
++
++export function isTestWeek(profile: Pick<Profile, "startDate">): boolean {
++  const w = currentProgramWeek(profile);
++  return w % 4 === 0;
++}
++
++/**
++ * Durée du bloc en semaines selon le niveau.
++ * - Débutant : 8 semaines
++ * - Intermédiaire : 10-12 semaines
++ * - Avancé : 12+ semaines avec deload
++ */
++export function getBlockDuration(level: Profile["level"]): number {
++  if (level === "débutant") return 8;
++  if (level === "intermédiaire") return 12;
++  return 16; // avancé : 12+ avec deload
++}
+diff --git a/src/lib/splits.ts b/src/lib/splits.ts
+new file mode 100644
+index 0000000..7730f61
+--- /dev/null
++++ b/src/lib/splits.ts
+@@ -0,0 +1,407 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// Templates de splits dynamiques — Calli Recomp
++//
++// Le split est choisi en fonction du nombre de jours disponibles ET du niveau.
++// Chaque split définit :
++//   - le pattern hebdomadaire (quel type de journée à quel jour)
++//   - les groupes musculaires ciblés par jour
++//   - le nombre d'exercices par catégorie
++//   - la durée cible par séance
++//
++// Le moteur de génération utilise ces templates pour assembler le programme
++// à partir du pool d'exercices taggés (exercise-pool.ts).
++// ─────────────────────────────────────────────────────────────────────────────
++import type { EquipmentTag } from "./exercise-pool";
++
++export type SplitTypeId = "full-body" | "upper-lower" | "push-pull-legs" | "skills-focused";
++
++export type DayFocus =
++  "push" | "pull" | "legs" | "core" | "cardio" | "skill" | "full-body" | "rest" | "recovery";
++
++export interface SplitDayTemplate {
++  /** Index dans la semaine (0 = lundi, 6 = dimanche) */
++  dayIndex: number;
++  focus: DayFocus;
++  /** Groupes musculaires prioritaires ce jour */
++  primaryMuscles: string[];
++  /** Nombre d'exercices à sélectionner par catégorie */
++  exerciseCount: Partial<Record<"push" | "pull" | "legs" | "core" | "skill", number>>;
++  /** Durée cible en minutes */
++  durationMin: number;
++  /** Type de cardio optionnel (si applicable) */
++  cardio?: "zone2" | "intervals" | "recovery" | "none";
++}
++
++export interface SplitTemplate {
++  id: SplitTypeId;
++  name: string;
++  description: string;
++  /** Nombre de jours d'entraînement par semaine */
++  daysPerWeek: number;
++  /** Jours de repos (index 0-6) */
++  restDays: number[];
++  /** Pattern hebdomadaire */
++  days: SplitDayTemplate[];
++  /** Durée totale hebdo estimée */
++  weeklyVolume: "low" | "moderate" | "high";
++  /** Adapté aux niveaux */
++  suitableFor: ("débutant" | "intermédiaire" | "avancé")[];
++}
++
++// ─────────────────────────────────────────────────────────────────────────────
++// Templates de splits
++// ─────────────────────────────────────────────────────────────────────────────
++
++/**
++ * Full Body — 2 à 3 jours
++ * Tous les groupes musculaires à chaque séance, volume modéré.
++ * Idéal pour les débutants ou ceux avec peu de disponibilité.
++ */
++export const FULL_BODY_SPLIT: SplitTemplate = {
++  id: "full-body",
++  name: "Full Body",
++  description: "Tous les groupes à chaque séance — volume modéré, récupération optimale",
++  daysPerWeek: 3,
++  restDays: [3, 5, 6], // Mercredi, Vendredi, Dimanche
++  weeklyVolume: "low",
++  suitableFor: ["débutant", "intermédiaire", "avancé"],
++  days: [
++    {
++      dayIndex: 0, // Lundi
++      focus: "full-body",
++      primaryMuscles: ["pectoraux", "dos", "quadriceps", "fessiers", "épaules"],
++      exerciseCount: { push: 2, pull: 2, legs: 2, core: 1 },
++      durationMin: 45,
++      cardio: "none",
++    },
++    {
++      dayIndex: 2, // Mercredi
++      focus: "full-body",
++      primaryMuscles: ["pectoraux", "dos", "quadriceps", "fessiers", "épaules"],
++      exerciseCount: { push: 2, pull: 2, legs: 2, core: 1 },
++      durationMin: 45,
++      cardio: "none",
++    },
++    {
++      dayIndex: 4, // Vendredi
++      focus: "full-body",
++      primaryMuscles: ["pectoraux", "dos", "quadriceps", "fessiers", "épaules"],
++      exerciseCount: { push: 2, pull: 2, legs: 2, core: 1 },
++      durationMin: 45,
++      cardio: "none",
++    },
++  ],
++};
++
++/**
++ * Upper/Lower — 4 jours
++ * Sépare les jours "push+pull" (haut du corps) des jours "jambes".
++ * Bon équilibre volume/intensité.
++ */
++export const UPPER_LOWER_SPLIT: SplitTemplate = {
++  id: "upper-lower",
++  name: "Upper/Lower",
++  description: "Haut corps / Jambes alternés — bon équilibre volume/récupération",
++  daysPerWeek: 4,
++  restDays: [2, 4, 6], // Mercredi, Vendredi, Dimanche
++  weeklyVolume: "moderate",
++  suitableFor: ["débutant", "intermédiaire", "avancé"],
++  days: [
++    {
++      dayIndex: 0, // Lundi
++      focus: "push",
++      primaryMuscles: ["pectoraux", "épaules", "triceps"],
++      exerciseCount: { push: 3, core: 1 },
++      durationMin: 50,
++      cardio: "none",
++    },
++    {
++      dayIndex: 1, // Mardi
++      focus: "pull",
++      primaryMuscles: ["dos", "biceps", "avant-bras"],
++      exerciseCount: { pull: 3, core: 1 },
++      durationMin: 50,
++      cardio: "none",
++    },
++    {
++      dayIndex: 3, // Jeudi
++      focus: "legs",
++      primaryMuscles: ["quadriceps", "ischios", "fessiers", "mollets"],
++      exerciseCount: { legs: 4, core: 1 },
++      durationMin: 50,
++      cardio: "none",
++    },
++    {
++      dayIndex: 5, // Samedi
++      focus: "full-body",
++      primaryMuscles: ["pectoraux", "dos", "quadriceps", "fessiers"],
++      exerciseCount: { push: 2, pull: 2, legs: 2, core: 1 },
++      durationMin: 50,
++      cardio: "none",
++    },
++  ],
++};
++
++/**
++ * Push/Pull/Legs — 5 jours
++ * Split classique avec un jour de skills dédié.
++ * Volume élevé, nécessite une bonne récupération.
++ */
++export const PPL_SPLIT: SplitTemplate = {
++  id: "push-pull-legs",
++  name: "Push/Pull/Legs + Skills",
++  description: "Split classique avec un jour skills dédié — volume élevé",
++  daysPerWeek: 5,
++  restDays: [2, 4, 6], // Mercredi, Vendredi, Dimanche
++  weeklyVolume: "high",
++  suitableFor: ["intermédiaire", "avancé"],
++  days: [
++    {
++      dayIndex: 0, // Lundi
++      focus: "push",
++      primaryMuscles: ["pectoraux", "épaules", "triceps"],
++      exerciseCount: { push: 4, core: 1 },
++      durationMin: 55,
++      cardio: "none",
++    },
++    {
++      dayIndex: 1, // Mardi
++      focus: "pull",
++      primaryMuscles: ["dos", "biceps", "avant-bras"],
++      exerciseCount: { pull: 4, core: 1 },
++      durationMin: 55,
++      cardio: "none",
++    },
++    {
++      dayIndex: 3, // Jeudi
++      focus: "legs",
++      primaryMuscles: ["quadriceps", "ischios", "fessiers", "mollets"],
++      exerciseCount: { legs: 5, core: 1 },
++      durationMin: 60,
++      cardio: "none",
++    },
++    {
++      dayIndex: 4, // Vendredi
++      focus: "cardio",
++      primaryMuscles: ["cardio"],
++      exerciseCount: { core: 1 },
++      durationMin: 45,
++      cardio: "zone2",
++    },
++    {
++      dayIndex: 5, // Samedi
++      focus: "skill",
++      primaryMuscles: ["épaules", "obliques", "abdos", "dos", "pectoraux"],
++      exerciseCount: { skill: 4, core: 1 },
++      durationMin: 55,
++      cardio: "none",
++    },
++  ],
++};
++
++/**
++ * 6 jours — Split complet + cardio + skills
++ * Maximise le volume pour les athlètes avancés.
++ */
++export const SIX_DAY_SPLIT: SplitTemplate = {
++  id: "push-pull-legs",
++  name: "Split complet (6j)",
++  description: "PPL + cardio + skills — volume maximal pour athlètes avancés",
++  daysPerWeek: 6,
++  restDays: [6], // Dimanche
++  weeklyVolume: "high",
++  suitableFor: ["intermédiaire", "avancé"],
++  days: [
++    {
++      dayIndex: 0, // Lundi
++      focus: "cardio",
++      primaryMuscles: ["cardio"],
++      exerciseCount: { core: 1 },
++      durationMin: 50,
++      cardio: "zone2",
++    },
++    {
++      dayIndex: 1, // Mardi
++      focus: "push",
++      primaryMuscles: ["pectoraux", "épaules", "triceps"],
++      exerciseCount: { push: 4, core: 1 },
++      durationMin: 55,
++      cardio: "none",
++    },
++    {
++      dayIndex: 2, // Mercredi
++      focus: "cardio",
++      primaryMuscles: ["cardio"],
++      exerciseCount: { legs: 1 },
++      durationMin: 50,
++      cardio: "intervals",
++    },
++    {
++      dayIndex: 3, // Jeudi
++      focus: "pull",
++      primaryMuscles: ["dos", "biceps", "avant-bras"],
++      exerciseCount: { pull: 4, core: 1 },
++      durationMin: 55,
++      cardio: "none",
++    },
++    {
++      dayIndex: 4, // Vendredi
++      focus: "cardio",
++      primaryMuscles: ["cardio", "jambes"],
++      exerciseCount: { core: 1, legs: 1 },
++      durationMin: 50,
++      cardio: "zone2",
++    },
++    {
++      dayIndex: 5, // Samedi
++      focus: "skill",
++      primaryMuscles: ["épaules", "obliques", "abdos", "jambes"],
++      exerciseCount: { skill: 3, legs: 2, core: 1 },
++      durationMin: 60,
++      cardio: "none",
++    },
++  ],
++};
++
++// ─────────────────────────────────────────────────────────────────────────────
++// Sélection du split
++// ─────────────────────────────────────────────────────────────────────────────
++
++export const ALL_SPLITS: SplitTemplate[] = [
++  FULL_BODY_SPLIT,
++  UPPER_LOWER_SPLIT,
++  PPL_SPLIT,
++  SIX_DAY_SPLIT,
++];
++
++/**
++ * Sélectionne le split approprié selon le nombre de jours disponibles
++ * et le niveau de l'utilisateur.
++ *
++ * Règles :
++ * - 2-3 jours → Full Body (tous niveaux)
++ * - 4 jours → Upper/Lower (tous niveaux)
++ * - 5 jours → PPL + Skills (intermédiaire+)
++ * - 6 jours → Split complet (intermédiaire+)
++ * - Débutant avec 5-6 jours → Upper/Lower (volume plus modéré)
++ */
++export function selectSplit(
++  trainingDays: number,
++  level: "débutant" | "intermédiaire" | "avancé",
++): SplitTemplate {
++  // Débutant : pas de split PPL, volume plus modéré
++  if (level === "débutant" && trainingDays >= 5) {
++    return UPPER_LOWER_SPLIT;
++  }
++
++  if (trainingDays <= 3) return FULL_BODY_SPLIT;
++  if (trainingDays === 4) return UPPER_LOWER_SPLIT;
++  if (trainingDays === 5) return PPL_SPLIT;
++  return SIX_DAY_SPLIT;
++}
++
++/**
++ * Retourne les jours d'entraînement sous forme de pattern hebdomadaire.
++ * Les jours non entraînés deviennent des jours de repos.
++ */
++export function getTrainingPattern(
++  split: SplitTemplate,
++  trainingDays: number[],
++): { dayIndex: number; focus: DayFocus; isRest: boolean }[] {
++  const pattern: { dayIndex: number; focus: DayFocus; isRest: boolean }[] = [];
++  for (let i = 0; i < 7; i++) {
++    const splitDay = split.days.find((d) => d.dayIndex === i);
++    if (splitDay && trainingDays.includes(i)) {
++      pattern.push({ dayIndex: i, focus: splitDay.focus, isRest: false });
++    } else {
++      pattern.push({ dayIndex: i, focus: "rest", isRest: true });
++    }
++  }
++  return pattern;
++}
++
++/**
++ * Mappe un focus de jour vers le type de séance pour l'affichage.
++ */
++export function dayFocusToType(
++  focus: DayFocus,
++): "running" | "push" | "pull" | "legs" | "recovery" | "rest" {
++  switch (focus) {
++    case "push":
++      return "push";
++    case "pull":
++      return "pull";
++    case "legs":
++      return "legs";
++    case "cardio":
++      return "running";
++    case "skill":
++      return "recovery";
++    case "full-body":
++      return "push"; // affichage neutre
++    case "core":
++      return "recovery";
++    case "rest":
++      return "rest";
++    case "recovery":
++      return "recovery";
++    default:
++      return "rest";
++  }
++}
++
++/**
++ * Emoji pour un type de jour.
++ */
++export function dayFocusEmoji(focus: DayFocus): string {
++  switch (focus) {
++    case "push":
++      return "💪";
++    case "pull":
++      return "🎯";
++    case "legs":
++      return "🦵";
++    case "cardio":
++      return "🏃";
++    case "skill":
++      return "🤸";
++    case "full-body":
++      return "🔥";
++    case "core":
++      return "⚡";
++    case "rest":
++      return "🧘";
++    case "recovery":
++      return "🌿";
++    default:
++      return "🔥";
++  }
++}
++
++/**
++ * Titre lisible pour un jour de split.
++ */
++export function dayFocusTitle(focus: DayFocus): string {
++  switch (focus) {
++    case "push":
++      return "PUSH — Pectoraux, Épaules, Triceps";
++    case "pull":
++      return "PULL — Dos, Biceps, Avant-bras";
++    case "legs":
++      return "LEGS — Quadriceps, Ischio, Fessiers, Mollets";
++    case "cardio":
++      return "Cardio Zone 2";
++    case "skill":
++      return "Skills — Handstand, Flags, Muscle-up";
++    case "full-body":
++      return "Full Body — Tous les groupes";
++    case "core":
++      return "Core & Stabilisation";
++    case "rest":
++      return "Repos complet";
++    case "recovery":
++      return "Récupération active";
++    default:
++      return "Séance";
++  }
++}
+diff --git a/src/lib/store.ts b/src/lib/store.ts
+index 7a8dfb5..7aa772b 100644
+--- a/src/lib/store.ts
++++ b/src/lib/store.ts
+@@ -37,6 +37,8 @@ export interface Profile {
+   capacities?: Capacities; // capacités (déclarées ou déduites des perfs réelles)
+   plan?: GeneratedPlan; // plan personnalisé mis en cache (régénérable)
+   trainingDays?: number[]; // 0 = Lundi … 6 = Dimanche (jours avec séance)
++  trainingTime?: "morning" | "evening"; // moment de la séance (influence timing nutritionnel)
++  sessionDuration?: number; // durée cible par séance en minutes
+   exerciseSwaps?: Record<string, string>; // "dayKey::exId" → nom de remplacement
+   favoriteMeals?: FavoriteMeal[]; // repas mis en favoris (ré-ajout en 1 tap)
+   notionConfig?: Record<string, unknown>; // config synchro Notion (miroir multi-appareils)
+@@ -142,6 +144,8 @@ const DEFAULT_STATE: AppState = {
+     level: "intermédiaire",
+     onboarded: false,
+     startDate: new Date().toISOString(),
++    trainingTime: "evening",
++    sessionDuration: 55,
+   },
+   workouts: [],
+   cardio: [],
+@@ -262,6 +266,14 @@ export function useAppActions() {
+             trainingDays: Array.isArray(data.training_days)
+               ? (data.training_days as number[])
+               : s.profile.trainingDays,
++            trainingTime:
++              (data.training_time as "morning" | "evening" | null) ??
++              s.profile.trainingTime ??
++              "evening",
++            sessionDuration:
++              typeof data.session_duration === "number"
++                ? data.session_duration
++                : (s.profile.sessionDuration ?? 55),
+             exerciseSwaps:
+               (data.exercise_swaps as Record<string, string> | null) ?? s.profile.exerciseSwaps,
+             favoriteMeals: Array.isArray(data.favorite_meals)
+@@ -276,8 +288,7 @@ export function useAppActions() {
+             navMenus: Array.isArray(data.nav_menus)
+               ? (data.nav_menus as string[])
+               : s.profile.navMenus,
+-            musicPlaylists:
+-              data.music_playlists ?? s.profile.musicPlaylists,
++            musicPlaylists: data.music_playlists ?? s.profile.musicPlaylists,
+           },
+         }));
+       }
+@@ -322,6 +333,14 @@ export function useAppActions() {
+           trainingDays: Array.isArray(profileData.training_days)
+             ? (profileData.training_days as number[])
+             : currentProfile.trainingDays,
++          trainingTime:
++            (profileData.training_time as "morning" | "evening" | null) ??
++            currentProfile.trainingTime ??
++            "evening",
++          sessionDuration:
++            typeof profileData.session_duration === "number"
++              ? profileData.session_duration
++              : (currentProfile.sessionDuration ?? 55),
+           exerciseSwaps:
+             (profileData.exercise_swaps as Record<string, string> | null) ??
+             currentProfile.exerciseSwaps,
+@@ -338,9 +357,7 @@ export function useAppActions() {
+           navMenus: Array.isArray(profileData.nav_menus)
+             ? (profileData.nav_menus as string[])
+             : currentProfile.navMenus,
+-          musicPlaylists:
+-            profileData.music_playlists ??
+-            currentProfile.musicPlaylists,
++          musicPlaylists: profileData.music_playlists ?? currentProfile.musicPlaylists,
+         };
+       } else {
+         const mappedProfile = {
+@@ -357,6 +374,8 @@ export function useAppActions() {
+           capacities: (currentProfile.capacities ?? {}) as unknown as Json,
+           plan: currentProfile.plan ? (currentProfile.plan as unknown as Json) : null,
+           training_days: (currentProfile.trainingDays ?? []) as unknown as Json,
++          training_time: currentProfile.trainingTime ?? "evening",
++          session_duration: currentProfile.sessionDuration ?? 55,
+           exercise_swaps: (currentProfile.exerciseSwaps ?? {}) as unknown as Json,
+           favorite_meals: (currentProfile.favoriteMeals ?? []) as unknown as Json,
+           notion_config: (currentProfile.notionConfig ?? {}) as unknown as Json,
+@@ -878,9 +897,13 @@ export function useAppActions() {
+         metrics: mergedMetrics,
+         tests: (() => {
+           try {
+-            const deletedSet = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[]);
++            const deletedSet = new Set(
++              JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[],
++            );
+             return mergedTests.filter((t) => !deletedSet.has(t.id));
+-          } catch { return mergedTests; }
++          } catch {
++            return mergedTests;
++          }
+         })(),
+         water: mergedWater,
+         workouts: mergedWorkouts.sort(
+@@ -896,7 +919,9 @@ export function useAppActions() {
+         const stored = JSON.parse(localStorage.getItem("deleted-test-ids") || "[]") as string[];
+         const stillPending = stored.filter((id) => remoteIds.has(id));
+         localStorage.setItem("deleted-test-ids", JSON.stringify(stillPending));
+-      } catch { /* noop */ }
++      } catch {
++        /* noop */
++      }
+ 
+       toast.success("Données synchronisées avec Supabase !");
+     } catch (err) {
+@@ -934,6 +959,8 @@ export function useAppActions() {
+               capacities: (profileToSync.capacities ?? {}) as unknown as Json,
+               plan: profileToSync.plan ? (profileToSync.plan as unknown as Json) : null,
+               training_days: (profileToSync.trainingDays ?? []) as unknown as Json,
++              training_time: profileToSync.trainingTime ?? "evening",
++              session_duration: profileToSync.sessionDuration ?? 55,
+               exercise_swaps: (profileToSync.exerciseSwaps ?? {}) as unknown as Json,
+               favorite_meals: (profileToSync.favoriteMeals ?? []) as unknown as Json,
+               notion_config: (profileToSync.notionConfig ?? {}) as unknown as Json,
+@@ -1234,7 +1261,9 @@ export function useAppActions() {
+         const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
+         deleted.add(id);
+         localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
+-      } catch { /* noop */ }
++      } catch {
++        /* noop */
++      }
+ 
+       setState((s) => ({ ...s, tests: s.tests.filter((x) => x.id !== id) }));
+ 
+@@ -1258,7 +1287,9 @@ export function useAppActions() {
+               const deleted = new Set(JSON.parse(localStorage.getItem("deleted-test-ids") || "[]"));
+               deleted.delete(id);
+               localStorage.setItem("deleted-test-ids", JSON.stringify([...deleted]));
+-            } catch { /* noop */ }
++            } catch {
++              /* noop */
++            }
+           }
+         } catch (err) {
+           console.error("Erreur de suppression du test dans Supabase :", err);
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 2a49551..9f54147 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -28,6 +28,8 @@ import {
+   planDays,
+   plannedSessionsPerWeek,
+   WEEKDAY_LABELS,
++  isDeloadWeek,
++  getDeloadWeek,
+   type GeneratedNutrition,
+ } from "@/lib/plan";
+ import {
+@@ -145,6 +147,8 @@ function Dashboard() {
+   const daysGoal = plannedSessionsPerWeek(state.profile);
+   const showTestBanner = isTestWeek(state.profile);
+   const week = currentProgramWeek(state.profile);
++  const showDeloadBanner = isDeloadWeek(state.profile, week);
++  const deloadWeek = getDeloadWeek(state.profile.level);
+   const weekDays = planDays(state.profile);
+   // Bilan hebdo (dimanche = semaine en cours, lundi = semaine écoulée)
+   const recap = useMemo(() => weeklyStats(state), [state]);
+@@ -231,7 +235,15 @@ function Dashboard() {
+ 
+   // ---- Redimensionnement fluide continu (Pointer Events, pas de snap) ----
+   // ---- Redimensionnement style Apple : 3 poignées, fluide, hauteur + largeur ----
+-  const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number; si: number; bi: number; mode: "corner" | "bottom" | "right" } | null>(null);
++  const resizeRef = useRef<{
++    startX: number;
++    startY: number;
++    origW: number;
++    origH: number;
++    si: number;
++    bi: number;
++    mode: "corner" | "bottom" | "right";
++  } | null>(null);
+   const setBlockSpan = (si: number, bi: number, span: 1 | 2 | 3) => {
+     const next = layoutRef.current.map((s) => ({ ...s, blocks: [...s.blocks] }));
+     if (!next[si]?.blocks[bi]) return;
+@@ -244,11 +256,24 @@ function Dashboard() {
+     next[si].blocks[bi].height = height;
+     applyLayout(next);
+   };
+-  const startResize = (e: React.PointerEvent, si: number, bi: number, mode: "corner" | "bottom" | "right") => {
++  const startResize = (
++    e: React.PointerEvent,
++    si: number,
++    bi: number,
++    mode: "corner" | "bottom" | "right",
++  ) => {
+     e.preventDefault();
+     const cur = layoutRef.current[si]?.blocks[bi];
+     if (!cur) return;
+-    resizeRef.current = { startX: e.clientX, startY: e.clientY, origW: cur.span, origH: cur.height, si, bi, mode };
++    resizeRef.current = {
++      startX: e.clientX,
++      startY: e.clientY,
++      origW: cur.span,
++      origH: cur.height,
++      si,
++      bi,
++      mode,
++    };
+     const onMove = (ev: PointerEvent) => {
+       const r = resizeRef.current;
+       if (!r) return;
+@@ -260,10 +285,16 @@ function Dashboard() {
+       if (r.mode === "corner" || r.mode === "bottom") {
+         const dy = ev.clientY - r.startY;
+         const newH = Math.min(4, Math.max(1, r.origH + Math.round(dy / 60))) as 1 | 2 | 3 | 4;
+-        if (layoutRef.current[r.si]?.blocks[r.bi]?.height !== newH) setBlockHeight(r.si, r.bi, newH);
++        if (layoutRef.current[r.si]?.blocks[r.bi]?.height !== newH)
++          setBlockHeight(r.si, r.bi, newH);
+       }
+     };
+-    const onUp = () => { resizeRef.current = null; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
++    const onUp = () => {
++      resizeRef.current = null;
++      window.removeEventListener("pointermove", onMove);
++      window.removeEventListener("pointerup", onUp);
++      window.removeEventListener("pointercancel", onUp);
++    };
+     window.addEventListener("pointermove", onMove);
+     window.addEventListener("pointerup", onUp);
+     window.addEventListener("pointercancel", onUp);
+@@ -366,7 +397,12 @@ function Dashboard() {
+   const blockContent = (si: number, bi: number, b: HomeBlockInstance) => {
+     switch (b.kind) {
+       case "cycle":
+-        return <CycleEndCard profile={state.profile} />;
++        return (
++          <>
++            <CycleEndCard profile={state.profile} />
++            {showDeloadBanner && <DeloadBanner week={week} deloadWeek={deloadWeek} />}
++          </>
++        );
+       case "testsBanner":
+         return showTestBanner ? (
+           <div>
+@@ -588,7 +624,14 @@ function Dashboard() {
+     const content = blockContent(si, bi, b);
+     if (!editing && content === null) return null;
+     const spanCls = b.span === 3 ? "lg:col-span-3" : b.span === 2 ? "lg:col-span-2" : "";
+-    const heightCls = b.height === 4 ? "lg:row-span-4 min-h-[28rem]" : b.height === 3 ? "lg:row-span-3 min-h-[22rem]" : b.height === 2 ? "lg:row-span-2 min-h-[16rem]" : "min-h-[10rem]";
++    const heightCls =
++      b.height === 4
++        ? "lg:row-span-4 min-h-[28rem]"
++        : b.height === 3
++          ? "lg:row-span-3 min-h-[22rem]"
++          : b.height === 2
++            ? "lg:row-span-2 min-h-[16rem]"
++            : "min-h-[10rem]";
+     const isDragged = drag?.from.si === si && drag?.from.bi === bi;
+     const isDropTarget = editing && drag?.over?.si === si && drag?.over?.bi === bi && !isDragged;
+     return (
+@@ -638,7 +681,9 @@ function Dashboard() {
+                 : ""
+             }`}
+           >
+-            <div className="flex-1">{content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}</div>
++            <div className="flex-1">
++              {content ?? <PlaceholderBlock text={HOME_BLOCKS[b.kind].label} />}
++            </div>
+           </div>
+           {editing && (
+             <>
+@@ -823,7 +868,10 @@ function Dashboard() {
+               {sec.blocks.map((b, bi) => renderBlock(si, bi, b))}
+               {editing && sec.blocks.length === 0 && (
+                 <p className="text-[11px] text-muted-foreground/70 italic py-2">
+-                  <span className="hidden sm:inline">Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.</span><span className="sm:hidden">Sous-section vide — ajoute un bloc.</span>
++                  <span className="hidden sm:inline">
++                    Sous-section vide — ajoute un bloc avec le bouton « + Bloc » ci-dessus.
++                  </span>
++                  <span className="sm:hidden">Sous-section vide — ajoute un bloc.</span>
+                 </p>
+               )}
+             </div>
+@@ -857,7 +905,8 @@ function Dashboard() {
+           </div>
+           {addableEntries.length === 0 ? (
+             <p className="text-xs text-muted-foreground py-6 text-center">
+-              <span className="hidden sm:inline">Tous les blocs sont deja sur ton accueil 🎉</span><span className="sm:hidden">Tous les blocs sont là 🎉</span>
++              <span className="hidden sm:inline">Tous les blocs sont deja sur ton accueil 🎉</span>
++              <span className="sm:hidden">Tous les blocs sont là 🎉</span>
+             </p>
+           ) : (
+             <div className="grid gap-2 pt-2">
+@@ -943,7 +992,14 @@ function CycleProgressBar({ profile }: { profile: Profile }) {
+   return (
+     <div className="flex items-center gap-3">
+       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
++        <circle
++          cx={size / 2}
++          cy={size / 2}
++          r={r}
++          fill="none"
++          stroke="rgba(255,255,255,0.08)"
++          strokeWidth={stroke}
++        />
+         <circle
+           cx={size / 2}
+           cy={size / 2}
+@@ -957,7 +1013,14 @@ function CycleProgressBar({ profile }: { profile: Profile }) {
+           transform={`rotate(-90 ${size / 2} ${size / 2})`}
+           className="transition-all duration-500"
+         />
+-        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--color-foreground)">
++        <text
++          x={size / 2}
++          y={size / 2 + 1}
++          textAnchor="middle"
++          fontSize="10"
++          fontWeight="700"
++          fill="var(--color-foreground)"
++        >
+           {pct}%
+         </text>
+       </svg>
+@@ -1001,7 +1064,10 @@ function CycleEndCard({ profile }: { profile: Profile }) {
+         <div className="flex-1 min-w-0">
+           <p className="text-sm font-black text-gradient">Fin du cycle {cycle} 🎉</p>
+           <p className="text-[11px] text-muted-foreground mt-0.5">
+-            <span className="hidden sm:inline">Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨</span><span className="sm:hidden">Régénère le plan → perfs ✨</span>
++            <span className="hidden sm:inline">
++              Régénère ton plan : tes capacités seront recalculées sur tes vraies perfs ✨
++            </span>
++            <span className="sm:hidden">Régénère le plan → perfs ✨</span>
+           </p>
+         </div>
+         <ChevronRight className="h-5 w-5 text-muted-foreground" />
+@@ -1010,6 +1076,26 @@ function CycleEndCard({ profile }: { profile: Profile }) {
+   );
+ }
+ 
++/** Bannière de semaine de deload — volume réduit automatiquement. */
++function DeloadBanner({ week, deloadWeek }: { week: number; deloadWeek: number | null }) {
++  return (
++    <div className="card-premium p-4 border-l-4 border-l-blue-400/40 bg-gradient-to-b from-blue-400/[0.10] to-transparent">
++      <div className="flex items-center gap-3">
++        <div className="h-10 w-10 grid place-items-center rounded-full bg-blue-400/10 shrink-0">
++          <span className="text-xl">🧘</span>
++        </div>
++        <div className="flex-1 min-w-0">
++          <p className="text-sm font-black text-blue-300">Semaine de Deload — S{week}</p>
++          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
++            Volume réduit de 50% sur les séries, intensité -30%. L'objectif est la récupération :
++            garde la technique, écoute ton corps.
++          </p>
++        </div>
++      </div>
++    </div>
++  );
++}
++
+ /** Bilan du dimanche / lundi : stats + 1 conseil ciblé (masquable jusqu'à la semaine suivante). */
+ function WeeklyRecapCard({
+   recap,
+@@ -1199,7 +1285,9 @@ function MacroBlock({
+ }) {
+   const ratio = target > 0 ? Math.min(100, (value / target) * 100) : 0;
+   return (
+-    <div className={`card-premium p-4 border bg-gradient-to-b to-transparent flex flex-col ${borderCls}`}>
++    <div
++      className={`card-premium p-4 border bg-gradient-to-b to-transparent flex flex-col ${borderCls}`}
++    >
+       <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold">
+         {icon} {label}
+       </div>
+@@ -1424,18 +1512,18 @@ function MusiqueBlock() {
+   const state = useAppState();
+   const today = getTodayProgram(state.profile.daysPerWeek === 5, planDays(state.profile));
+   const raw = state.profile.musicPlaylists;
+-  const playlists = Array.isArray(raw) 
+-    ? raw as { id: string; label: string; url: string }[]
+-    : [];
++  const playlists = Array.isArray(raw) ? (raw as { id: string; label: string; url: string }[]) : [];
+   // Fallback ancien format
+   const tType = today.type;
+   const sessionType: string =
+     tType === "running" ? "running" : tType === "rest" || tType === "recovery" ? "recovery" : tType;
+ 
+   // Trouver la playlist qui correspond le mieux
+-  const match = playlists.length > 0
+-    ? playlists.find((p) => p.label.toLowerCase().includes(tType) || p.id === tType) || playlists[0]
+-    : null;
++  const match =
++    playlists.length > 0
++      ? playlists.find((p) => p.label.toLowerCase().includes(tType) || p.id === tType) ||
++        playlists[0]
++      : null;
+   const url = match?.url || "";
+ 
+   const appName = url.includes("spotify")
+@@ -1460,7 +1548,10 @@ function MusiqueBlock() {
+       {playlists.length > 0 && (
+         <div className="mt-2 flex flex-wrap gap-1">
+           {playlists.map((p) => (
+-            <span key={p.id} className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${p.url ? "bg-pink-500/10 border-pink-500/20 text-pink-200" : "bg-white/5 border-white/10 text-muted-foreground"}`}>
++            <span
++              key={p.id}
++              className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${p.url ? "bg-pink-500/10 border-pink-500/20 text-pink-200" : "bg-white/5 border-white/10 text-muted-foreground"}`}
++            >
+               {p.label} {p.url ? "🔗" : "⛔"}
+             </span>
+           ))}
+@@ -1487,16 +1578,25 @@ function MusiqueBlock() {
+             </span>
+             <span className="text-[10px] opacity-70">↗</span>
+           </a>
+-          <Link to="/parametres" className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors">
++          <Link
++            to="/parametres"
++            className="block text-[10px] text-muted-foreground hover:text-primary text-center transition-colors"
++          >
+             Changer de playlist dans Paramètres
+           </Link>
+         </div>
+       ) : (
+         <div className="mt-3 space-y-2">
+           <p className="text-[11px] text-muted-foreground leading-relaxed">
+-            <span className="hidden sm:inline">Configure tes playlists dans Paramètres → Musique.</span><span className="sm:hidden">🎵 Non configurée</span>
++            <span className="hidden sm:inline">
++              Configure tes playlists dans Paramètres → Musique.
++            </span>
++            <span className="sm:hidden">🎵 Non configurée</span>
+           </p>
+-          <Link to="/parametres" className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all">
++          <Link
++            to="/parametres"
++            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl border border-dashed border-pink-400/40 text-[11px] font-bold text-pink-200 hover:bg-pink-400/10 transition-all"
++          >
+             <Music className="h-3.5 w-3.5" /> Configurer mes playlists
+           </Link>
+         </div>
+diff --git a/src/routes/nutrition.tsx b/src/routes/nutrition.tsx
+index 87e13a1..6f39d5b 100644
+--- a/src/routes/nutrition.tsx
++++ b/src/routes/nutrition.tsx
+@@ -16,7 +16,13 @@ import { Input } from "@/components/ui/input";
+ import { Trash2, Beef, Flame, Droplet, Plus, Star, X, Pencil } from "lucide-react";
+ import { Progress } from "@/components/ui/progress";
+ import { WaterBottle } from "@/components/WaterBottle";
+-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++  DialogTrigger,
++} from "@/components/ui/dialog";
+ import { toast } from "sonner";
+ 
+ export const Route = createFileRoute("/nutrition")({
+@@ -31,6 +37,7 @@ function NutritionPage() {
+ 
+   // Cibles personnalisées selon l'objectif et la morphologie (plan généré)
+   const nut = nutritionTargets(state.profile);
++  const timing = nut.timing;
+   const pMin = Math.round((nut.proteinMin / state.profile.weight) * 10) / 10;
+   const pMax = Math.round((nut.proteinMax / state.profile.weight) * 10) / 10;
+   const proteinTargetMin = nut.proteinMin;
+@@ -145,6 +152,25 @@ function NutritionPage() {
+               Cible {proteinTargetMin}–{proteinTargetMax}g ({pMin}–{pMax}g/kg)
+             </p>
+           </div>
++
++          {/* Conseil de timing nutritionnel */}
++          <div className="card-premium p-4 border border-primary/25 bg-gradient-to-b from-primary/[0.08] to-transparent">
++            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold mb-2">
++              {timing.fasted ? "🌅 À jeun" : "🌙 En soirée"} — Timing nutritionnel
++            </div>
++            <div className="space-y-1.5">
++              <p className="text-[11px] text-muted-foreground leading-relaxed">
++                <span className="font-bold text-foreground">Pré-séance :</span> {timing.preWorkout}
++              </p>
++              <p className="text-[11px] text-muted-foreground leading-relaxed">
++                <span className="font-bold text-foreground">Post-séance :</span>{" "}
++                {timing.postWorkout}
++              </p>
++              <p className="text-[11px] text-muted-foreground leading-relaxed">
++                <span className="font-bold text-foreground">Répartition :</span> {timing.mealTiming}
++              </p>
++            </div>
++          </div>
+           <div className="card-premium p-4 border border-cyan-400/25 bg-gradient-to-b from-cyan-400/[0.12] to-transparent">
+             <div className="flex items-center gap-3">
+               <WaterBottle liters={water} target={waterTarget} />
+@@ -209,11 +235,17 @@ function NutritionPage() {
+             </p>
+             <div className="space-y-2">
+               {favs.map((f) => (
+-                <FavCard key={f.id} fav={f} onAdd={() => addFavAsMeal(f)} onRemove={() => removeFav(f.id)} onUpdate={(updated) => {
+-                  const next = favs.map((x) => x.id === f.id ? updated : x);
+-                  actions.setProfile({ favoriteMeals: next });
+-                  toast.success("Favori modifié ✅");
+-                }} />
++                <FavCard
++                  key={f.id}
++                  fav={f}
++                  onAdd={() => addFavAsMeal(f)}
++                  onRemove={() => removeFav(f.id)}
++                  onUpdate={(updated) => {
++                    const next = favs.map((x) => (x.id === f.id ? updated : x));
++                    actions.setProfile({ favoriteMeals: next });
++                    toast.success("Favori modifié ✅");
++                  }}
++                />
+               ))}
+             </div>
+           </section>
+@@ -243,9 +275,12 @@ function NutritionPage() {
+                       <Plus className="h-4 w-4" />
+                     </button>
+                     <div className="flex-1 min-w-0">
+-                      <p className="font-semibold text-sm truncate">{p !== 1 ? `${m.name} ×${p}` : m.name}</p>
++                      <p className="font-semibold text-sm truncate">
++                        {p !== 1 ? `${m.name} ×${p}` : m.name}
++                      </p>
+                       <p className="text-xs text-muted-foreground">
+-                        {calced.kcal} kcal · P {calced.protein}g · G {calced.carbs}g · L {calced.fat}g
++                        {calced.kcal} kcal · P {calced.protein}g · G {calced.carbs}g · L{" "}
++                        {calced.fat}g
+                       </p>
+                     </div>
+                   </div>
+@@ -254,7 +289,9 @@ function NutritionPage() {
+                       <button
+                         key={f}
+                         type="button"
+-                        onClick={() => setPortion((prev) => ({ ...prev, [m.name]: prev[m.name] === f ? 1 : f }))}
++                        onClick={() =>
++                          setPortion((prev) => ({ ...prev, [m.name]: prev[m.name] === f ? 1 : f }))
++                        }
+                         className={`flex-1 h-7 rounded-lg text-[10px] font-bold border transition-all ${
+                           p === f
+                             ? "bg-primary/15 border-primary/40 text-primary"
+@@ -329,7 +366,8 @@ function NutritionPage() {
+           </p>
+           {meals.length === 0 ? (
+             <p className="text-sm text-muted-foreground px-1">
+-              <span className="hidden sm:inline">Aucun repas enregistré aujourd'hui.</span><span className="sm:hidden">Aucun repas aujourd'hui.</span>
++              <span className="hidden sm:inline">Aucun repas enregistré aujourd'hui.</span>
++              <span className="sm:hidden">Aucun repas aujourd'hui.</span>
+             </p>
+           ) : (
+             <div className="space-y-2">
+@@ -365,7 +403,17 @@ function NutritionPage() {
+ }
+ 
+ /** Carte favori avec bouton +, X et crayon d'édition (survol/tap). */
+-function FavCard({ fav, onAdd, onRemove, onUpdate }: { fav: FavoriteMeal; onAdd: () => void; onRemove: () => void; onUpdate: (f: FavoriteMeal) => void }) {
++function FavCard({
++  fav,
++  onAdd,
++  onRemove,
++  onUpdate,
++}: {
++  fav: FavoriteMeal;
++  onAdd: () => void;
++  onRemove: () => void;
++  onUpdate: (f: FavoriteMeal) => void;
++}) {
+   const [editOpen, setEditOpen] = useState(false);
+   const [editName, setEditName] = useState(fav.name);
+   const [editKcal, setEditKcal] = useState(fav.kcal);
+@@ -375,48 +423,118 @@ function FavCard({ fav, onAdd, onRemove, onUpdate }: { fav: FavoriteMeal; onAdd:
+ 
+   return (
+     <div className="card-premium p-3 flex items-center gap-3 group">
+-      <button onClick={onAdd} className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0 active:scale-95 transition-transform" aria-label={`Ajouter ${fav.name}`}>
++      <button
++        onClick={onAdd}
++        className="h-9 w-9 grid place-items-center rounded-full btn-hero shrink-0 active:scale-95 transition-transform"
++        aria-label={`Ajouter ${fav.name}`}
++      >
+         <Plus className="h-4 w-4" />
+       </button>
+       <div className="flex-1 min-w-0">
+         <p className="font-semibold text-sm truncate">{fav.name}</p>
+-        <p className="text-xs text-muted-foreground">{fav.kcal} kcal · P {fav.protein}g · G {fav.carbs}g · L {fav.fat}g</p>
++        <p className="text-xs text-muted-foreground">
++          {fav.kcal} kcal · P {fav.protein}g · G {fav.carbs}g · L {fav.fat}g
++        </p>
+       </div>
+       <div className="flex items-center shrink-0">
+-        <button onClick={() => { setEditName(fav.name); setEditKcal(fav.kcal); setEditProtein(fav.protein); setEditCarbs(fav.carbs); setEditFat(fav.fat); setEditOpen(true); }}
+-          className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all" aria-label="Modifier">
++        <button
++          onClick={() => {
++            setEditName(fav.name);
++            setEditKcal(fav.kcal);
++            setEditProtein(fav.protein);
++            setEditCarbs(fav.carbs);
++            setEditFat(fav.fat);
++            setEditOpen(true);
++          }}
++          className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-primary p-2 transition-all"
++          aria-label="Modifier"
++        >
+           <Pencil className="h-3.5 w-3.5" />
+         </button>
+-        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive p-2" aria-label="Retirer">
++        <button
++          onClick={onRemove}
++          className="text-muted-foreground hover:text-destructive p-2"
++          aria-label="Retirer"
++        >
+           <X className="h-4 w-4" />
+         </button>
+       </div>
+       <Dialog open={editOpen} onOpenChange={setEditOpen}>
+         <DialogContent className="max-w-sm bg-slate-950 border-white/10">
+-          <DialogHeader><DialogTitle className="font-black text-sm">Modifier le favori</DialogTitle></DialogHeader>
++          <DialogHeader>
++            <DialogTitle className="font-black text-sm">Modifier le favori</DialogTitle>
++          </DialogHeader>
+           <div className="space-y-3 pt-2">
+-            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nom" className="bg-input h-9 text-xs" />
++            <Input
++              value={editName}
++              onChange={(e) => setEditName(e.target.value)}
++              placeholder="Nom"
++              className="bg-input h-9 text-xs"
++            />
+             <div className="grid grid-cols-2 gap-2">
+               <div>
+                 <label className="text-[10px] text-muted-foreground">Kcal</label>
+-                <Input type="number" value={editKcal} onChange={(e) => setEditKcal(Number(e.target.value))} className="bg-input h-9 text-xs" />
++                <Input
++                  type="number"
++                  value={editKcal}
++                  onChange={(e) => setEditKcal(Number(e.target.value))}
++                  className="bg-input h-9 text-xs"
++                />
+               </div>
+               <div>
+                 <label className="text-[10px] text-muted-foreground">Protéines (g)</label>
+-                <Input type="number" value={editProtein} onChange={(e) => setEditProtein(Number(e.target.value))} className="bg-input h-9 text-xs" />
++                <Input
++                  type="number"
++                  value={editProtein}
++                  onChange={(e) => setEditProtein(Number(e.target.value))}
++                  className="bg-input h-9 text-xs"
++                />
+               </div>
+               <div>
+                 <label className="text-[10px] text-muted-foreground">Glucides (g)</label>
+-                <Input type="number" value={editCarbs} onChange={(e) => setEditCarbs(Number(e.target.value))} className="bg-input h-9 text-xs" />
++                <Input
++                  type="number"
++                  value={editCarbs}
++                  onChange={(e) => setEditCarbs(Number(e.target.value))}
++                  className="bg-input h-9 text-xs"
++                />
+               </div>
+               <div>
+                 <label className="text-[10px] text-muted-foreground">Lipides (g)</label>
+-                <Input type="number" value={editFat} onChange={(e) => setEditFat(Number(e.target.value))} className="bg-input h-9 text-xs" />
++                <Input
++                  type="number"
++                  value={editFat}
++                  onChange={(e) => setEditFat(Number(e.target.value))}
++                  className="bg-input h-9 text-xs"
++                />
+               </div>
+             </div>
+             <div className="flex gap-2 pt-1">
+-              <Button size="sm" variant="secondary" className="flex-1 h-9 text-xs" onClick={() => setEditOpen(false)}>Annuler</Button>
+-              <Button size="sm" className="flex-1 h-9 btn-hero text-xs" onClick={() => { onUpdate({ id: fav.id, name: editName, kcal: editKcal, protein: editProtein, carbs: editCarbs, fat: editFat }); setEditOpen(false); }}>Enregistrer</Button>
++              <Button
++                size="sm"
++                variant="secondary"
++                className="flex-1 h-9 text-xs"
++                onClick={() => setEditOpen(false)}
++              >
++                Annuler
++              </Button>
++              <Button
++                size="sm"
++                className="flex-1 h-9 btn-hero text-xs"
++                onClick={() => {
++                  onUpdate({
++                    id: fav.id,
++                    name: editName,
++                    kcal: editKcal,
++                    protein: editProtein,
++                    carbs: editCarbs,
++                    fat: editFat,
++                  });
++                  setEditOpen(false);
++                }}
++              >
++                Enregistrer
++              </Button>
+             </div>
+           </div>
+         </DialogContent>
+diff --git a/src/routes/onboarding.tsx b/src/routes/onboarding.tsx
+index 07ab993..2883d56 100644
+--- a/src/routes/onboarding.tsx
++++ b/src/routes/onboarding.tsx
+@@ -14,6 +14,13 @@ import { PageShell } from "@/components/BottomNav";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectTrigger,
++  SelectValue,
++} from "@/components/ui/select";
+ import { useAppActions, useAppState, type Profile } from "@/lib/store";
+ import {
+   GOALS,
+@@ -24,6 +31,7 @@ import {
+   computeNutrition,
+   WEEKDAY_LABELS,
+   capacitiesFromHistory,
++  getDeloadWeek,
+   type Capacities,
+   type GoalId,
+ } from "@/lib/plan";
+@@ -53,6 +61,12 @@ function OnboardingPage() {
+         ? [0, 1, 2, 3, 4]
+         : [0, 1, 2, 3, 4, 5],
+   );
++  const [trainingTime, setTrainingTime] = useState<"morning" | "evening">(
++    state.profile.trainingTime ?? "evening",
++  );
++  const [sessionDuration, setSessionDuration] = useState<number>(
++    state.profile.sessionDuration ?? 55,
++  );
+   const [sex, setSex] = useState<"homme" | "femme">(state.profile.sex ?? "homme");
+   const [age, setAge] = useState(state.profile.age?.toString() ?? "");
+   const [weight, setWeight] = useState(state.profile.weight.toString());
+@@ -92,6 +106,8 @@ function OnboardingPage() {
+       goal,
+       daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+       trainingDays,
++      trainingTime,
++      sessionDuration,
+       level,
+       sex,
+       age: parseInt(age) || undefined,
+@@ -99,7 +115,19 @@ function OnboardingPage() {
+       height: parseFloat(height) || state.profile.height,
+       capacities,
+     }),
+-    [state.profile, goal, trainingDays, level, sex, age, weight, height, capacities],
++    [
++      state.profile,
++      goal,
++      trainingDays,
++      trainingTime,
++      sessionDuration,
++      level,
++      sex,
++      age,
++      weight,
++      height,
++      capacities,
++    ],
+   );
+   const nutrition = useMemo(() => computeNutrition(previewProfile), [previewProfile]);
+   const plan = useMemo(() => generatePlan(previewProfile), [previewProfile]);
+@@ -110,6 +138,8 @@ function OnboardingPage() {
+       goal,
+       daysPerWeek: trainingDays.length >= 6 ? 6 : 5,
+       trainingDays,
++      trainingTime,
++      sessionDuration,
+       level,
+       sex,
+       age: parseInt(age) || undefined,
+@@ -211,6 +241,56 @@ function OnboardingPage() {
+                 les autres deviennent repos 🧘.
+               </p>
+             </div>
++
++            {/* Moment de la séance + durée cible */}
++            <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
++              <h3 className="font-bold">Moment & durée</h3>
++              <div className="grid grid-cols-2 gap-2">
++                <button
++                  onClick={() => setTrainingTime("morning")}
++                  className={`h-14 rounded-xl border font-bold transition ${
++                    trainingTime === "morning"
++                      ? "btn-hero border-transparent"
++                      : "bg-card border-border text-muted-foreground"
++                  }`}
++                >
++                  🌅 Matin
++                </button>
++                <button
++                  onClick={() => setTrainingTime("evening")}
++                  className={`h-14 rounded-xl border font-bold transition ${
++                    trainingTime === "evening"
++                      ? "btn-hero border-transparent"
++                      : "bg-card border-border text-muted-foreground"
++                  }`}
++                >
++                  🌙 Soir
++                </button>
++              </div>
++              <p className="text-[10px] text-muted-foreground">
++                {trainingTime === "morning"
++                  ? "Séance à jeun : le moteur privilégie cardio/skill. Nutrition post-séance prioritaire."
++                  : "Séance en soirée: séances de force complètes. Repas pré-séance recommandé."}
++              </p>
++              <div className="flex items-center gap-2 mt-2">
++                <span className="text-xs text-muted-foreground">Durée cible :</span>
++                <Select
++                  value={String(sessionDuration)}
++                  onValueChange={(v) => setSessionDuration(Number(v))}
++                >
++                  <SelectTrigger className="bg-input h-8 text-xs w-24">
++                    <SelectValue />
++                  </SelectTrigger>
++                  <SelectContent>
++                    {[30, 40, 45, 50, 55, 60, 70, 80].map((d) => (
++                      <SelectItem key={d} value={String(d)}>
++                        {d} min
++                      </SelectItem>
++                    ))}
++                  </SelectContent>
++                </Select>
++              </div>
++            </div>
+           </div>
+         )}
+ 
+@@ -368,6 +448,48 @@ function OnboardingPage() {
+               .
+             </p>
+ 
++            {/* Infos split + deload */}
++            <div className="grid grid-cols-2 gap-2 mt-3">
++              <div className="card-premium p-3 border border-primary/20 bg-primary/[0.05]">
++                <p className="text-[10px] uppercase font-black tracking-wider text-primary">
++                  Split
++                </p>
++                <p className="text-sm font-bold mt-1 capitalize">
++                  {plan.splitId?.replace(/-/g, " ")}
++                </p>
++                <p className="text-[10px] text-muted-foreground mt-0.5">
++                  {trainingDays.length} jours/semaine
++                </p>
++              </div>
++              <div className="card-premium p-3 border border-blue-400/20 bg-blue-400/[0.05]">
++                <p className="text-[10px] uppercase font-black tracking-wider text-blue-300">
++                  Deload
++                </p>
++                {plan.isDeload ? (
++                  <p className="text-sm font-bold mt-1 text-blue-300">Semaine active</p>
++                ) : (
++                  <p className="text-sm font-bold mt-1">
++                    {level === "débutant" ? "Non (débutant)" : `S${getDeloadWeek(level)}`}
++                  </p>
++                )}
++                <p className="text-[10px] text-muted-foreground mt-0.5">
++                  {level === "débutant" ? "Récupération naturelle" : "Volume -50% / intensité -30%"}
++                </p>
++              </div>
++            </div>
++
++            {/* Timing nutritionnel */}
++            <div className="card-premium p-3 mt-3 border border-cyan-400/20 bg-cyan-400/[0.05]">
++              <p className="text-[10px] uppercase font-black tracking-wider text-cyan-300 flex items-center gap-1">
++                {trainingTime === "morning" ? "🌅 À jeun" : "🌙 En soirée"} — Timing
++              </p>
++              <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
++                {trainingTime === "morning"
++                  ? "Séance à jeun : hydrate-toi avant, repas protéiné rapide après."
++                  : "Repas léger 1-2h avant, récupération nocturne optimisée."}
++              </p>
++            </div>
++
+             {/* Semaine */}
+             <div className="card-premium p-4">
+               <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground mb-3">
+diff --git a/src/routes/parametres.tsx b/src/routes/parametres.tsx
+index 711a196..fa18a13 100644
+--- a/src/routes/parametres.tsx
++++ b/src/routes/parametres.tsx
+@@ -75,7 +75,13 @@ import {
+   notificationsSupported,
+   type ReminderSettings,
+ } from "@/lib/reminders";
+-import { isPushSupported as isPushSupportedBrowser, getExistingSubscription, subscribeToPush, unsubscribeFromPush, getVapidPublicKey } from "@/lib/push-notifications";
++import {
++  isPushSupported as isPushSupportedBrowser,
++  getExistingSubscription,
++  subscribeToPush,
++  unsubscribeFromPush,
++  getVapidPublicKey,
++} from "@/lib/push-notifications";
+ 
+ export const Route = createFileRoute("/parametres")({
+   head: () => ({ meta: [{ title: "Paramètres — Calli Recomp" }] }),
+@@ -139,6 +145,37 @@ function ParamsPage() {
+                   </SelectContent>
+                 </Select>
+               </Row>
++              <Row label="Moment séance">
++                <Select
++                  value={state.profile.trainingTime ?? "evening"}
++                  onValueChange={(v) => setProfile({ trainingTime: v as "morning" | "evening" })}
++                >
++                  <SelectTrigger className="bg-input w-36 h-8 text-xs">
++                    <SelectValue />
++                  </SelectTrigger>
++                  <SelectContent>
++                    <SelectItem value="morning">🌅 Matin (à jeun)</SelectItem>
++                    <SelectItem value="evening">🌙 Soir</SelectItem>
++                  </SelectContent>
++                </Select>
++              </Row>
++              <Row label="Durée cible">
++                <Select
++                  value={String(state.profile.sessionDuration ?? 55)}
++                  onValueChange={(v) => setProfile({ sessionDuration: Number(v) })}
++                >
++                  <SelectTrigger className="bg-input w-28 h-8 text-xs">
++                    <SelectValue />
++                  </SelectTrigger>
++                  <SelectContent>
++                    {[30, 40, 45, 50, 55, 60, 70, 80].map((d) => (
++                      <SelectItem key={d} value={String(d)}>
++                        {d} min
++                      </SelectItem>
++                    ))}
++                  </SelectContent>
++                </Select>
++              </Row>
+             </div>
+ 
+             <div className="card-premium p-4 space-y-3 min-w-0 overflow-hidden">
+@@ -1416,14 +1453,17 @@ function PushCard() {
+         <h3 className="font-bold text-sm">Rappel push quotidien</h3>
+       </div>
+       <p className="text-[11px] text-muted-foreground leading-relaxed">
+-        <span className="hidden sm:inline">Reçois une notification push chaque jour si tu n'as pas encore fait ta séance.</span><span className="sm:hidden">Notification push si séance manquée.</span> 
++        <span className="hidden sm:inline">
++          Reçois une notification push chaque jour si tu n'as pas encore fait ta séance.
++        </span>
++        <span className="sm:hidden">Notification push si séance manquée.</span>
+         100% gratuit, fonctionne même quand l'app est fermée (PWA installée).
+       </p>
+ 
+       {!supported ? (
+         <p className="text-[11px] text-amber-300">
+-          ⚠️ Ce navigateur ne supporte pas les notifications push. 
+-          Installe l'app (menu ⋮ → Installer) ou utilise Chrome/Edge sur Android.
++          ⚠️ Ce navigateur ne supporte pas les notifications push. Installe l'app (menu ⋮ →
++          Installer) ou utilise Chrome/Edge sur Android.
+         </p>
+       ) : !vapidKey ? (
+         <p className="text-[11px] text-amber-300">
+@@ -1444,7 +1484,8 @@ function PushCard() {
+         >
+           {busy ? (
+             <span className="flex items-center gap-1.5">
+-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {subscribed ? "Désabonnement…" : "Abonnement…"}
++              <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
++              {subscribed ? "Désabonnement…" : "Abonnement…"}
+             </span>
+           ) : subscribed ? (
+             "🔕 Désactiver les notifications push"
+@@ -1526,8 +1567,8 @@ function ThemeCard() {
+ function MusicCard() {
+   const state = useAppState();
+   const { setProfile } = useAppActions();
+-  const playlists = Array.isArray(state.profile.musicPlaylists) 
+-    ? state.profile.musicPlaylists as { id: string; label: string; url: string }[]
++  const playlists = Array.isArray(state.profile.musicPlaylists)
++    ? (state.profile.musicPlaylists as { id: string; label: string; url: string }[])
+     : [];
+ 
+   // Migration ancien format (Record<string, string>) vers nouveau format (array)
+@@ -1537,11 +1578,30 @@ function MusicCard() {
+     if (raw && typeof raw === "object") {
+       const migrated: { id: string; label: string; url: string }[] = [];
+       for (const [k, v] of Object.entries(raw as Record<string, string>)) {
+-        if (v) migrated.push({ id: k, label: k === "running" ? "Course 🏃" : k === "push" ? "Push 💪" : k === "pull" ? "Pull 🎯" : k === "legs" ? "Legs 🦵" : k, url: v });
++        if (v)
++          migrated.push({
++            id: k,
++            label:
++              k === "running"
++                ? "Course 🏃"
++                : k === "push"
++                  ? "Push 💪"
++                  : k === "pull"
++                    ? "Pull 🎯"
++                    : k === "legs"
++                      ? "Legs 🦵"
++                      : k,
++            url: v,
++          });
+       }
+       return migrated;
+     }
+-    return [{ id: "push", label: "Push 💪", url: "" }, { id: "pull", label: "Pull 🎯", url: "" }, { id: "legs", label: "Legs 🦵", url: "" }, { id: "running", label: "Course 🏃", url: "" }];
++    return [
++      { id: "push", label: "Push 💪", url: "" },
++      { id: "pull", label: "Pull 🎯", url: "" },
++      { id: "legs", label: "Legs 🦵", url: "" },
++      { id: "running", label: "Course 🏃", url: "" },
++    ];
+   });
+ 
+   const save = () => {
+@@ -1569,8 +1629,8 @@ function MusicCard() {
+         <h3 className="font-bold text-sm">Playlists sport</h3>
+       </div>
+       <p className="text-[11px] text-muted-foreground leading-relaxed">
+-        Ajoute des liens <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b>. 
+-        Le bon lien s'affichera dans le bloc Musique selon la séance du jour.
++        Ajoute des liens <b>Spotify</b>, <b>Deezer</b> ou <b>Apple Music</b>. Le bon lien
++        s'affichera dans le bloc Musique selon la séance du jour.
+       </p>
+ 
+       <div className="space-y-2.5">
+@@ -1602,8 +1662,12 @@ function MusicCard() {
+         ))}
+       </div>
+ 
+-      <Button size="sm" variant="secondary" onClick={addItem}
+-        className="w-full h-9 border border-dashed border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20 text-xs font-bold">
++      <Button
++        size="sm"
++        variant="secondary"
++        onClick={addItem}
++        className="w-full h-9 border border-dashed border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20 text-xs font-bold"
++      >
+         ➕ Ajouter une playlist
+       </Button>
+       <Button size="sm" onClick={save} className="w-full h-9 btn-hero text-xs font-bold">
+diff --git a/src/routes/programme.tsx b/src/routes/programme.tsx
+index 6cb9cec..8f829e5 100644
+--- a/src/routes/programme.tsx
++++ b/src/routes/programme.tsx
+@@ -1,7 +1,14 @@
+ import { createFileRoute } from "@tanstack/react-router";
+ import { useState } from "react";
+ import { PageShell, TopBar } from "@/components/BottomNav";
+-import { planDays, nutritionTargets, TIER_INFO, goalDefOf } from "@/lib/plan";
++import {
++  planDays,
++  nutritionTargets,
++  TIER_INFO,
++  goalDefOf,
++  isDeloadWeek,
++  getDeloadWeek,
++} from "@/lib/plan";
+ import { useAppState, programCycle } from "@/lib/store";
+ import { Button } from "@/components/ui/button";
+ import { SessionTypeBadge } from "@/routes/index";
+@@ -23,6 +30,9 @@ function ProgrammePage() {
+   const isCustomPlan = !!state.profile.plan;
+   const nut = nutritionTargets(state.profile);
+   const tierLabel = state.profile.plan ? TIER_INFO[state.profile.plan.tier].label : "Standard";
++  const showDeload = isDeloadWeek(state.profile, cycleWeek);
++  const deloadWeek = getDeloadWeek(state.profile.level);
++  const splitLabel = state.profile.plan?.splitId ?? "standard";
+ 
+   const handlePDF = async () => {
+     setPdfBusy(true);
+@@ -36,9 +46,27 @@ function ProgrammePage() {
+     <PageShell>
+       <TopBar
+         title="Programme"
+-        subtitle={`${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, semaine ${cycleWeek}/12`}
++        subtitle={
++          `${isCustomPlan ? "Plan personnalisé 🔥" : "Programme standard"} • ${state.profile.daysPerWeek} j/sem • Cycle ${cycle}, S${cycleWeek}/12` +
++          (showDeload ? ` • 🧘 Deload` : "") +
++          (state.profile.plan?.splitId ? ` • ${state.profile.plan.splitId}` : "")
++        }
+       />
+ 
++      {showDeload && (
++        <div className="px-5 mb-3">
++          <div className="card-premium p-3 border-l-4 border-l-blue-400/40 bg-gradient-to-b from-blue-400/[0.10] to-transparent">
++            <p className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
++              🧘 Semaine de Deload S{cycleWeek} — Volume réduit de 50%, intensité -30%.
++            </p>
++            <p className="text-[10px] text-muted-foreground mt-0.5">
++              Objectif : récupération active. Garde la technique, écoute ton corps. Le deload est
++              programmé automatiquement à S{deloadWeek} pour un niveau {state.profile.level}.
++            </p>
++          </div>
++        </div>
++      )}
++
+       <div className="px-5 mb-3 flex justify-end gap-2 print:hidden">
+         <Button
+           size="sm"
+diff --git a/supabase/migrations/20260721000001_profile_adaptive.sql b/supabase/migrations/20260721000001_profile_adaptive.sql
+new file mode 100644
+index 0000000..b1804f6
+--- /dev/null
++++ b/supabase/migrations/20260721000001_profile_adaptive.sql
+@@ -0,0 +1,7 @@
++-- V14 : champs profil pour la génération de programme adaptatif
++-- training_time : moment de la séance (matin/soir) → influence le timing nutritionnel
++-- session_duration : durée cible par séance en minutes
++
++ALTER TABLE public.profiles
++  ADD COLUMN IF NOT EXISTS training_time TEXT CHECK (training_time IN ('morning', 'evening')) DEFAULT 'evening',
++  ADD COLUMN IF NOT EXISTS session_duration INT CHECK (session_duration BETWEEN 15 AND 120) DEFAULT 55;
